@@ -4152,7 +4152,7 @@ namespace dxvk {
 
     enabled.extMemoryPriority.memoryPriority = supported.extMemoryPriority.memoryPriority;
 
-    enabled.extShaderDemoteToHelperInvocation.shaderDemoteToHelperInvocation = supported.extShaderDemoteToHelperInvocation.shaderDemoteToHelperInvocation;
+    enabled.extShaderDemoteToHelperInvocation.shaderDemoteToHelperInvocation = VK_TRUE;
 
     enabled.extVertexAttributeDivisor.vertexAttributeInstanceRateDivisor = supported.extVertexAttributeDivisor.vertexAttributeInstanceRateDivisor;
     enabled.extVertexAttributeDivisor.vertexAttributeInstanceRateZeroDivisor = supported.extVertexAttributeDivisor.vertexAttributeInstanceRateZeroDivisor;
@@ -8050,7 +8050,7 @@ namespace dxvk {
 
   void D3D9DeviceEx::UpdateAlphaTestSpec(VkCompareOp alphaOp, uint32_t precision) {
     bool dirty  = m_specInfo.set<SpecAlphaCompareOp>(uint32_t(alphaOp));
-         //dirty |= m_specInfo.set<SpecAlphaPrecisionBits>(precision);
+         dirty |= m_specInfo.set<SpecAlphaPrecisionBits>(precision);
 
     if (dirty)
       m_flags.set(D3D9DeviceFlag::DirtySpecializationEntries);
@@ -8081,8 +8081,8 @@ namespace dxvk {
 
   void D3D9DeviceEx::UpdateCommonSamplerSpec(uint32_t nullMask, uint32_t depthMask, uint32_t drefMask) {
     bool dirty  = m_specInfo.set<SpecSamplerDepthMode>(depthMask);
-         //dirty |= m_specInfo.set<SpecSamplerNull>(nullMask);
-         //dirty |= m_specInfo.set<SpecDrefClamp>(drefMask);
+         dirty |= m_specInfo.set<SpecSamplerNull>(nullMask);
+         dirty |= m_specInfo.set<SpecDrefClamp>(drefMask);
 
     if (dirty)
       m_flags.set(D3D9DeviceFlag::DirtySpecializationEntries);

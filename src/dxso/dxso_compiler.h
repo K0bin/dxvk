@@ -7,6 +7,7 @@
 #include "dxso_util.h"
 
 #include "../d3d9/d3d9_constant_layout.h"
+#include "../d3d9/d3d9_spec_constants.h"
 #include "../d3d9/d3d9_shader_permutations.h"
 #include "../spirv/spirv_module.h"
 
@@ -164,9 +165,6 @@ namespace dxvk {
    */
   struct DxsoCompilerPsPart {
     uint32_t functionId         = 0;
-    uint32_t samplerTypeSpec    = 0;
-    uint32_t projectionSpec     = 0;
-    uint32_t fetch4Spec         = 0;
 
     //////////////
     // Misc Types
@@ -278,8 +276,7 @@ namespace dxvk {
 
     SpirvModule                m_module;
 
-    uint32_t                   m_boolSpecConstant;
-    uint32_t                   m_depthSpecConstant;
+    D3D9ShaderSpecConstantManager m_spec;
 
     ///////////////////////////////////////////////////////
     // Resource slot description for the shader. This will
