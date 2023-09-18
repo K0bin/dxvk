@@ -5788,7 +5788,7 @@ namespace dxvk {
       if (unlikely(tex->IsDepthStencil()))
         m_activeTextureDSs |= bit;
 
-      if (unlikely(tex->NeedsAnyUpload()))
+      if (unlikely(tex->NeedsAnyUpload() && tex->IsManaged()))
         m_activeTexturesToUpload |= bit;
 
       if (unlikely(tex->NeedsMipGen()))
