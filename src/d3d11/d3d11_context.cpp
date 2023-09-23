@@ -239,6 +239,12 @@ namespace dxvk {
       auto dstFormatInfo = lookupFormatInfo(dstTexture->GetPackedFormat());
       auto srcFormatInfo = lookupFormatInfo(srcTexture->GetPackedFormat());
 
+      if (dstTexture->Desc()->Format == DXGI_FORMAT_A8_UNORM) {
+        Logger::warn(str::format("CopySubresourceRegion1 A8 ", " dst format: ", dstTexture->GetPackedFormat(), " src format: ", srcTexture->GetPackedFormat()));
+
+        Logger::warn(str::format("format info, block size: ", dstFormatInfo->blockSize, " aspect mask: ", dstFormatInfo->aspectMask, " element size: ", dstFormatInfo->elementSize));
+      }
+
       auto dstLayers = vk::makeSubresourceLayers(dstTexture->GetSubresourceFromIndex(dstFormatInfo->aspectMask, DstSubresource));
       auto srcLayers = vk::makeSubresourceLayers(srcTexture->GetSubresourceFromIndex(srcFormatInfo->aspectMask, SrcSubresource));
 
@@ -294,6 +300,10 @@ namespace dxvk {
     } else {
       auto dstTexture = GetCommonTexture(pDstResource);
       auto srcTexture = GetCommonTexture(pSrcResource);
+
+      if (dstTexture->Desc()->Format == DXGI_FORMAT_A8_UNORM) {
+        Logger::warn("CopyResource A8");
+      }
 
       auto dstDesc = dstTexture->Desc();
       auto srcDesc = srcTexture->Desc();
@@ -395,6 +405,15 @@ namespace dxvk {
       return;
 
     auto uav = static_cast<D3D11UnorderedAccessView*>(qiUav.ptr());
+
+    D3D11_UNORDERED_ACCESS_VIEW_DESC1 desc;
+    uav->GetDesc1(&desc);
+    Com<ID3D11Resource> resource;
+    uav->GetResource(&resource);    
+    D3D11_RESOURCE_DIMENSION dimen = uav->GetResourceType();
+    if (desc.Format == DXGI_FORMAT_A8_UNORM) {
+      Logger::warn(str::format("Clear UAV A8 ", dimen));
+    }
 
     // Gather UAV format info. We'll use this to determine
     // whether we need to create a temporary view or not.
@@ -5156,14 +5175,22 @@ namespace dxvk {
     const void*                             pSrcData,
           UINT                              SrcRowPitch,
           UINT                              SrcDepthPitch) {
-    if (DstSubresource >= pDstTexture->CountSubresources())
+    if (DstSubresource >= pDstTexture->CountSubresources()) {
+      Logger::warn("CANCEL UPDATE SUBRESOURCE");
       return;
+    }
 
     VkFormat packedFormat = pDstTexture->GetPackedFormat();
+
+    if (pDstTexture->Desc()->Format == DXGI_FORMAT_A8_UNORM)
+      Logger::warn(str::format("packed format: ", packedFormat, " as int: ", uint32_t(packedFormat)));
 
     auto formatInfo = lookupFormatInfo(packedFormat);
     auto subresource = pDstTexture->GetSubresourceFromIndex(
         formatInfo->aspectMask, DstSubresource);
+  
+    if (pDstTexture->Desc()->Format == DXGI_FORMAT_A8_UNORM)
+      Logger::warn(str::format("format info, block size: ", formatInfo->blockSize, " aspect mask: ", formatInfo->aspectMask, " element size: ", formatInfo->elementSize));
 
     VkExtent3D mipExtent = pDstTexture->MipLevelExtent(subresource.mipLevel);
 
@@ -5352,6 +5379,10 @@ namespace dxvk {
       context->UpdateBuffer(bufferResource, offset, length, pSrcData);
     } else {
       D3D11CommonTexture* textureResource = GetCommonTexture(pDstResource);
+
+      if (textureResource->Desc()->Format == DXGI_FORMAT_A8_UNORM) {
+        Logger::warn("UpdateResource A8");
+      }
 
       context->UpdateTexture(textureResource,
         DstSubresource, pDstBox, pSrcData, SrcRowPitch, SrcDepthPitch);

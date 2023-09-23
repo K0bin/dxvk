@@ -150,6 +150,9 @@ namespace dxvk {
     
     try {
       const Com<D3D11Texture1D> texture = new D3D11Texture1D(this, &desc, nullptr);
+      if (pDesc->Format == DXGI_FORMAT_A8_UNORM) {
+        Logger::warn(str::format("CreateTexture1D A8 ", pInitialData && pInitialData->pSysMem ? "has initial data" : "no initial data"));
+      }
       m_initializer->InitTexture(texture->GetCommonTexture(), pInitialData);
       *ppTexture1D = texture.ref();
       return S_OK;
@@ -184,6 +187,11 @@ namespace dxvk {
     
     ID3D11Texture2D1* texture2D = nullptr;
     HRESULT hr = CreateTexture2D1(&desc, pInitialData, ppTexture2D ? &texture2D : nullptr);
+
+    
+      if (pDesc->Format == DXGI_FORMAT_A8_UNORM) {
+        Logger::warn(str::format("CreateTexture2D A8 ", pInitialData && pInitialData->pSysMem ? "has initial data" : "no initial data"));
+      }
 
     if (hr != S_OK)
       return hr;
@@ -230,6 +238,9 @@ namespace dxvk {
     
     try {
       Com<D3D11Texture2D> texture = new D3D11Texture2D(this, &desc, nullptr, nullptr);
+      if (pDesc->Format == DXGI_FORMAT_A8_UNORM) {
+        Logger::warn(str::format("CreateTexture2D1 A8 ", pInitialData && pInitialData->pSysMem ? "has initial data" : "no initial data"));
+      }
       m_initializer->InitTexture(texture->GetCommonTexture(), pInitialData);
       *ppTexture2D = texture.ref();
       return S_OK;
@@ -263,6 +274,9 @@ namespace dxvk {
     
     ID3D11Texture3D1* texture3D = nullptr;
     HRESULT hr = CreateTexture3D1(&desc, pInitialData, ppTexture3D ? &texture3D : nullptr);
+      if (pDesc->Format == DXGI_FORMAT_A8_UNORM) {
+        Logger::warn(str::format("CreateTexture3D A8 ", pInitialData && pInitialData->pSysMem ? "has initial data" : "no initial data"));
+      }
 
     if (hr != S_OK)
       return hr;
@@ -309,6 +323,9 @@ namespace dxvk {
       
     try {
       Com<D3D11Texture3D> texture = new D3D11Texture3D(this, &desc, nullptr);
+      if (pDesc->Format == DXGI_FORMAT_A8_UNORM) {
+        Logger::warn(str::format("CreateTexture3D1 A8 ", pInitialData && pInitialData->pSysMem ? "has initial data" : "no initial data"));
+      }
       m_initializer->InitTexture(texture->GetCommonTexture(), pInitialData);
       *ppTexture3D = texture.ref();
       return S_OK;
@@ -385,6 +402,10 @@ namespace dxvk {
     
     if (!ppSRView)
       return S_FALSE;
+
+      if (desc.Format == DXGI_FORMAT_A8_UNORM) {
+        Logger::warn(str::format("A8 view for ", resourceDesc.Dim, " foramt: ", resourceDesc.Format));
+      }
     
     try {
       *ppSRView = ref(new D3D11ShaderResourceView(this, pResource, &desc));
@@ -462,6 +483,10 @@ namespace dxvk {
 
     if (!ppUAView)
       return S_FALSE;
+
+      if (desc.Format == DXGI_FORMAT_A8_UNORM) {
+        Logger::warn(str::format("A8 uav for ", resourceDesc.Dim, " foramt: ", resourceDesc.Format));
+      }
     
     try {
       auto uav = new D3D11UnorderedAccessView(this, pResource, &desc);
@@ -547,6 +572,10 @@ namespace dxvk {
 
     if (!ppRTView)
       return S_FALSE;
+
+      if (desc.Format == DXGI_FORMAT_A8_UNORM) {
+        Logger::warn(str::format("A8 rtv for ", resourceDesc.Dim, " foramt: ", resourceDesc.Format));
+      }
     
     try {
       *ppRTView = ref(new D3D11RenderTargetView(this, pResource, &desc));

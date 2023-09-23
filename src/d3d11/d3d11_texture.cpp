@@ -24,6 +24,15 @@ namespace dxvk {
     DXGI_VK_FORMAT_INFO   formatPacked = m_device->LookupPackedFormat(m_desc.Format, formatMode);
     m_packedFormat = formatPacked.Format;
 
+    if (pDesc->Format == DXGI_FORMAT_A8_UNORM) {
+      Logger::warn(str::format(
+        "A8 texture ",
+        pDesc->Width, "x", pDesc->Height, "x", pDesc->Depth, " Mips: ", pDesc->MipLevels,
+        " Layers: ", pDesc->ArraySize, " Samples: ", pDesc->SampleDesc.Count, " Usage: ", pDesc->Usage,
+        " Bind Flags: ", pDesc->BindFlags, " CPU Access: ", pDesc->CPUAccessFlags, " Misc Flags: ", pDesc->MiscFlags
+      ));
+    }
+
     DxvkImageCreateInfo imageInfo;
     imageInfo.type            = GetVkImageType();
     imageInfo.format          = formatInfo.Format;

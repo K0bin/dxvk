@@ -43,6 +43,10 @@ namespace dxvk {
   void D3D11Initializer::InitTexture(
           D3D11CommonTexture*         pTexture,
     const D3D11_SUBRESOURCE_DATA*     pInitialData) {
+
+    if (pTexture->Desc()->Format == DXGI_FORMAT_A8_UNORM)
+      Logger::warn("Init");
+
     if (pTexture->Desc()->MiscFlags & D3D11_RESOURCE_MISC_TILED)
       InitTiledTexture(pTexture);
     else if (pTexture->GetMapMode() == D3D11_COMMON_TEXTURE_MAP_MODE_DIRECT)
@@ -126,16 +130,26 @@ namespace dxvk {
           D3D11CommonTexture*         pTexture,
     const D3D11_SUBRESOURCE_DATA*     pInitialData) {
     std::lock_guard<dxvk::mutex> lock(m_mutex);
+
+    if (pTexture->Desc()->Format == DXGI_FORMAT_A8_UNORM)
+      Logger::warn("InitDeviceLocal");
     
     Rc<DxvkImage> image = pTexture->GetImage();
 
     auto mapMode = pTexture->GetMapMode();
-    auto desc = pTexture->Desc();
+      auto desc = pTexture->Desc();
 
     VkFormat packedFormat = m_parent->LookupPackedFormat(desc->Format, pTexture->GetFormatMode()).Format;
     auto formatInfo = lookupFormatInfo(packedFormat);
 
     if (pInitialData != nullptr && pInitialData->pSysMem != nullptr) {
+
+        if (pTexture->Desc()->Format == DXGI_FORMAT_A8_UNORM) {          
+          Logger::warn("InitDeviceLocal initial data");
+          Logger::warn(str::format("InitDeviceLocal A8 ", " dst format: ", pTexture->GetPackedFormat(), " src format: ", pTexture->GetPackedFormat()));
+          Logger::warn(str::format("format info, block size: ", formatInfo->blockSize, " aspect mask: ", formatInfo->aspectMask, " element size: ", formatInfo->elementSize));
+        }
+
       // pInitialData is an array that stores an entry for
       // every single subresource. Since we will define all
       // subresources, this counts as initialization.
@@ -183,6 +197,10 @@ namespace dxvk {
         }
       }
     } else {
+      
+      if (pTexture->Desc()->Format == DXGI_FORMAT_A8_UNORM)
+        Logger::warn("InitDeviceLocal clear");
+
       if (mapMode != D3D11_COMMON_TEXTURE_MAP_MODE_STAGING) {
         m_transferCommands += 1;
         
