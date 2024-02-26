@@ -749,8 +749,6 @@ namespace dxvk {
 
       DxsoBindingType bindingType;
 
-      uint32_t* boundConstPtr;
-
       switch (type) {
         default:
         case SamplerTypeTexture2D:
@@ -758,7 +756,6 @@ namespace dxvk {
           dimensionality = spv::Dim2D;
           viewType = VK_IMAGE_VIEW_TYPE_2D;
           bindingType = depth ? DxsoBindingType::TextureShadow : DxsoBindingType::Texture2D;
-          boundConstPtr = depth ? &cDxsoSampler.boundConst2DShadow : &cDxsoSampler.boundConst2D;
           break;
 
         case SamplerTypeTextureCube:
@@ -767,7 +764,6 @@ namespace dxvk {
           dimensionality = spv::DimCube;
           viewType = VK_IMAGE_VIEW_TYPE_CUBE;
           bindingType = depth ? DxsoBindingType::TextureCubeShadow : DxsoBindingType::TextureCube;
-          boundConstPtr = depth ? &cDxsoSampler.boundConstCubeShadow : &cDxsoSampler.boundConstCube;
           break;
 
         case SamplerTypeTexture3D:
@@ -776,7 +772,6 @@ namespace dxvk {
           dimensionality = spv::Dim3D;
           viewType = VK_IMAGE_VIEW_TYPE_3D;
           bindingType = DxsoBindingType::Texture3D;
-          boundConstPtr = &cDxsoSampler.boundConst3D;
           break;
       }
 
@@ -800,11 +795,6 @@ namespace dxvk {
 
       m_module.decorateDescriptorSet(sampler.imageVarId, 0);
       m_module.decorateBinding      (sampler.imageVarId, bindingId);
-
-      *boundConstPtr = m_module.specConstBool(true);
-      m_module.decorateSpecId(*boundConstPtr, bindingId);
-      m_module.setDebugName(*boundConstPtr,
-        str::format("t", cIdx, suffix, (depth ? "_shadow" : ""), "_bound").c_str());
 
       // Store descriptor info for the shader interface
       DxvkResourceSlot resource;
