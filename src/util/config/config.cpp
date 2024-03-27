@@ -27,10 +27,6 @@ namespace dxvk {
     { R"(\\EliteDangerous64\.exe$)", {{
       { "dxgi.customVendorId",              "10de" },
     }} },
-    /* The Vanishing of Ethan Carter Redux        */
-    { R"(\\EthanCarter-Win64-Shipping\.exe$)", {{
-      { "dxgi.customVendorId",              "10de" },
-    }} },
      /* EVE Online: Needs this to expose D3D12     *
      * otherwise D3D12 option on launcher is      *
      * greyed out                                 */
@@ -234,11 +230,6 @@ namespace dxvk {
     { R"(\\nioh2\.exe$)", {{
       { "dxgi.deferSurfaceCreation",        "True" },
     }} },
-    /* DIRT 5 - uses amd_ags_x64.dll when it      *
-     * detects an AMD GPU                         */
-    { R"(\\DIRT5\.exe$)", {{
-      { "dxgi.customVendorId",              "10de" },
-    }} },
     /* Crazy Machines 3 - crashes on long device  *
      * descriptions                               */
     { R"(\\cm3\.exe$)", {{
@@ -429,6 +420,14 @@ namespace dxvk {
      * Helps CPU bound performance                */
     { R"(\\kenshi_x64\.exe$)", {{
       { "d3d11.cachedDynamicResources",     "v"    },
+    }} },
+    /* Granblue Relink: Spams pixel shader UAVs   *
+     * and assumes that AMD GPUs do not expose    *
+     * native command lists for AGS usage         */
+    { R"(\\granblue_fantasy_relink\.exe$)", {{
+      { "d3d11.ignoreGraphicsBarriers",     "True"  },
+      { "d3d11.exposeDriverCommandLists",   "False" },
+      { "dxgi.hideNvidiaGpu",               "False" },
     }} },
 
     /**********************************************/
@@ -806,6 +805,7 @@ namespace dxvk {
      * Black textures                          */
     { R"(\\eldorado\.exe$)", {{
       { "d3d9.floatEmulation",              "Strict"   },
+      { "d3d9.allowDirectBufferMapping",    "False" },
     }} },
     /* Injustice: Gods Among Us                *
      * Locks a buffer that's still in use      */
@@ -862,13 +862,22 @@ namespace dxvk {
     { R"(\\UK Truck Simulator\\bin\\win_x86\\game\.exe$)", {{
       { "d3d9.floatEmulation",              "Strict" },
     }} },
-    /* Supreme Ruler Ultimate                    *
+    /* d3d9 Supreme Ruler games              *
      * Leaks a StateBlock leading                *
      * to Reset calls failing                    */
-    { R"(\\SupremeRulerUltimate\.exe$)", {{
+    { R"(\\SupremeRuler(Ultimate|GreatWar|1936|CW)\.exe$)", {{
       { "d3d9.countLosableResources",       "False" },
     }} },
-    
+    /* Operation Flashpoint: Red River           *
+     * Flickering issues                         */
+    { R"(\\RedRiver\.exe$)", {{
+      { "d3d9.floatEmulation",              "Strict" },
+    }} },
+    /* Dark Void - Crashes above 60fps in places */
+    { R"(\\ShippingPC-SkyGame\.exe$)", {{
+      { "d3d9.maxFrameRate",                "60" },
+    }} },
+
 
     /**********************************************/
     /* D3D12 GAMES (vkd3d-proton with dxvk dxgi)  */
@@ -899,15 +908,16 @@ namespace dxvk {
     { R"(\\Cyberpunk2077\.exe$)", {{
       { "dxgi.useMonitorFallback",          "True" },
     }} },
-    /* Hitman 3 - Ray Tracing                      */
-    { R"(\\HITMAN3\.exe$)", {{
-      { "dxgi.hideNvidiaGpu",              "False" },
-    }} },
     /* Metro Exodus Enhanced Edition picks GPU adapters
      * by available VRAM, which causes issues on some
      * systems with integrated graphics. */
     { R"(\\Metro Exodus Enhanced Edition\\MetroExodus\.exe$)", {{
       { "dxvk.hideIntegratedGraphics",      "True" },
+    }} },
+    /* Persona 3 Reload - disables vsync by default and
+     * runs into severe frame latency issues on Deck. */
+    { R"(\\P3R\.exe$)", {{
+      { "dxgi.syncInterval",                "1" },
     }} },
   }};
 

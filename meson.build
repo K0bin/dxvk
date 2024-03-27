@@ -1,7 +1,8 @@
-project('dxvk', ['c', 'cpp'], version : 'v2.3', meson_version : '>= 0.49', default_options : [ 'cpp_std=c++17', 'warning_level=2' ])
+project('dxvk', ['c', 'cpp'], version : 'v2.3.1', meson_version : '>= 0.58', default_options : [ 'cpp_std=c++17', 'warning_level=2' ])
 
 cpu_family = target_machine.cpu_family()
 platform   = target_machine.system()
+fs = import('fs')
 
 cpp = meson.get_compiler('cpp')
 cc = meson.get_compiler('c')
@@ -33,14 +34,24 @@ if get_option('build_id')
   ]
 endif
 
-dxvk_include_dirs = [
-  './include',
-  './include/vulkan/include',
-  './include/spirv/include'
-]
+dxvk_include_dirs = ['./include']
+if fs.is_dir('./include/vulkan/include')
+  dxvk_include_dirs += ['./include/vulkan/include']
+elif not cpp.check_header('vulkan/vulkan.h')
+  error('Missing Vulkan-Headers')
+endif
+if fs.is_dir('./include/spirv/include')
+  dxvk_include_dirs += ['./include/spirv/include']
+elif not cpp.check_header('spirv/unified1/spirv.hpp')
+  error('Missing SPIRV-Headers')
+endif
 
-proj_displayinfo = subproject('libdisplay-info')
-dep_displayinfo = proj_displayinfo.get_variable('di_dep')
+dep_displayinfo = dependency(
+  'libdisplay-info',
+  version: ['>= 0.0.0', '< 0.2.0'],
+  fallback: ['libdisplay-info', 'di_dep'],
+  default_options: ['default_library=static'],
+)
 
 if platform == 'windows'
   compiler_args += [

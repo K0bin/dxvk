@@ -66,6 +66,8 @@ namespace dxvk {
     DirtyInputLayout,
     DirtyViewportScissor,
     DirtyMultiSampleState,
+    DirtyVertexBuffers,
+    DirtyIndexBuffer,
 
     DirtyFogState,
     DirtyFogColor,
@@ -765,6 +767,24 @@ namespace dxvk {
     HRESULT UnlockBuffer(
             D3D9CommonBuffer*       pResource);
 
+    /**
+     * @brief Uploads data from D3DPOOL_SYSMEM + D3DUSAGE_DYNAMIC buffers and binds the temporary buffers.
+     * 
+     * @param FirstVertexIndex The first vertex
+     * @param NumVertices The number of vertices that are accessed. If this is 0, the vertex buffer binding will not be modified.
+     * @param FirstIndex The first index
+     * @param NumIndices The number of indices that will be drawn. If this is 0, the index buffer binding will not be modified.
+     */
+    void UploadDynamicSysmemBuffers(
+            UINT&                   FirstVertexIndex,
+            UINT                    NumVertices,
+            UINT&                   FirstIndex,
+            UINT                    NumIndices,
+            INT&                    BaseVertexIndex,
+            bool*                   pDynamicVBOs,
+            bool*                   pDynamicIBO);
+    
+
     void SetupFPU();
 
     int64_t DetermineInitialTextureMemory();
@@ -774,6 +794,7 @@ namespace dxvk {
     void SynchronizeCsThread(uint64_t SequenceNumber);
 
     void Flush();
+    void FlushAndSync9On12();
 
     void EndFrame();
 
@@ -896,7 +917,7 @@ namespace dxvk {
     
     uint32_t GetInstanceCount() const;
 
-    void PrepareDraw(D3DPRIMITIVETYPE PrimitiveType);
+    void PrepareDraw(D3DPRIMITIVETYPE PrimitiveType, bool UploadVBOs, bool UploadIBOs);
 
     template <DxsoProgramType ShaderStage>
     void BindShader(
@@ -1040,6 +1061,9 @@ namespace dxvk {
       return std::exchange(m_deviceHasBeenReset, false);
     }
 
+    template <bool Synchronize9On12>
+    void ExecuteFlush();
+
     void DetermineConstantLayouts(bool canSWVP);
 
     D3D9BufferSlice AllocUPBuffer(VkDeviceSize size);
@@ -1064,7 +1088,7 @@ namespace dxvk {
     }
 
     inline uint32_t GetUPBufferSize(uint32_t vertexCount, uint32_t stride) {
-      return (vertexCount - 1) * stride + std::max(m_state.vertexDecl->GetSize(), stride);
+      return (vertexCount - 1) * stride + std::max(m_state.vertexDecl->GetSize(0), stride);
     }
 
     inline void FillUPVertexBuffer(void* buffer, const void* userData, uint32_t dataSize, uint32_t bufferSize) {
@@ -1222,6 +1246,34 @@ namespace dxvk {
 
     uint64_t GetCurrentSequenceNumber();
 
+    /**
+     * @brief Get the swapchain that was used the most recently for presenting
+     * Has to be externally synchronized.
+     * 
+     * @return D3D9SwapChainEx* Swapchain
+     */
+    D3D9SwapChainEx* GetMostRecentlyUsedSwapchain() {
+      return m_mostRecentlyUsedSwapchain;
+    }
+
+    /**
+     * @brief Set the swapchain that was used the most recently for presenting
+     * Has to be externally synchronized.
+     * 
+     * @param swapchain Swapchain
+     */
+    void SetMostRecentlyUsedSwapchain(D3D9SwapChainEx* swapchain) {
+      m_mostRecentlyUsedSwapchain = swapchain;
+    }
+
+    /**
+     * @brief Reset the most recently swapchain back to the implicit one
+     * Has to be externally synchronized.
+     */
+    void ResetMostRecentlyUsedSwapchain() {
+      m_mostRecentlyUsedSwapchain = m_implicitSwapchain.ptr();
+    }
+
     Com<D3D9InterfaceEx>            m_parent;
     D3DDEVTYPE                      m_deviceType;
     HWND                            m_window;
@@ -1374,6 +1426,8 @@ namespace dxvk {
 
     Rc<sync::Fence>                 m_submissionFence;
     uint64_t                        m_submissionId = 0ull;
+    DxvkSubmitStatus                m_submitStatus;
+
     uint64_t                        m_flushSeqNum = 0ull;
     GpuFlushTracker                 m_flushTracker;
 
@@ -1385,6 +1439,8 @@ namespace dxvk {
     std::atomic<uint32_t>           m_losableResourceCounter   = { 0 };
 
     uint64_t m_frameCounter = 0;
+
+    D3D9SwapChainEx*                m_mostRecentlyUsedSwapchain = nullptr;
 
 #ifdef D3D9_ALLOW_UNMAPPING
     lru_list<D3D9CommonTexture*>    m_mappedTextures;

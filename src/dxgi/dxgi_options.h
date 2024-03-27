@@ -33,8 +33,12 @@ namespace dxvk {
     /// Emulate UMA
     bool emulateUMA;
 
-    /// Reports Nvidia GPUs as a different vendor (usually AMD)
+    /// Reports Nvidia GPUs running on the proprietary driver as a different
+    /// vendor (usually AMD). Proton will generally disable this option.
     bool hideNvidiaGpu;
+
+    /// Reports Nvidia GPUs running on NVK as a different vendor (usually AMD)
+    bool hideNvkGpu;
 
     /// Reports AMD GPUs as a different vendor (usually Nvidia)
     bool hideAmdGpu;
@@ -47,6 +51,10 @@ namespace dxvk {
 
     /// Use monitor fallback to enumerating all monitors per output
     bool useMonitorFallback;
+
+    /// Sync interval. Overrides the value
+    /// passed to IDXGISwapChain::Present.
+    int32_t syncInterval;
   };
   
 }
