@@ -377,6 +377,20 @@ namespace dxvk {
 
     // Software Cursor...
     Logger::warn("D3D9DeviceEx::SetCursorProperties: Software cursor not implemented.");
+
+
+    bool recreateSurface = m_softwareCursor == nullptr;
+    if (m_softwareCursor != nullptr) {
+      D3DSURFACE_DESC desc;
+      m_softwareCursor->GetDesc(&desc);
+      recreateSurface = desc.Width != inputWidth || desc.Height != inputHeight;
+    }
+
+    if (recreateSurface) {
+      m_sof
+    }
+
+
     return D3D_OK;
   }
 

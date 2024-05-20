@@ -1439,6 +1439,8 @@ namespace dxvk {
 
     D3D9SwapChainEx*                m_mostRecentlyUsedSwapchain = nullptr;
 
+    Com<D3D9Surface>                m_softwareCursor;
+
 #ifdef D3D9_ALLOW_UNMAPPING
     lru_list<D3D9CommonTexture*>    m_mappedTextures;
 #endif
