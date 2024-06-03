@@ -26,6 +26,21 @@ namespace dxvk {
     return id;
   }
 
+  /* First generation XeSS causes crash on proton for Intel due to missing
+   * Intel interface. Avoid crash by pretending to be non-Intel if the
+   * libxess.dll module is loaded by an application.
+   */
+  static bool isXessUsed() {
+#ifdef _WIN32
+      if (GetModuleHandleA("libxess") != nullptr ||
+          GetModuleHandleA("libxess_dx11") != nullptr)
+        return true;
+      else
+        return false;
+#else
+      return false;
+#endif
+  }
 
   static bool isNvapiEnabled() {
     return env::getEnvVar("DXVK_ENABLE_NVAPI") == "1";
@@ -95,15 +110,17 @@ namespace dxvk {
     this->hideAmdGpu = config.getOption<Tristate>("dxgi.hideAmdGpu", Tristate::Auto) == Tristate::True;
     this->hideIntelGpu = config.getOption<Tristate>("dxgi.hideIntelGpu", Tristate::Auto) == Tristate::True;
 
+    /* Force vendor ID to non-Intel ID when XeSS is in use */
+    if (isXessUsed()) {
+      Logger::info(str::format("Detected XeSS usage, hiding Intel GPU Vendor"));
+      this->hideIntelGpu = true;
+    }
+
     this->enableHDR = config.getOption<bool>("dxgi.enableHDR", env::getEnvVar("DXVK_HDR") == "1");
     if (this->enableHDR && isHDRDisallowed()) {
       Logger::info("HDR was configured to be enabled, but has been force disabled as a UE4 DX11 game was detected.");
       this->enableHDR = false;
     }
-
-    this->useMonitorFallback = config.getOption<bool>("dxgi.useMonitorFallback", env::getEnvVar("DXVK_MONITOR_FALLBACK") == "1");
-    if (this->useMonitorFallback)
-      Logger::info("Enabled useMonitorFallback option");
   }
   
 }
