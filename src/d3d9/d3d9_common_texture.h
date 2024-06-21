@@ -485,6 +485,10 @@ namespace dxvk {
 
     ID3D9VkInteropTexture* GetVkInterop() { return &m_d3d9Interop; }
 
+    void SetLosableCookie(uint64_t cookie) {
+      m_losableCookie = cookie;
+    }
+
   private:
 
     D3D9DeviceEx*                 m_device;
@@ -534,6 +538,8 @@ namespace dxvk {
     std::array<D3DBOX, 6>         m_dirtyBoxes;
 
     D3D9VkInteropTexture          m_d3d9Interop;
+
+    uint64_t                      m_losableCookie = 0;
 
     Rc<DxvkImage> CreatePrimaryImage(D3DRESOURCETYPE ResourceType, bool TryOffscreenRT, HANDLE* pSharedHandle) const;
 

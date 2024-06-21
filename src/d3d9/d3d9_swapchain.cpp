@@ -83,7 +83,8 @@ namespace dxvk {
     m_device->waitForSubmission(&m_presentStatus);
     m_device->waitForIdle();
 
-    m_parent->DecrementLosableCounter();
+    m_parent->DecrementLosableCounter(m_losableCookie);
+    Logger::warn(str::format("DECR D3D9Swapchain::~D3D9Swapchain, counter: ", m_parent->LosableCounter(), " cookie: ", m_losableCookie));
   }
 
 
@@ -1039,7 +1040,9 @@ namespace dxvk {
       D3D9Surface* surface;
       try {
         surface = new D3D9Surface(m_parent, &desc, this, nullptr);
-        m_parent->IncrementLosableCounter();
+        uint64_t cookie = m_parent->IncrementLosableCounter();
+        surface->GetCommonTexture()->SetLosableCookie(cookie);
+        Logger::warn(str::format("INCR D3D9Swapchain::CreateBackBuffers, counter: ", m_parent->LosableCounter(), " cookie: ", cookie));
       } catch (const DxvkError& e) {
         DestroyBackBuffers();
         Logger::err(e.message());

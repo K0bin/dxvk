@@ -1010,12 +1010,23 @@ namespace dxvk {
     void NotifyFullscreen(HWND window, bool fullscreen);
     void NotifyWindowActivated(HWND window, bool activated);
 
-    void IncrementLosableCounter() {
+    uint64_t IncrementLosableCounter() {
+      std::lock_guard<sync::RecursiveSpinlock> lock(m_losableCounterMutex);
       m_losableResourceCounter++;
+      uint64_t cookie = m_nextLosableCookie++;
+      m_aliveLosables.insert(cookie);
+      return cookie;
     }
 
-    void DecrementLosableCounter() {
+    void DecrementLosableCounter(uint64_t cookie) {
+      std::lock_guard<sync::RecursiveSpinlock> lock(m_losableCounterMutex);
       m_losableResourceCounter--;
+      m_aliveLosables.erase(cookie);
+    }
+
+    uint64_t LosableCounter() {
+      std::lock_guard<sync::RecursiveSpinlock> lock(m_losableCounterMutex);
+      return m_losableResourceCounter;
     }
 
     bool CanOnlySWVP() const {
@@ -1435,7 +1446,13 @@ namespace dxvk {
 
     D3D9DeviceLostState             m_deviceLostState          = D3D9DeviceLostState::Ok;
     HWND                            m_fullscreenWindow         = NULL;
-    std::atomic<uint32_t>           m_losableResourceCounter   = { 0 };
+
+
+
+    sync::RecursiveSpinlock         m_losableCounterMutex;
+    uint64_t                        m_nextLosableCookie = 1;
+    std::unordered_set<uint64_t>    m_aliveLosables;
+    uint32_t                        m_losableResourceCounter   = 0;
 
     D3D9SwapChainEx*                m_mostRecentlyUsedSwapchain = nullptr;
 

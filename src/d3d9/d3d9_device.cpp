@@ -458,17 +458,23 @@ namespace dxvk {
 
     m_flags.clr(D3D9DeviceFlag::InScene);
 
+    std::lock_guard<sync::RecursiveSpinlock> losableLock(m_losableCounterMutex);
     /*
       * Before calling the IDirect3DDevice9::Reset method for a device,
       * an application should release any explicit render targets,
       * depth stencil surfaces, additional swap chains, state blocks,
       * and D3DPOOL_DEFAULT resources associated with the device.
-      * 
+      *
       * We have to check after ResetState clears the references held by SetTexture, etc.
       * This matches what Windows D3D9 does.
     */
-    if (unlikely(m_losableResourceCounter.load() != 0 && !IsExtended() && m_d3d9Options.countLosableResources)) {
-      Logger::warn(str::format("Device reset failed because device still has alive losable resources: Device not reset. Remaining resources: ", m_losableResourceCounter.load()));
+    if (unlikely(m_losableResourceCounter != 0 && !IsExtended() && m_d3d9Options.countLosableResources)) {
+      Logger::warn(str::format("Device reset failed because device still has alive losable resources: Device not reset. Remaining resources: ", m_losableResourceCounter));
+
+      for (auto iter = m_aliveLosables.begin(); iter != m_aliveLosables.end(); iter++) {
+        Logger::warn(str::format("Alive losable cookie: ", *iter));
+      }
+
       m_deviceLostState = D3D9DeviceLostState::NotReset;
       return D3DERR_INVALIDCALL;
     }
@@ -614,8 +620,11 @@ namespace dxvk {
       m_initializer->InitTexture(texture->GetCommonTexture(), initialData);
       *ppTexture = texture.ref();
 
-      if (desc.Pool == D3DPOOL_DEFAULT)
-        m_losableResourceCounter++;
+      if (desc.Pool == D3DPOOL_DEFAULT) {
+        uint64_t cookie = IncrementLosableCounter();
+        texture->GetCommonTexture()->SetLosableCookie(cookie);
+        Logger::warn(str::format("INCR D3DPOOL_DEFAULT D3D9Device::CreateTexture, counter: ", LosableCounter(), " cookie: ", cookie));
+      }
 
       return D3D_OK;
     }
@@ -672,9 +681,12 @@ namespace dxvk {
       const Com<D3D9Texture3D> texture = new D3D9Texture3D(this, &desc);
       m_initializer->InitTexture(texture->GetCommonTexture());
       *ppVolumeTexture = texture.ref();
-      
-      if (desc.Pool == D3DPOOL_DEFAULT)
-        m_losableResourceCounter++;
+
+      if (desc.Pool == D3DPOOL_DEFAULT) {
+        uint64_t cookie = IncrementLosableCounter();
+        texture->GetCommonTexture()->SetLosableCookie(cookie);
+        Logger::warn(str::format("INCR D3DPOOL_DEFAULT D3D9Device::CreateVolumeTexture, counter: ", LosableCounter(), " cookie: ", cookie));
+      }
 
       return D3D_OK;
     }
@@ -729,9 +741,12 @@ namespace dxvk {
       const Com<D3D9TextureCube> texture = new D3D9TextureCube(this, &desc);
       m_initializer->InitTexture(texture->GetCommonTexture());
       *ppCubeTexture = texture.ref();
-      
-      if (desc.Pool == D3DPOOL_DEFAULT)
-        m_losableResourceCounter++;
+
+      if (desc.Pool == D3DPOOL_DEFAULT) {
+        uint64_t cookie = IncrementLosableCounter();
+        texture->GetCommonTexture()->SetLosableCookie(cookie);
+        Logger::warn(str::format("INCR D3DPOOL_DEFAULT D3D9Device::CreateCubeTexture, counter: ", LosableCounter(), " cookie: ", cookie));
+      }
 
       return D3D_OK;
     }
@@ -772,8 +787,11 @@ namespace dxvk {
       const Com<D3D9VertexBuffer> buffer = new D3D9VertexBuffer(this, &desc);
       m_initializer->InitBuffer(buffer->GetCommonBuffer());
       *ppVertexBuffer = buffer.ref();
-      if (desc.Pool == D3DPOOL_DEFAULT)
-        m_losableResourceCounter++;
+      if (desc.Pool == D3DPOOL_DEFAULT) {
+        uint64_t cookie = IncrementLosableCounter();
+        buffer->GetCommonBuffer()->SetLosableCookie(cookie);
+        Logger::warn(str::format("INCR D3DPOOL_DEFAULT D3D9Device::CreateVertexBuffer, counter: ", LosableCounter(), " cookie: ", cookie));
+      }
 
       return D3D_OK;
     }
@@ -813,8 +831,11 @@ namespace dxvk {
       const Com<D3D9IndexBuffer> buffer = new D3D9IndexBuffer(this, &desc);
       m_initializer->InitBuffer(buffer->GetCommonBuffer());
       *ppIndexBuffer = buffer.ref();
-      if (desc.Pool == D3DPOOL_DEFAULT)
-        m_losableResourceCounter++;
+      if (desc.Pool == D3DPOOL_DEFAULT) {
+        uint64_t cookie = IncrementLosableCounter();
+        buffer->GetCommonBuffer()->SetLosableCookie(cookie);
+        Logger::warn(str::format("INCR D3DPOOL_DEFAULT D3D9Device::CreateIndexBuffer, counter: ", LosableCounter(), " cookie: ", cookie));
+      }
 
       return D3D_OK;
     }
@@ -2399,8 +2420,11 @@ namespace dxvk {
     try {
       const Com<D3D9StateBlock> sb = new D3D9StateBlock(this, ConvertStateBlockType(Type));
       *ppSB = sb.ref();
-      if (!m_isD3D8Compatible)
-        m_losableResourceCounter++;
+      if (!m_isD3D8Compatible) {
+        uint64_t cookie = IncrementLosableCounter();
+        sb->SetLosableCookie(cookie);
+        Logger::warn(str::format("INCR D3D9Device::CreateStateBlock, counter: ", LosableCounter(), " cookie: ", cookie));
+      }
 
       return D3D_OK;
     }
@@ -2432,8 +2456,11 @@ namespace dxvk {
       return D3DERR_INVALIDCALL;
 
     *ppSB = m_recorder.ref();
-    if (!m_isD3D8Compatible)
-      m_losableResourceCounter++;
+    if (!m_isD3D8Compatible) {
+      uint64_t cookie = IncrementLosableCounter();
+      m_recorder->SetLosableCookie(cookie);
+      Logger::warn(str::format("INCR D3D9Device::EndStateBlock, counter: ", LosableCounter(), " cookie: ", cookie));
+    }
     m_recorder = nullptr;
 
     return D3D_OK;
@@ -3806,7 +3833,9 @@ namespace dxvk {
       const Com<D3D9Surface> surface = new D3D9Surface(this, &desc, nullptr, pSharedHandle);
       m_initializer->InitTexture(surface->GetCommonTexture());
       *ppSurface = surface.ref();
-      m_losableResourceCounter++;
+      uint64_t cookie = IncrementLosableCounter();
+      surface->GetCommonTexture()->SetLosableCookie(cookie);
+      Logger::warn(str::format("INCR D3D9Device::CreateRenderTarget, counter: ", LosableCounter(), " cookie: ", cookie));
 
       return D3D_OK;
     }
@@ -3858,8 +3887,11 @@ namespace dxvk {
       m_initializer->InitTexture(surface->GetCommonTexture());
       *ppSurface = surface.ref();
       
-      if (desc.Pool == D3DPOOL_DEFAULT)
-        m_losableResourceCounter++;
+      if (desc.Pool == D3DPOOL_DEFAULT) {
+      uint64_t cookie = IncrementLosableCounter();
+      surface->GetCommonTexture()->SetLosableCookie(cookie);
+      Logger::warn(str::format("INCR D3DPOOL_DEFAULT D3D9Device::CreateOffscreenPlainSurface, counter: ", LosableCounter(), " cookie: ", cookie));
+      }
 
       return D3D_OK;
     }
@@ -3909,7 +3941,9 @@ namespace dxvk {
       const Com<D3D9Surface> surface = new D3D9Surface(this, &desc, nullptr, pSharedHandle);
       m_initializer->InitTexture(surface->GetCommonTexture());
       *ppSurface = surface.ref();
-      m_losableResourceCounter++;
+      uint64_t cookie = IncrementLosableCounter();
+      surface->GetCommonTexture()->SetLosableCookie(cookie);
+      Logger::warn(str::format("INCR D3D9Device::CreateDepthStencilSurface, counter: ", LosableCounter(), " cookie: ", cookie));
 
       return D3D_OK;
     }
@@ -3972,7 +4006,9 @@ namespace dxvk {
     try {
       auto* swapchain = new D3D9SwapChainEx(this, pPresentationParameters, pFullscreenDisplayMode);
       *ppSwapChain = ref(swapchain);
-      m_losableResourceCounter++;
+      uint64_t cookie = IncrementLosableCounter();
+      swapchain->SetLosableCookie(cookie);
+      Logger::warn(str::format("INCR D3D9Device::CreateAdditionalSwapChain, counter: ", LosableCounter(), " cookie: ", cookie));
     }
     catch (const DxvkError & e) {
       Logger::err(e.message());
@@ -7935,7 +7971,9 @@ namespace dxvk {
       m_autoDepthStencil = new D3D9Surface(this, &desc, nullptr, nullptr);
       m_initializer->InitTexture(m_autoDepthStencil->GetCommonTexture());
       SetDepthStencilSurface(m_autoDepthStencil.ptr());
-      m_losableResourceCounter++;
+      uint64_t cookie = IncrementLosableCounter();
+      m_autoDepthStencil->GetCommonTexture()->SetLosableCookie(cookie);
+      Logger::warn(str::format("INCR D3D9Device::ResetSwapChain AutoDepthStencil, counter: ", LosableCounter(), " cookie: ", cookie));
     }
 
     SetRenderTarget(0, m_implicitSwapchain->GetBackBuffer(0));

@@ -215,6 +215,10 @@ namespace dxvk {
       return m_desc.Pool == D3DPOOL_SYSTEMMEM && (m_desc.Usage & D3DUSAGE_DYNAMIC) != 0;
     }
 
+    void SetLosableCookie(uint64_t cookie) {
+      m_losableCookie = cookie;
+    }
+
   private:
 
     Rc<DxvkBuffer> CreateBuffer() const;
@@ -248,6 +252,8 @@ namespace dxvk {
     uint32_t                    m_lockCount = 0;
 
     uint64_t                    m_seq = 0ull;
+
+    uint64_t                   m_losableCookie = 0;
 
   };
 

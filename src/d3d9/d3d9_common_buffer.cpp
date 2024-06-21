@@ -21,8 +21,10 @@ namespace dxvk {
   }
 
   D3D9CommonBuffer::~D3D9CommonBuffer() {
-    if (m_desc.Pool == D3DPOOL_DEFAULT)
-      m_parent->DecrementLosableCounter();
+    if (m_desc.Pool == D3DPOOL_DEFAULT) {
+      m_parent->DecrementLosableCounter(m_losableCookie);
+      Logger::warn(str::format("DECR D3DPOOL_DEFAULT D3D9CommonBuffer::~D3D9CommonBuffer, counter: ", m_parent->LosableCounter(), " cookie: ", m_losableCookie));
+    }
   }
 
 

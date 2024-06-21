@@ -100,8 +100,10 @@ namespace dxvk {
 
     m_device->RemoveMappedTexture(this);
 
-    if (m_desc.Pool == D3DPOOL_DEFAULT)
-      m_device->DecrementLosableCounter();
+    if (m_desc.Pool == D3DPOOL_DEFAULT) {
+      m_device->DecrementLosableCounter(m_losableCookie);
+      Logger::warn(str::format("DECR D3DPOOL_DEFAULT D3D9CommonTexture::~D3D9CommonTexture, counter: ", m_device->LosableCounter(), " cookie: ", m_losableCookie));
+    }
   }
 
 

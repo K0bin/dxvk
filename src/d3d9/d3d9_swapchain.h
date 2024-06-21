@@ -134,6 +134,10 @@ namespace dxvk {
 
     void UpdateWindowCtx();
 
+    void SetLosableCookie(uint64_t cookie) {
+      m_losableCookie = cookie;
+    }
+
   private:
 
     enum BindingIds : uint32_t {
@@ -183,6 +187,8 @@ namespace dxvk {
     bool                      m_warnedAboutGDIFallback = false;
 
     VkColorSpaceKHR           m_colorspace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+
+    uint64_t                  m_losableCookie = 0;
 
     std::optional<VkHdrMetadataEXT> m_hdrMetadata;
     bool m_dirtyHdrMetadata = true;

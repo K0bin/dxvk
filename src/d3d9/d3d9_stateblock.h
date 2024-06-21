@@ -381,6 +381,10 @@ namespace dxvk {
       return m_applying;
     }
 
+    void SetLosableCookie(uint64_t cookie) {
+      m_losableCookie = cookie;
+    }
+
   private:
 
     void CapturePixelRenderStates();
@@ -399,6 +403,8 @@ namespace dxvk {
     D3D9DeviceState* m_deviceState;
 
     bool                 m_applying = false;
+
+    uint64_t             m_losableCookie = 0;
 
   };
 
