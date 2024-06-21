@@ -18,8 +18,10 @@ namespace dxvk {
   }
 
   D3D9StateBlock::~D3D9StateBlock() {
-    if (!m_parent->IsD3D8Compatible())
+    if (!m_parent->IsD3D8Compatible()) {
       m_parent->DecrementLosableCounter();
+        Logger::warn(str::format("DECR stateblock destructor, counter: ", m_parent->LosableCounter()));
+    }
   }
 
   HRESULT STDMETHODCALLTYPE D3D9StateBlock::QueryInterface(

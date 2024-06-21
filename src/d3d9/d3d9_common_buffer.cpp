@@ -21,8 +21,10 @@ namespace dxvk {
   }
 
   D3D9CommonBuffer::~D3D9CommonBuffer() {
-    if (m_desc.Pool == D3DPOOL_DEFAULT)
+    if (m_desc.Pool == D3DPOOL_DEFAULT) {
       m_parent->DecrementLosableCounter();
+      Logger::warn(str::format("DECR Default buffer destructor, counter: ", m_parent->LosableCounter()));
+    }
   }
 
 

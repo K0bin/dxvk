@@ -614,8 +614,10 @@ namespace dxvk {
       m_initializer->InitTexture(texture->GetCommonTexture(), initialData);
       *ppTexture = texture.ref();
 
-      if (desc.Pool == D3DPOOL_DEFAULT)
+      if (desc.Pool == D3DPOOL_DEFAULT) {
         m_losableResourceCounter++;
+        Logger::warn(str::format("INCR Default texture constructor, counter: ", LosableCounter()));
+      }
 
       return D3D_OK;
     }
@@ -673,8 +675,10 @@ namespace dxvk {
       m_initializer->InitTexture(texture->GetCommonTexture());
       *ppVolumeTexture = texture.ref();
       
-      if (desc.Pool == D3DPOOL_DEFAULT)
+      if (desc.Pool == D3DPOOL_DEFAULT) {
         m_losableResourceCounter++;
+        Logger::warn(str::format("INCR Default volume texture constructor, counter: ", LosableCounter()));
+      }
 
       return D3D_OK;
     }
@@ -730,8 +734,10 @@ namespace dxvk {
       m_initializer->InitTexture(texture->GetCommonTexture());
       *ppCubeTexture = texture.ref();
       
-      if (desc.Pool == D3DPOOL_DEFAULT)
+      if (desc.Pool == D3DPOOL_DEFAULT) {
         m_losableResourceCounter++;
+        Logger::warn(str::format("INCR Default cube texture constructor, counter: ", LosableCounter()));
+      }
 
       return D3D_OK;
     }
@@ -772,8 +778,10 @@ namespace dxvk {
       const Com<D3D9VertexBuffer> buffer = new D3D9VertexBuffer(this, &desc);
       m_initializer->InitBuffer(buffer->GetCommonBuffer());
       *ppVertexBuffer = buffer.ref();
-      if (desc.Pool == D3DPOOL_DEFAULT)
+      if (desc.Pool == D3DPOOL_DEFAULT) {
         m_losableResourceCounter++;
+        Logger::warn(str::format("INCR Default vertex buffer constructor, counter: ", LosableCounter()));
+      }
 
       return D3D_OK;
     }
@@ -813,8 +821,10 @@ namespace dxvk {
       const Com<D3D9IndexBuffer> buffer = new D3D9IndexBuffer(this, &desc);
       m_initializer->InitBuffer(buffer->GetCommonBuffer());
       *ppIndexBuffer = buffer.ref();
-      if (desc.Pool == D3DPOOL_DEFAULT)
+      if (desc.Pool == D3DPOOL_DEFAULT) {
         m_losableResourceCounter++;
+        Logger::warn(str::format("INCR Default index buffer constructor, counter: ", LosableCounter()));
+      }
 
       return D3D_OK;
     }
@@ -2399,8 +2409,10 @@ namespace dxvk {
     try {
       const Com<D3D9StateBlock> sb = new D3D9StateBlock(this, ConvertStateBlockType(Type));
       *ppSB = sb.ref();
-      if (!m_isD3D8Compatible)
+      if (!m_isD3D8Compatible) {
         m_losableResourceCounter++;
+        Logger::warn(str::format("INCR state block constructor, counter: ", LosableCounter()));
+      }
 
       return D3D_OK;
     }
@@ -2432,8 +2444,10 @@ namespace dxvk {
       return D3DERR_INVALIDCALL;
 
     *ppSB = m_recorder.ref();
-    if (!m_isD3D8Compatible)
+    if (!m_isD3D8Compatible) {
       m_losableResourceCounter++;
+      Logger::warn(str::format("INCR End StateBlock constructor, counter: ", LosableCounter()));
+    }
     m_recorder = nullptr;
 
     return D3D_OK;
@@ -3807,6 +3821,7 @@ namespace dxvk {
       m_initializer->InitTexture(surface->GetCommonTexture());
       *ppSurface = surface.ref();
       m_losableResourceCounter++;
+      Logger::warn(str::format("INCR RenderTarget texture constructor, counter: ", LosableCounter()));
 
       return D3D_OK;
     }
@@ -3858,8 +3873,10 @@ namespace dxvk {
       m_initializer->InitTexture(surface->GetCommonTexture());
       *ppSurface = surface.ref();
       
-      if (desc.Pool == D3DPOOL_DEFAULT)
+      if (desc.Pool == D3DPOOL_DEFAULT) {
         m_losableResourceCounter++;
+        Logger::warn(str::format("INCR offscreen plain default texture constructor, counter: ", LosableCounter()));
+      }
 
       return D3D_OK;
     }
@@ -3910,6 +3927,7 @@ namespace dxvk {
       m_initializer->InitTexture(surface->GetCommonTexture());
       *ppSurface = surface.ref();
       m_losableResourceCounter++;
+      Logger::warn(str::format("INCR depth stencil texture constructor, counter: ", LosableCounter()));
 
       return D3D_OK;
     }
@@ -3973,6 +3991,7 @@ namespace dxvk {
       auto* swapchain = new D3D9SwapChainEx(this, pPresentationParameters, pFullscreenDisplayMode);
       *ppSwapChain = ref(swapchain);
       m_losableResourceCounter++;
+      Logger::warn(str::format("INCR additional swapchain constructor, counter: ", LosableCounter()));
     }
     catch (const DxvkError & e) {
       Logger::err(e.message());
@@ -7934,6 +7953,7 @@ namespace dxvk {
       m_initializer->InitTexture(m_autoDepthStencil->GetCommonTexture());
       SetDepthStencilSurface(m_autoDepthStencil.ptr());
       m_losableResourceCounter++;
+      Logger::warn(str::format("INCR auto depth stencil default texture constructor, counter: ", LosableCounter()));
     }
 
     SetRenderTarget(0, m_implicitSwapchain->GetBackBuffer(0));

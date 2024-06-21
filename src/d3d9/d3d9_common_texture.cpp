@@ -100,8 +100,10 @@ namespace dxvk {
 
     m_device->RemoveMappedTexture(this);
 
-    if (m_desc.Pool == D3DPOOL_DEFAULT)
+    if (m_desc.Pool == D3DPOOL_DEFAULT) {
       m_device->DecrementLosableCounter();
+      Logger::warn(str::format("DECR Default texture destructor, counter: ", m_device->LosableCounter()));
+    }
   }
 
 

@@ -84,6 +84,7 @@ namespace dxvk {
     m_device->waitForIdle();
 
     m_parent->DecrementLosableCounter();
+      Logger::warn(str::format("DECR state block destructor, counter: ", m_parent->LosableCounter()));
   }
 
 
@@ -1040,6 +1041,7 @@ namespace dxvk {
       try {
         surface = new D3D9Surface(m_parent, &desc, this, nullptr);
         m_parent->IncrementLosableCounter();
+        Logger::warn(str::format("INCR backbuffer default texture constructor, counter: ", m_parent->LosableCounter()));
       } catch (const DxvkError& e) {
         DestroyBackBuffers();
         Logger::err(e.message());

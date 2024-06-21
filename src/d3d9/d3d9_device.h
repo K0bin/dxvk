@@ -1018,6 +1018,10 @@ namespace dxvk {
       m_losableResourceCounter--;
     }
 
+    uint64_t LosableCounter() {
+      return m_losableResourceCounter.load(std::memory_order_seq_cst);
+    }
+
     bool CanOnlySWVP() const {
       return m_behaviorFlags & D3DCREATE_SOFTWARE_VERTEXPROCESSING;
     }
