@@ -1114,11 +1114,15 @@ namespace dxvk {
     D3D9Surface* dst = static_cast<D3D9Surface*>(pDestSurface);
     D3D9Surface* src = static_cast<D3D9Surface*>(pSourceSurface);
 
-    if (unlikely(src == nullptr || dst == nullptr))
+    if (unlikely(src == nullptr || dst == nullptr)) {
+      Logger::warn("Error A");
       return D3DERR_INVALIDCALL;
+    }
 
-    if (unlikely(src == dst))
+    if (unlikely(src == dst)) {
+      Logger::warn("Error B");
       return D3DERR_INVALIDCALL;
+    }
 
     bool fastPath = true;
 
@@ -1126,14 +1130,18 @@ namespace dxvk {
     D3D9CommonTexture* srcTextureInfo = src->GetCommonTexture();
 
     if (unlikely(dstTextureInfo->Desc()->Pool != D3DPOOL_DEFAULT ||
-                 srcTextureInfo->Desc()->Pool != D3DPOOL_DEFAULT))
+                 srcTextureInfo->Desc()->Pool != D3DPOOL_DEFAULT)) {
+      Logger::warn("Error C");
       return D3DERR_INVALIDCALL;
+    }
 
     Rc<DxvkImage> dstImage = dstTextureInfo->GetImage();
     Rc<DxvkImage> srcImage = srcTextureInfo->GetImage();
 
-    if (dstImage == nullptr || srcImage == nullptr)
+    if (dstImage == nullptr || srcImage == nullptr) {
+      Logger::warn("Error D");
         return D3DERR_INVALIDCALL;
+    }
 
     const DxvkFormatInfo* dstFormatInfo = lookupFormatInfo(dstImage->info().format);
     const DxvkFormatInfo* srcFormatInfo = lookupFormatInfo(srcImage->info().format);
@@ -1141,11 +1149,15 @@ namespace dxvk {
     const VkImageSubresource dstSubresource = dstTextureInfo->GetSubresourceFromIndex(dstFormatInfo->aspectMask, dst->GetSubresource());
     const VkImageSubresource srcSubresource = srcTextureInfo->GetSubresourceFromIndex(srcFormatInfo->aspectMask, src->GetSubresource());
 
-    if (unlikely((srcSubresource.aspectMask & (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)) && m_flags.test(D3D9DeviceFlag::InScene)))
+    if (unlikely((srcSubresource.aspectMask & (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)) && m_flags.test(D3D9DeviceFlag::InScene))) {
+      Logger::warn("Error E");
       return D3DERR_INVALIDCALL;
+    }
 
-    if (unlikely(Filter != D3DTEXF_NONE && Filter != D3DTEXF_LINEAR && Filter != D3DTEXF_POINT))
+    if (unlikely(Filter != D3DTEXF_NONE && Filter != D3DTEXF_LINEAR && Filter != D3DTEXF_POINT)) {
+      Logger::warn("Error F");
       return D3DERR_INVALIDCALL;
+    }
 
     VkExtent3D srcExtent = srcImage->mipLevelExtent(srcSubresource.mipLevel);
     VkExtent3D dstExtent = dstImage->mipLevelExtent(dstSubresource.mipLevel);
@@ -1209,11 +1221,15 @@ namespace dxvk {
       ? VkOffset3D{ int32_t(pSourceRect->right), int32_t(pSourceRect->bottom), 1 }
       : VkOffset3D{ int32_t(srcExtent.width),    int32_t(srcExtent.height),    1 };
 
-    if (unlikely(IsBlitRegionInvalid(blitInfo.srcOffsets, srcExtent)))
+    if (unlikely(IsBlitRegionInvalid(blitInfo.srcOffsets, srcExtent))) {
+      Logger::warn("Error G");
       return D3DERR_INVALIDCALL;
+    }
 
-    if (unlikely(IsBlitRegionInvalid(blitInfo.dstOffsets, dstExtent)))
+    if (unlikely(IsBlitRegionInvalid(blitInfo.dstOffsets, dstExtent))) {
+      Logger::warn("Error H");
       return D3DERR_INVALIDCALL;
+    }
 
     VkExtent3D srcCopyExtent =
     { uint32_t(blitInfo.srcOffsets[1].x - blitInfo.srcOffsets[0].x),
@@ -1228,17 +1244,25 @@ namespace dxvk {
     bool srcIsDepth = IsDepthFormat(srcFormat);
     bool dstIsDepth = IsDepthFormat(dstFormat);
     if (unlikely(srcIsDepth || dstIsDepth)) {
-      if (unlikely(!srcIsDepth || !dstIsDepth))
+      if (unlikely(!srcIsDepth || !dstIsDepth)) {
+      Logger::warn("Error I");
         return D3DERR_INVALIDCALL;
+      }
 
-      if (unlikely(srcTextureInfo->Desc()->Discard || dstTextureInfo->Desc()->Discard))
+      if (unlikely(srcTextureInfo->Desc()->Discard || dstTextureInfo->Desc()->Discard)) {
+      Logger::warn("Error J");
         return D3DERR_INVALIDCALL;
+      }
 
-      if (unlikely(srcCopyExtent.width != srcExtent.width || srcCopyExtent.height != srcExtent.height))
+      if (unlikely(srcCopyExtent.width != srcExtent.width || srcCopyExtent.height != srcExtent.height)) {
+      Logger::warn("Error K");
         return D3DERR_INVALIDCALL;
+      }
 
-      if (unlikely(m_flags.test(D3D9DeviceFlag::InScene)))
+      if (unlikely(m_flags.test(D3D9DeviceFlag::InScene))) {
+      Logger::warn("Error L");
         return D3DERR_INVALIDCALL;
+      }
     }
 
     // Copies would only work if the extents match. (ie. no stretching)
@@ -1246,15 +1270,21 @@ namespace dxvk {
 
     bool dstHasRTUsage = (dstTextureInfo->Desc()->Usage & (D3DUSAGE_RENDERTARGET | D3DUSAGE_DEPTHSTENCIL)) != 0;
     if (stretch) {
-      if (unlikely(pSourceSurface == pDestSurface))
+      if (unlikely(pSourceSurface == pDestSurface)) {
+      Logger::warn("Error M");
         return D3DERR_INVALIDCALL;
+      }
 
-      if (unlikely(dstIsDepth))
+      if (unlikely(dstIsDepth)) {
+      Logger::warn("Error N");
         return D3DERR_INVALIDCALL;
+      }
 
       // Stretching is only allowed if the destination is either a render target surface or a render target texture
-      if (unlikely(!dstHasRTUsage))
+      if (unlikely(!dstHasRTUsage)) {
+      Logger::warn("Error O");
         return D3DERR_INVALIDCALL;
+      }
     } else {
       bool srcIsSurface = srcTextureInfo->GetType() == D3DRTYPE_SURFACE;
       bool dstIsSurface = dstTextureInfo->GetType() == D3DRTYPE_SURFACE;
@@ -1264,16 +1294,20 @@ namespace dxvk {
       // - both destination and source are depth stencil surfaces
       // - both destination and source are offscreen plain surfaces.
       // The only way to get a surface with resource type D3DRTYPE_SURFACE without USAGE_RT or USAGE_DS is CreateOffscreenPlainSurface.
-      if (unlikely((!dstHasRTUsage && (!dstIsSurface || !srcIsSurface || srcHasRTUsage)) && !m_isD3D8Compatible))
+      if (unlikely((!dstHasRTUsage && (!dstIsSurface || !srcIsSurface || srcHasRTUsage)) && !m_isD3D8Compatible)) {
+      Logger::warn("Error P");
         return D3DERR_INVALIDCALL;
+      }
     }
 
     fastPath &= !stretch;
 
     if (!fastPath || needsResolve) {
       // Compressed destination formats are forbidden for blits.
-      if (dstFormatInfo->flags.test(DxvkFormatFlag::BlockCompressed))
+      if (dstFormatInfo->flags.test(DxvkFormatFlag::BlockCompressed)) {
+      Logger::warn("Error Q");
         return D3DERR_INVALIDCALL;
+      }
     }
 
     auto EmitResolveCS = [&](const Rc<DxvkImage>& resolveDst, bool intermediate) {
