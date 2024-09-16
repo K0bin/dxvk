@@ -419,7 +419,7 @@ namespace dxvk {
           cBackbufferView, VkRect2D());
 
         if (cHud != nullptr)
-          cHud->render(context, cInfo.format, cInfo.imageExtent);
+          cHud->render(context, cInfo.format.colorSpace, cSwapchainImage);
 
         auto commandList = context->endRecording();
         commandList->setWsiSemaphores(cSync);
