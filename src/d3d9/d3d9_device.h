@@ -983,6 +983,22 @@ namespace dxvk {
       return m_samplerCount.load();
     }
 
+    UINT GetPixelShaderCount() const {
+      return m_pixelShaderCount.load();
+    }
+
+    UINT GetVertexShaderCount() const {
+      return m_vertexShaderCount.load();
+    }
+
+    void IncVertexShaders() {
+      m_vertexShaderCount++;
+    }
+
+    void IncPixelShaders() {
+      m_pixelShaderCount++;
+    }
+
     D3D9MemoryAllocator* GetAllocator() {
       return &m_memoryAllocator;
     }
@@ -1444,6 +1460,8 @@ namespace dxvk {
 
     std::atomic<int64_t>            m_availableMemory = { 0 };
     std::atomic<int32_t>            m_samplerCount    = { 0 };
+    std::atomic<int32_t>            m_vertexShaderCount = { 0 }; // The number of d3d9 vertex shader objects
+    std::atomic<int32_t>            m_pixelShaderCount = { 0 }; // The number of d3d9 pixel shader objects
 
     D3D9DeviceLostState             m_deviceLostState          = D3D9DeviceLostState::Ok;
     HWND                            m_fullscreenWindow         = NULL;

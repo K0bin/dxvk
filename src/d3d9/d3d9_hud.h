@@ -63,10 +63,10 @@ namespace dxvk::hud {
     /**
      * \brief HUD item to display amount of generated fixed function shaders
      */
-    class HudFixedFunctionShaders : public HudItem {
+    class HudD3D9ShaderCount : public HudItem {
     public:
 
-        HudFixedFunctionShaders(D3D9DeviceEx* device);
+        HudD3D9ShaderCount(D3D9DeviceEx* device);
 
         void update(dxvk::high_resolution_clock::time_point time);
 
@@ -81,6 +81,7 @@ namespace dxvk::hud {
         dxvk::high_resolution_clock::time_point m_lastUpdate
           = dxvk::high_resolution_clock::now();
 
+        std::string m_shaderCount;
         std::string m_ffShaderCount;
 
     };

@@ -56,6 +56,8 @@ namespace dxvk {
 
   private:
 
+    D3D9DeviceEx*         m_parent;
+
     DxsoIsgn              m_isgn;
     uint32_t              m_usedSamplers;
     uint32_t              m_usedRTs;

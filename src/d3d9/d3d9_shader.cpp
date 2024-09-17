@@ -126,6 +126,12 @@ namespace dxvk {
       pDevice, ShaderStage, lookupKey,
       pDxbcModuleInfo, pShaderBytecode,
       info, &module);
+
+    if (ShaderStage == VK_SHADER_STAGE_VERTEX_BIT) {
+      pDevice->IncVertexShaders();
+    } else if (ShaderStage == VK_SHADER_STAGE_FRAGMENT_BIT) {
+      pDevice->IncPixelShaders();
+    }
     
     // Insert the new module into the lookup table. If another thread
     // has compiled the same shader in the meantime, we should return

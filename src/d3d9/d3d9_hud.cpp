@@ -92,21 +92,27 @@ namespace dxvk::hud {
     return position;
   }
 
-  HudFixedFunctionShaders::HudFixedFunctionShaders(D3D9DeviceEx* device)
+  HudD3D9ShaderCount::HudD3D9ShaderCount(D3D9DeviceEx* device)
           : m_device          (device)
-          , m_ffShaderCount ("") {}
+          , m_shaderCount     ("")
+          , m_ffShaderCount   ("") {}
 
 
-  void HudFixedFunctionShaders::update(dxvk::high_resolution_clock::time_point time) {
+  void HudD3D9ShaderCount::update(dxvk::high_resolution_clock::time_point time) {
+    m_shaderCount = str::format(
+      "VS: ", m_device->GetVertexShaderCount(),
+      " PS: ", m_device->GetPixelShaderCount()
+    );
+
     m_ffShaderCount = str::format(
-      "VS: ", m_device->GetFixedFunctionVSCount(),
-      " FS: ", m_device->GetFixedFunctionFSCount(),
+      "FF-VS: ", m_device->GetFixedFunctionVSCount(),
+      " FF-FS: ", m_device->GetFixedFunctionFSCount(),
       " SWVP: ", m_device->GetSWVPShaderCount()
     );
   }
 
 
-  HudPos HudFixedFunctionShaders::render(
+  HudPos HudD3D9ShaderCount::render(
           HudRenderer&      renderer,
           HudPos            position) {
     position.y += 16.0f;
@@ -114,10 +120,22 @@ namespace dxvk::hud {
     renderer.drawText(16.0f,
       { position.x, position.y },
       { 0.0f, 1.0f, 0.75f, 1.0f },
+      "D3D9 Shaders:");
+
+    renderer.drawText(16.0f,
+      { position.x + 170.0f, position.y },
+      { 1.0f, 1.0f, 1.0f, 1.0f },
+      m_shaderCount);
+
+    position.y += 24.0f;
+
+    renderer.drawText(16.0f,
+      { position.x, position.y },
+      { 0.0f, 1.0f, 0.75f, 1.0f },
       "FF Shaders:");
 
     renderer.drawText(16.0f,
-      { position.x + 155.0f, position.y },
+      { position.x + 170.0f, position.y },
       { 1.0f, 1.0f, 1.0f, 1.0f },
       m_ffShaderCount);
 
