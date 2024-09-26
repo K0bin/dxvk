@@ -1300,6 +1300,20 @@ namespace dxvk {
             VkPipelineStageFlags      stages,
             VkAccessFlags             access);
 
+    template<bool DoEmit>
+    DxvkAccessFlags checkGfxBufferBarrier(
+            DxvkBarrierSet&           set,
+      const DxvkBufferSlice&          slice,
+            VkPipelineStageFlags      stages,
+            VkAccessFlags             access) const;
+
+    template<bool DoEmit>
+    DxvkAccessFlags checkGfxImageBarrier(
+            DxvkBarrierSet&           set,
+      const Rc<DxvkImageView>&        imageView,
+            VkPipelineStageFlags      stages,
+            VkAccessFlags             access) const;
+
     void emitMemoryBarrier(
             VkDependencyFlags         flags,
             VkPipelineStageFlags      srcStages,

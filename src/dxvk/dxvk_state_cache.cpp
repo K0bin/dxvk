@@ -378,10 +378,10 @@ namespace dxvk {
     // Open state file and just fail if it doesn't exist
     std::ifstream ifile(getCacheFileName().c_str(), std::ios_base::binary);
 
-    if (!ifile) {
-      Logger::warn("DXVK: No state cache file found");
+    //if (!ifile) {
+      //Logger::warn("DXVK: No state cache file found");
       return false;
-    }
+    //}
 
     // The header stores the state cache version,
     // we need to regenerate it if it's outdated

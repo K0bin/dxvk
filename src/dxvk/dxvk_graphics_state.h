@@ -680,6 +680,7 @@ namespace dxvk {
     }
     
     DxvkBindingMask         bsBindingMask;
+    DxvkBindingMask         bsBindingMaskOld;
     DxvkIaInfo              ia;
     DxvkIlInfo              il;
     DxvkRsInfo              rs;
@@ -722,6 +723,7 @@ namespace dxvk {
     }
     
     DxvkBindingMask         bsBindingMask;
+    DxvkBindingMask         bsBindingMaskOld;
     DxvkScInfo              sc;
   };
 

@@ -216,8 +216,8 @@ namespace dxvk {
      * \returns Or'd access flags of all known slices
      *    that overlap with the given slice.
      */
-    DxvkAccessFlags getAccess(K resource, const T& slice) {
-      HashEntry* entry = findHashEntry(resource);
+    DxvkAccessFlags getAccess(K resource, const T& slice) const {
+      const HashEntry* entry = findHashEntryConst(resource);
 
       if (!entry)
         return DxvkAccessFlags();
@@ -227,7 +227,7 @@ namespace dxvk {
       if (!entry->data.overlaps(slice))
         return DxvkAccessFlags();
 
-      ListEntry* list = getListEntry(entry->next);
+      const ListEntry* list = getListEntryConst(entry->next);
 
       if (!list)
         return entry->data.getAccess();
@@ -240,7 +240,7 @@ namespace dxvk {
         if (list->data.overlaps(slice))
           access.set(list->data.getAccess());
 
-        list = getListEntry(list->next);
+        list = getListEntryConst(list->next);
       }
 
       return access;
@@ -383,6 +383,22 @@ namespace dxvk {
       return nullptr;
     }
 
+    const HashEntry* findHashEntryConst(K key) const {
+      if (!m_used)
+        return nullptr;
+
+      size_t index = computeIndex(key);
+
+      while (m_hashMap[index].version == m_version) {
+        if (m_hashMap[index].key == key)
+          return &m_hashMap[index];
+
+        index = advanceIndex(index);
+      }
+
+      return nullptr;
+    }
+
     HashEntry* insertHashEntry(K key, const T& data) {
       growHashMapBeforeInsert();
 
@@ -441,6 +457,10 @@ namespace dxvk {
     }
 
     ListEntry* getListEntry(uint32_t index) {
+      return index < NoEntry ? &m_list[index] : nullptr;
+    }
+
+    const ListEntry* getListEntryConst(uint32_t index) const {
       return index < NoEntry ? &m_list[index] : nullptr;
     }
 
@@ -523,14 +543,17 @@ namespace dxvk {
             DxvkAccessFlags           imgAccess);
     
     DxvkAccessFlags getBufferAccess(
-      const DxvkBufferSliceHandle&    bufSlice);
+      const DxvkBufferSliceHandle&    bufSlice) const;
     
     DxvkAccessFlags getImageAccess(
       const Rc<DxvkImage>&            image,
-      const VkImageSubresourceRange&  imgSubres);
+      const VkImageSubresourceRange&  imgSubres) const;
     
     VkPipelineStageFlags getSrcStages() {
       return m_srcStages;
+    }
+    VkPipelineStageFlags getDstStages() {
+      return m_dstStages;
     }
     
     void recordCommands(
@@ -539,6 +562,8 @@ namespace dxvk {
     void reset();
 
     static DxvkAccessFlags getAccessTypes(VkAccessFlags flags);
+
+    bool operator==(const DxvkBarrierSet& other) const;
     
   private:
 

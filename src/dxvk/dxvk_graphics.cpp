@@ -14,6 +14,19 @@ namespace dxvk {
           DxvkBindingLayoutObjects*   layout)
   : m_vkd(pipeMgr->m_device->vkd()), m_pipeMgr(pipeMgr),
     m_shaders(std::move(shaders)), m_bindings(layout) {
+    if (m_shaders.vs  != nullptr) m_shaders.vs ->defineResourceSlots(m_slotMapping);
+    if (m_shaders.tcs != nullptr) m_shaders.tcs->defineResourceSlots(m_slotMapping);
+    if (m_shaders.tes != nullptr) m_shaders.tes->defineResourceSlots(m_slotMapping);
+    if (m_shaders.gs  != nullptr) m_shaders.gs ->defineResourceSlots(m_slotMapping);
+    if (m_shaders.fs  != nullptr) m_shaders.fs ->defineResourceSlots(m_slotMapping);
+
+    m_slotMapping.makeDescriptorsDynamic(
+      pipeMgr->m_device->options().maxNumDynamicUniformBuffers,
+      pipeMgr->m_device->options().maxNumDynamicStorageBuffers);
+
+    m_layout = new DxvkPipelineLayout(m_vkd,
+      m_slotMapping, VK_PIPELINE_BIND_POINT_GRAPHICS);
+
     m_vsIn  = m_shaders.vs != nullptr ? m_shaders.vs->info().inputMask  : 0;
     m_fsOut = m_shaders.fs != nullptr ? m_shaders.fs->info().outputMask : 0;
 
@@ -22,6 +35,9 @@ namespace dxvk {
     
     if (layout->getAccessFlags() & VK_ACCESS_SHADER_WRITE_BIT)
       m_flags.set(DxvkGraphicsPipelineFlag::HasStorageDescriptors);
+    else if (m_layout->getStorageDescriptorStages()) {
+      Logger::warn("Not setting DxvkGraphicsPipelineFlag::HasStorageDescriptors but it would have been set before the bad commit.");
+    }
     
     m_common.msSampleShadingEnable = m_shaders.fs != nullptr && m_shaders.fs->flags().test(DxvkShaderFlag::HasSampleRateShading);
     m_common.msSampleShadingFactor = 1.0f;
@@ -152,6 +168,7 @@ namespace dxvk {
     
     // Set up some specialization constants
     DxvkSpecConstants specData;
+    DxvkSpecConstants specData2;
     specData.set(uint32_t(DxvkSpecConstantId::RasterizerSampleCount), sampleCount, VK_SAMPLE_COUNT_1_BIT);
 
     uint32_t bindingIndex = 0;
@@ -162,7 +179,10 @@ namespace dxvk {
         bindingIndex += 1;
       }
     }
-    
+
+    for (uint32_t i = 0; i < m_layout->bindingCount(); i++)
+      specData2.set(i, state.bsBindingMaskOld.test(i), true);
+
     for (uint32_t i = 0; i < MaxNumRenderTargets; i++) {
       if ((m_fsOut & (1 << i)) != 0) {
         specData.set(uint32_t(DxvkSpecConstantId::ColorComponentMappings) + i,

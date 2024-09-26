@@ -226,7 +226,7 @@ namespace dxvk {
 
 
   DxvkAccessFlags DxvkBarrierSet::getBufferAccess(
-    const DxvkBufferSliceHandle&    bufSlice) {
+    const DxvkBufferSliceHandle&    bufSlice) const {
     return m_bufSlices.getAccess(bufSlice.handle,
       DxvkBarrierBufferSlice(bufSlice.offset, bufSlice.length, 0));
   }
@@ -234,7 +234,7 @@ namespace dxvk {
   
   DxvkAccessFlags DxvkBarrierSet::getImageAccess(
     const Rc<DxvkImage>&            image,
-    const VkImageSubresourceRange&  imgSubres) {
+    const VkImageSubresourceRange&  imgSubres) const {
     return m_imgSlices.getAccess(image->handle(),
       DxvkBarrierImageSlice(imgSubres, 0));
   }
@@ -294,5 +294,28 @@ namespace dxvk {
     if (flags & AccessWriteMask) result.set(DxvkAccess::Write);
     return result;
   }
+
   
+  bool DxvkBarrierSet::operator==(const DxvkBarrierSet& other) const {
+    if (m_cmdBuffer != other.m_cmdBuffer)
+      return false;
+    if (m_srcAccess != other.m_srcAccess)
+      return false;
+    if (m_dstAccess != other.m_dstAccess)
+      return false;
+    if (m_bufBarriers.size() != other.m_bufBarriers.size())
+      return false;
+    if (m_imgBarriers.size() != other.m_imgBarriers.size())
+      return false;
+    for (uint32_t i = 0; i < m_bufBarriers.size(); i++) {
+      if (memcmp(&m_bufBarriers[i], &other.m_bufBarriers[i], sizeof(VkBufferMemoryBarrier)) != 0)
+        return false;
+    }
+    for (uint32_t i = 0; i < m_imgBarriers.size(); i++) {
+      if (memcmp(&m_imgBarriers[i], &other.m_imgBarriers[i], sizeof(VkImageMemoryBarrier)) != 0)
+        return false;
+    }
+    return true;
+  }
+
 }

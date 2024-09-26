@@ -16,7 +16,14 @@ namespace dxvk {
           DxvkBindingLayoutObjects*   layout)
   : m_vkd(pipeMgr->m_device->vkd()), m_pipeMgr(pipeMgr),
     m_shaders(std::move(shaders)), m_bindings(layout) {
+    m_shaders.cs->defineResourceSlots(m_slotMapping);
 
+    m_slotMapping.makeDescriptorsDynamic(
+    m_pipeMgr->m_device->options().maxNumDynamicUniformBuffers,
+    m_pipeMgr->m_device->options().maxNumDynamicStorageBuffers);
+
+    m_layout = new DxvkPipelineLayout(m_vkd,
+      m_slotMapping, VK_PIPELINE_BIND_POINT_COMPUTE);
   }
   
   
@@ -83,6 +90,7 @@ namespace dxvk {
     }
     
     DxvkSpecConstants specData;
+    DxvkSpecConstants specData2;
     uint32_t bindingIndex = 0;
 
     for (uint32_t i = 0; i < DxvkDescriptorSets::SetCount; i++) {
@@ -91,9 +99,14 @@ namespace dxvk {
         bindingIndex += 1;
       }
     }
+
+     for (uint32_t i = 0; i < m_layout->bindingCount(); i++)
+      specData2.set(i, state.bsBindingMaskOld.test(i), true);
     
-    for (uint32_t i = 0; i < MaxNumSpecConstants; i++)
+    for (uint32_t i = 0; i < MaxNumSpecConstants; i++) {
       specData.set(getSpecId(i), state.sc.specConstants[i], 0u);
+      specData2.set(getSpecId(i), state.sc.specConstants[i], 0u);
+    }
 
     VkSpecializationInfo specInfo = specData.getSpecInfo();
     
