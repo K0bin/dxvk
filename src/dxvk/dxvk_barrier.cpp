@@ -315,6 +315,10 @@ namespace dxvk {
       if (memcmp(&m_imgBarriers[i], &other.m_imgBarriers[i], sizeof(VkImageMemoryBarrier)) != 0)
         return false;
     }
+    if (!(m_bufSlices == other.m_bufSlices))
+      return false;
+    if (!(m_imgSlices == other.m_imgSlices))
+      return false;
     return true;
   }
 

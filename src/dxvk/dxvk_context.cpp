@@ -5313,6 +5313,29 @@ namespace dxvk {
 
     if (!(oldBarriers == newBarriers)) {
       Logger::warn("ComputePostBarriers difference between barriers with old commit and new commit");
+
+      // Print:
+      Logger::warn("NEW:");
+      index = 0;
+      for (uint32_t i = 0; i < DxvkDescriptorSets::SetCount; i++) {
+        uint32_t bindingCount = layout.getBindingCount(i);
+
+        for (uint32_t j = 0; j < bindingCount; j++) {
+          if (m_state.cp.state.bsBindingMask.test(index + j)) {
+            const DxvkBindingInfo& binding = layout.getBinding(i, j);
+            Logger::warn(str::format("Binding ", index + j, " slot: ", binding.resourceBinding, " access: ", binding.access, " type: ", binding.descriptorType));
+          }
+        }
+        index += bindingCount;
+      }
+
+      Logger::warn("OLD:");
+      for (uint32_t i = 0; i < layoutB->bindingCount(); i++) {
+        if (m_state.cp.state.bsBindingMaskOld.test(i)) {
+          const DxvkDescriptorSlot binding = layoutB->binding(i);
+          Logger::warn(str::format("Binding ", i, " slot: ", binding.slot, " access: ", binding.access, " type: ", binding.type));
+        }
+      }
     }
     // OLD CODE END
   }
@@ -5526,12 +5549,18 @@ namespace dxvk {
     }
     // OLD CODE END
 
-    if (requiresBarrierOld != requiresBarrier) {
-      Logger::warn("commitGraphicsBarriers old code requiresBarrier is different from new code requiresBarrier");
-    }
-
     if (!(oldSet == newSet)) {
       Logger::warn("commitGraphicsBarriers old barrier set is different from new barrier set");
+    }
+
+    if (requiresBarrierOld && !requiresBarrier) {
+      Logger::warn(str::format("commitGraphicsBarriers old code requiresBarrier is different from new code requiresBarrier old: ", requiresBarrierOld, " new: ", requiresBarrier));
+
+      if constexpr (DoEmit) {
+        Logger::warn("DoEmit");
+      } else {
+        Logger::warn("DontEmit");
+      }
     }
 
 
@@ -5539,7 +5568,7 @@ namespace dxvk {
     // External subpass dependencies serve as full memory
     // and execution barriers, so we can use this to allow
     // inter-stage synchronization.
-    if (requiresBarrier)
+    if (requiresBarrier || requiresBarrierOld)
       this->spillRenderPass(true);
   }
 

@@ -333,6 +333,27 @@ namespace dxvk {
       m_list.clear();
     }
 
+
+    bool operator==(const DxvkBarrierSubresourceSet& other) const {
+      if (m_version != other.m_version)
+        return false;
+      if (m_used != other.m_used)
+        return false;
+      if (m_list.size() != other.m_list.size())
+        return false;
+      if (m_hashMap.size() != other.m_hashMap.size())
+        return false;
+      for (uint32_t i = 0; i < m_list.size(); i++) {
+        if (memcmp(&m_list[i], &other.m_list[i], sizeof(ListEntry)) != 0)
+          return false;
+      }
+      for (uint32_t i = 0; i < m_hashMap.size(); i++) {
+        if (memcmp(&m_hashMap[i], &other.m_hashMap[i], sizeof(HashEntry)) != 0)
+          return false;
+      }
+      return true;
+    }
+
   private:
 
     struct ListEntry {
