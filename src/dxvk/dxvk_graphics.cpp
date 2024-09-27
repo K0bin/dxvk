@@ -20,9 +20,9 @@ namespace dxvk {
     if (m_shaders.gs  != nullptr) m_shaders.gs ->defineResourceSlots(m_slotMapping);
     if (m_shaders.fs  != nullptr) m_shaders.fs ->defineResourceSlots(m_slotMapping);
     
-    m_slotMapping.makeDescriptorsDynamic(
+    /*m_slotMapping.makeDescriptorsDynamic(
       pipeMgr->m_device->options().maxNumDynamicUniformBuffers,
-      pipeMgr->m_device->options().maxNumDynamicStorageBuffers);
+      pipeMgr->m_device->options().maxNumDynamicStorageBuffers);*/
     
     m_layout = new DxvkPipelineLayout(m_vkd,
       m_slotMapping, VK_PIPELINE_BIND_POINT_GRAPHICS);
