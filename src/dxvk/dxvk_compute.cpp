@@ -18,9 +18,9 @@ namespace dxvk {
     m_shaders(std::move(shaders)), m_bindings(layout) {
     m_shaders.cs->defineResourceSlots(m_slotMapping);
 
-    m_slotMapping.makeDescriptorsDynamic(
+    /*m_slotMapping.makeDescriptorsDynamic(
     m_pipeMgr->m_device->options().maxNumDynamicUniformBuffers,
-    m_pipeMgr->m_device->options().maxNumDynamicStorageBuffers);
+    m_pipeMgr->m_device->options().maxNumDynamicStorageBuffers);*/
 
     m_layout = new DxvkPipelineLayout(m_vkd,
       m_slotMapping, VK_PIPELINE_BIND_POINT_COMPUTE);

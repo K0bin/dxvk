@@ -18,7 +18,7 @@ namespace dxvk {
     static constexpr uint32_t FsViews     = 0;
     static constexpr uint32_t FsBuffers   = 1;
     static constexpr uint32_t VsAll       = 2;
-    static constexpr uint32_t SetCount    = 3;
+    static constexpr uint32_t SetCount    = 1;
   };
 
   /**

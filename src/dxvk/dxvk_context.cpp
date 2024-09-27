@@ -155,8 +155,6 @@ namespace dxvk {
 
     if (likely(needsUpdate))
       m_rcTracked.clr(slot);
-    else
-      needsUpdate = m_rc[slot].bufferSlice.length() != buffer.length();
 
     m_flags.set(
       DxvkContextFlag::CpDirtyResources,
@@ -4353,7 +4351,7 @@ namespace dxvk {
 
 
   void DxvkContext::updateComputeShaderResources() {
-    this->updateShaderResources<VK_PIPELINE_BIND_POINT_COMPUTE>(m_state.cp.pipeline->layout());
+    this->updateShaderResources<VK_PIPELINE_BIND_POINT_COMPUTE>(m_state.cp.pipeline->layout(), m_state.cp.pipeline->getBindings());
 
     this->updateShaderDescriptorSetBinding<VK_PIPELINE_BIND_POINT_COMPUTE>(
       m_cpSet, m_state.cp.pipeline->layout());
@@ -4363,15 +4361,18 @@ namespace dxvk {
   
   
   void DxvkContext::updateGraphicsShaderResources() {
-    this->updateResourceBindings<VK_PIPELINE_BIND_POINT_GRAPHICS>(m_state.gp.pipeline->getBindings());
-    //this->updateShaderResources<VK_PIPELINE_BIND_POINT_GRAPHICS>(m_state.gp.pipeline->layout());
+    //this->updateResourceBindings<VK_PIPELINE_BIND_POINT_GRAPHICS>(m_state.gp.pipeline->getBindings());
+    this->updateShaderResources<VK_PIPELINE_BIND_POINT_GRAPHICS>(m_state.gp.pipeline->layout(), m_state.gp.pipeline->getBindings());
+
+    this->updateShaderDescriptorSetBinding<VK_PIPELINE_BIND_POINT_GRAPHICS>(
+      m_gpSet, m_state.gp.pipeline->layout());
 
     m_flags.clr(DxvkContextFlag::GpDirtyResources);
   }
   
   
   template<VkPipelineBindPoint BindPoint>
-  void DxvkContext::updateShaderResources(const DxvkPipelineLayout* layout) {
+  void DxvkContext::updateShaderResources(const DxvkPipelineLayout* layout, const DxvkBindingLayoutObjects* bindings) {
     std::array<DxvkDescriptorInfo, MaxNumActiveBindings> descriptors;
 
     // Assume that all bindings are active as a fast path
@@ -4514,7 +4515,7 @@ namespace dxvk {
     auto& set = BindPoint == VK_PIPELINE_BIND_POINT_GRAPHICS ? m_gpSet : m_cpSet;
 
     if (layout->bindingCount()) {
-      set = allocateDescriptorSet(layout->descriptorSetLayout());
+      set = allocateDescriptorSet(/*BindPoint == VK_PIPELINE_BIND_POINT_GRAPHICS ? bindings->getSetLayout(0) : */layout->descriptorSetLayout());
 
       m_cmd->updateDescriptorSetWithTemplate(set,
         layout->descriptorTemplate(), descriptors.data());
@@ -4524,7 +4525,7 @@ namespace dxvk {
 
     // Select the active binding mask to update
     auto& refMask = BindPoint == VK_PIPELINE_BIND_POINT_GRAPHICS
-      ? m_state.gp.state.bsBindingMaskOld
+      ? m_state.gp.state.bsBindingMask
       : m_state.cp.state.bsBindingMask;
 
     // If some resources are not bound, we may need to

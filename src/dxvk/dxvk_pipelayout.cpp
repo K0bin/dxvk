@@ -8,7 +8,7 @@
 namespace dxvk {
   
   uint32_t DxvkBindingInfo::computeSetIndex() const {
-    if (stages & (VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT)) {
+    /*if (stages & (VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT)) {
       // For fragment shaders, create a separate set for UBOs
       if (descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
        || descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
@@ -20,7 +20,9 @@ namespace dxvk {
       // Vertex shader UBOs are usually updated every draw,
       // and other resource types are rarely used.
       return DxvkDescriptorSets::VsAll;
-    }
+    }*/
+
+   return 0;
   }
 
 
