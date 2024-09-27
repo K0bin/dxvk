@@ -4030,11 +4030,6 @@ namespace dxvk {
     if (m_state.cp.pipeline->layout()->pushConstRange().size)
       m_flags.set(DxvkContextFlag::DirtyPushConstants);
 
-    if (!m_state.cp.pipeline->getBindings()->layout().getPushConstantRange().size && m_state.cp.pipeline->layout()->pushConstRange().size) {
-      Logger::warn("Update compute pipeline push constant would have updated before bad commit");
-      m_flags.set(DxvkContextFlag::DirtyPushConstants);
-    }
-
     m_flags.clr(DxvkContextFlag::CpDirtyPipeline);
     return true;
   }
@@ -4096,13 +4091,8 @@ namespace dxvk {
         this->spillRenderPass(true);
     }
 
-    if (m_state.gp.pipeline->getBindings()->layout().getPushConstantRange().size)
+    if (m_state.gp.pipeline->layout()->pushConstRange().size)
       m_flags.set(DxvkContextFlag::DirtyPushConstants);
-
-    if (!m_state.gp.pipeline->getBindings()->layout().getPushConstantRange().size && m_state.gp.pipeline->layout()->pushConstRange().size) {
-      Logger::warn("Update graphics pipeline push constant would have updated before bad commit");
-      m_flags.set(DxvkContextFlag::DirtyPushConstants);
-    }
 
     m_flags.clr(DxvkContextFlag::GpDirtyPipeline);
     return true;
@@ -4363,8 +4353,10 @@ namespace dxvk {
   
   
   void DxvkContext::updateGraphicsShaderResources() {
-    this->updateResourceBindings<VK_PIPELINE_BIND_POINT_GRAPHICS>(m_state.gp.pipeline->getBindings());
-    //this->updateShaderResources<VK_PIPELINE_BIND_POINT_GRAPHICS>(m_state.gp.pipeline->layout());
+    this->updateShaderResources<VK_PIPELINE_BIND_POINT_GRAPHICS>(m_state.gp.pipeline->layout());
+
+    this->updateShaderDescriptorSetBinding<VK_PIPELINE_BIND_POINT_GRAPHICS>(
+      m_gpSet, m_state.gp.pipeline->layout());
 
     m_flags.clr(DxvkContextFlag::GpDirtyResources);
   }
@@ -4524,7 +4516,7 @@ namespace dxvk {
 
     // Select the active binding mask to update
     auto& refMask = BindPoint == VK_PIPELINE_BIND_POINT_GRAPHICS
-      ? m_state.gp.state.bsBindingMaskOld
+      ? m_state.gp.state.bsBindingMask
       : m_state.cp.state.bsBindingMask;
 
     // If some resources are not bound, we may need to
@@ -4938,25 +4930,19 @@ namespace dxvk {
   void DxvkContext::updatePushConstants() {
     m_flags.clr(DxvkContextFlag::DirtyPushConstants);
 
-    auto bindings = BindPoint == VK_PIPELINE_BIND_POINT_GRAPHICS
-      ? m_state.gp.pipeline->getBindings()
-      : m_state.cp.pipeline->getBindings();
-    
-    VkPushConstantRange pushConstRange = bindings->layout().getPushConstantRange();
-
     auto layout = BindPoint == VK_PIPELINE_BIND_POINT_GRAPHICS
       ? m_state.gp.pipeline->layout()
       : m_state.cp.pipeline->layout();
 
-    if (layout && BindPoint == VK_PIPELINE_BIND_POINT_COMPUTE) {
-      pushConstRange = layout->pushConstRange();
-    }
+    if (!layout)
+      return;
 
+    VkPushConstantRange pushConstRange = layout->pushConstRange();
     if (!pushConstRange.size)
       return;
     
     m_cmd->cmdPushConstants(
-      BindPoint == VK_PIPELINE_BIND_POINT_GRAPHICS ? bindings->getPipelineLayout() : layout->pipelineLayout(),
+      layout->pipelineLayout(),
       pushConstRange.stageFlags,
       pushConstRange.offset,
       pushConstRange.size,
@@ -5239,82 +5225,11 @@ namespace dxvk {
       }
     }
 
-    // Check shader resources on every draw to handle WAW hazards
-    auto layout = m_state.gp.pipeline->getBindings()->layout();
-    DxvkBarrierSet newSet(DxvkCmdBuffer::ExecBuffer);
-    bool requiresBarriersBeforeResources = requiresBarrier;
-
-    for (uint32_t i = 0; i < DxvkDescriptorSets::SetCount; i++) {
-      uint32_t bindingCount = layout.getBindingCount(i);
-
-      for (uint32_t j = 0; j < bindingCount && !requiresBarrier; j++) {
-        const DxvkBindingInfo& binding = layout.getBinding(i, j);
-        const DxvkShaderResourceSlot& slot = m_rc[binding.resourceBinding];
-
-        DxvkAccessFlags dstAccess = DxvkBarrierSet::getAccessTypes(binding.access);
-        DxvkAccessFlags srcAccess = 0;
-        
-        switch (binding.descriptorType) {
-          case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
-          case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
-          case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
-            if ((slot.bufferSlice.defined())
-             && (slot.bufferSlice.bufferInfo().access & storageBufferAccess)) {
-               srcAccess = this->checkGfxBufferBarrier<DoEmit>(slot.bufferSlice,
-                 util::pipelineStages(binding.stages), binding.access);
-              this->checkGfxBufferBarrier<DoEmit>(newSet, slot.bufferSlice,
-                 util::pipelineStages(binding.stages), binding.access);
-            }
-            break;
-
-          case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
-          case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
-            if ((slot.bufferView != nullptr)
-             && (slot.bufferView->bufferInfo().access & storageBufferAccess)) {
-               srcAccess = this->checkGfxBufferBarrier<DoEmit>(slot.bufferView->slice(),
-                 util::pipelineStages(binding.stages), binding.access);
-               this->checkGfxBufferBarrier<DoEmit>(newSet, slot.bufferView->slice(),
-                 util::pipelineStages(binding.stages), binding.access);
-            }
-            break;
-
-          case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
-          case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
-          case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
-            if ((slot.imageView != nullptr)
-             && (slot.imageView->imageInfo().access & storageImageAccess)) {
-               srcAccess = this->checkGfxImageBarrier<DoEmit>(slot.imageView,
-                 util::pipelineStages(binding.stages), binding.access);
-              this->checkGfxImageBarrier<DoEmit>(newSet, slot.imageView,
-                 util::pipelineStages(binding.stages), binding.access);
-            }
-            break;
-
-          default:
-            /* nothing to do */;
-        }
-
-        if (srcAccess == 0)
-          continue;
-
-        // Skip write-after-write barriers if explicitly requested
-        if ((m_barrierControl.test(DxvkBarrierControl::IgnoreWriteAfterWrite))
-          && ((srcAccess | dstAccess) == DxvkAccess::Write))
-          continue;
-
-        requiresBarrier = (srcAccess | dstAccess).test(DxvkAccess::Write);
-      }
-    }
-
-
-    // OLD CODE
-    auto layoutB = m_state.gp.pipeline->layout();
-    DxvkBarrierSet oldSet(DxvkCmdBuffer::ExecBuffer);
-    bool requiresBarrierOld = requiresBarriersBeforeResources;
+    auto layout = m_state.gp.pipeline->layout();
 
     // Check shader resources on every draw to handle WAW hazards
-    for (uint32_t i = 0; i < layoutB->bindingCount() && !requiresBarrierOld; i++) {
-      const DxvkDescriptorSlot binding = layoutB->binding(i);
+    for (uint32_t i = 0; i < layout->bindingCount() && !requiresBarrier; i++) {
+      const DxvkDescriptorSlot binding = layout->binding(i);
       const DxvkShaderResourceSlot& slot = m_rc[binding.slot];
 
       DxvkAccessFlags dstAccess = DxvkBarrierSet::getAccessTypes(binding.access);
@@ -5326,7 +5241,7 @@ namespace dxvk {
         case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
           if ((slot.bufferSlice.defined())
            && (slot.bufferSlice.bufferInfo().access & storageBufferAccess)) {
-            srcAccess = this->checkGfxBufferBarrier<DoEmit>(oldSet, slot.bufferSlice,
+            srcAccess = this->checkGfxBufferBarrier<DoEmit>(slot.bufferSlice,
               util::pipelineStages(binding.stages), binding.access);
           }
           break;
@@ -5335,7 +5250,7 @@ namespace dxvk {
         case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
           if ((slot.bufferView != nullptr)
            && (slot.bufferView->bufferInfo().access & storageBufferAccess)) {
-            srcAccess = this->checkGfxBufferBarrier<DoEmit>(oldSet, slot.bufferView->slice(),
+            srcAccess = this->checkGfxBufferBarrier<DoEmit>(slot.bufferView->slice(),
               util::pipelineStages(binding.stages), binding.access);
           }
           break;
@@ -5345,7 +5260,7 @@ namespace dxvk {
         case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
           if ((slot.imageView != nullptr)
            && (slot.imageView->imageInfo().access & storageImageAccess)) {
-            srcAccess = this->checkGfxImageBarrier<DoEmit>(oldSet, slot.imageView,
+            srcAccess = this->checkGfxImageBarrier<DoEmit>(slot.imageView,
               util::pipelineStages(binding.stages), binding.access);
           }
           break;
@@ -5362,30 +5277,13 @@ namespace dxvk {
         && ((srcAccess | dstAccess) == DxvkAccess::Write))
         continue;
 
-      requiresBarrierOld = (srcAccess | dstAccess).test(DxvkAccess::Write);
+      requiresBarrier = (srcAccess | dstAccess).test(DxvkAccess::Write);
     }
-    // OLD CODE END
-
-    if (!(oldSet == newSet)) {
-      Logger::warn("commitGraphicsBarriers old barrier set is different from new barrier set");
-    }
-
-    if (requiresBarrierOld && !requiresBarrier) {
-      Logger::warn(str::format("commitGraphicsBarriers old code requiresBarrier is different from new code requiresBarrier old: ", requiresBarrierOld, " new: ", requiresBarrier));
-
-      if constexpr (DoEmit) {
-        Logger::warn("DoEmit");
-      } else {
-        Logger::warn("DontEmit");
-      }
-    }
-
-
 
     // External subpass dependencies serve as full memory
     // and execution barriers, so we can use this to allow
     // inter-stage synchronization.
-    if (requiresBarrier || requiresBarrierOld)
+    if (requiresBarrier)
       this->spillRenderPass(true);
   }
 
