@@ -796,8 +796,6 @@ namespace dxvk {
 
     void EndFrame();
 
-    void UpdateBoundRTs(uint32_t index);
-
     void UpdateActiveRTs(uint32_t index);
 
     template <uint32_t Index>
@@ -1299,6 +1297,11 @@ namespace dxvk {
       m_mostRecentlyUsedSwapchain = m_implicitSwapchain.ptr();
     }
 
+    inline bool IsRTBound(uint32_t Index) const {
+      return m_state.renderTargets[Index] != nullptr
+        && !m_state.renderTargets[Index]->IsNull();
+    }
+
     Com<D3D9InterfaceEx>            m_parent;
     D3DDEVTYPE                      m_deviceType;
     HWND                            m_window;
@@ -1375,11 +1378,13 @@ namespace dxvk {
     uint32_t                        m_dirtySamplerStates = 0;
     uint32_t                        m_dirtyTextures      = 0;
 
-    uint32_t                        m_boundRTs        : 4;
-    uint32_t                        m_anyColorWrites  : 4;
     uint32_t                        m_activeRTsWhichAreTextures : 4;
     uint32_t                        m_alphaSwizzleRTs : 4;
     uint32_t                        m_lastHazardsRT   : 4;
+    uint32_t                        m_rtLimitsRenderArea : 4;
+    bool                            m_dsvLimitsRenderArea;
+
+    VkExtent2D                      m_renderArea;
 
     uint32_t                        m_activeTextureRTs       = 0;
     uint32_t                        m_activeTextureDSs       = 0;
