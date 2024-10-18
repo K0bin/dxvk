@@ -1,9 +1,15 @@
+#include <mutex>
+
 #include "../dxvk/dxvk_instance.h"
 
 #include "d3d9_interface.h"
 #include "d3d9_shader_validator.h"
 
 #include "d3d9_annotation.h"
+#include "d3d9_device.h"
+#include "d3d9_interface.h"
+
+#include "processthreadsapi.h"
 
 class D3DFE_PROCESSVERTICES;
 using PSGPERRORID = UINT;
@@ -111,4 +117,70 @@ extern "C" {
     return Direct3DCreate9Ex(sdk_version, output);
   }
 
+}
+
+static std::vector<HANDLE> g_threadHandles;
+
+BOOL APIENTRY DllMain( HMODULE hModule,
+                       DWORD  ul_reason_for_call,
+                       LPVOID lpReserved
+                     )
+{
+	switch (ul_reason_for_call)
+	{
+	case DLL_PROCESS_ATTACH:
+    dxvk::Logger::warn("DLL ATTACH");
+		break;
+
+	case DLL_THREAD_ATTACH:
+    g_threadHandles.push_back(GetCurrentThread());
+    break;
+
+	case DLL_THREAD_DETACH:
+    if (lpReserved != nullptr) {
+        break; // do not do cleanup if process termination scenario
+    }
+
+    {
+      HANDLE detachedThread = GetCurrentThread();
+      for (auto iter = g_threadHandles.begin(); iter != g_threadHandles.end(); iter++) {
+        if (*iter == detachedThread) {
+          g_threadHandles.erase(iter);
+          break;
+        }
+      }
+    }
+    break;
+
+	case DLL_PROCESS_DETACH:
+    if (lpReserved != nullptr) {
+        break; // do not do cleanup if process termination scenario
+    }
+
+    dxvk::Logger::warn("DLL DETACH");
+    for (HANDLE threadHandle : g_threadHandles) {
+      //TerminateThread(threadHandle, 0);
+    }
+
+    /*{
+      std::lock_guard lock(dxvk::D3D9DeviceEx::s_devicesLock);
+      dxvk::D3D9DeviceEx::isDetached = true;
+      for (dxvk::D3D9DeviceEx* device : dxvk::D3D9DeviceEx::s_devices) {
+        dxvk::Logger::warn("Found leaked device");
+        dxvk::D3D9InterfaceEx* iface = device->GetParent();
+        iface->AddRef();
+        ULONG ifaceRefs = iface->Release();
+        while (device->Release() != 0) {}
+        if (ifaceRefs != 1) {
+          // There were other references to the interface than just the device.
+          // Free those.
+          while (iface->Release() != 0) {}
+        }
+        dxvk::Logger::warn("Freed leaked device");
+      }
+    }*/
+
+		break;
+	}
+	return TRUE;
 }

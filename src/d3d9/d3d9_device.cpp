@@ -33,6 +33,10 @@
 
 namespace dxvk {
 
+  sync::RecursiveSpinlock D3D9DeviceEx::s_devicesLock;
+  std::vector<D3D9DeviceEx*> D3D9DeviceEx::s_devices;
+  bool D3D9DeviceEx::isDetached = false;
+
   D3D9DeviceEx::D3D9DeviceEx(
           D3D9InterfaceEx*       pParent,
           D3D9Adapter*           pAdapter,
@@ -61,6 +65,14 @@ namespace dxvk {
     , m_d3d9Interop     ( this )
     , m_d3d9On12        ( this )
     , m_d3d8Bridge      ( this ) {
+
+    dllRef = LoadLibrary("d3d9.dll");
+
+    {
+      std::lock_guard lock(s_devicesLock);
+      s_devices.push_back(this);
+    }
+
     // If we can SWVP, then we use an extended constant set
     // as SWVP has many more slots available than HWVP.
     bool canSWVP = CanSWVP();
@@ -193,6 +205,20 @@ namespace dxvk {
     // in DxvkDevice::~DxvkDevice.
     if (this_thread::isInModuleDetachment())
       return;
+
+    FreeLibrary(dllRef);
+
+    {
+      std::lock_guard lock(s_devicesLock);
+      if (!isDetached) {
+        for (auto iter = s_devices.begin(); iter != s_devices.end(); iter++) {
+          if (*iter == this) {
+            s_devices.erase(iter);
+            break;
+          }
+        }
+      }
+    }
 
     Flush();
     SynchronizeCsThread(DxvkCsThread::SynchronizeAll);

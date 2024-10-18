@@ -1048,6 +1048,14 @@ namespace dxvk {
       return DxvkCsChunkRef(chunk, &m_csChunkPool);
     }
 
+    D3D9InterfaceEx* GetParent() const {
+      return m_parent.ptr();
+    }
+
+    static sync::RecursiveSpinlock s_devicesLock;
+    static std::vector<D3D9DeviceEx*> s_devices;
+    static bool isDetached;
+
   private:
 
     template<bool AllowFlush = true, typename Cmd>
@@ -1496,6 +1504,8 @@ namespace dxvk {
     // Written by CS thread
     alignas(CACHE_LINE_SIZE)
     std::atomic<uint64_t>           m_lastSamplerStats = { 0u };
+
+    HMODULE dllRef;
   };
 
 }
