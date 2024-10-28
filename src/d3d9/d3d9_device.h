@@ -876,10 +876,22 @@ namespace dxvk {
     void UploadConstants();
     
     void UpdateClipPlanes();
-    
+
+    /**
+     * \brief Updates the push constant data at the given offset with data from the specified pointer.
+     *
+     * @tparam Offset Offset at which the push constant data gets written.
+     * @tparam Length Length of the push constant data to write.
+     * @param pData Push constant data
+     */
     template <uint32_t Offset, uint32_t Length>
     void UpdatePushConstant(const void* pData);
 
+    /**
+     * \brief Updates the specified push constant based on the device state.
+     *
+     * \tparam Item Render state push constant to update
+     */
     template <D3D9RenderStateItem Item>
     void UpdatePushConstant();
 

@@ -80,6 +80,7 @@ namespace dxvk {
     ] (DxvkContext* ctx) {
       ctx->beginRecording(cDevice->createCommandList());
 
+      // Disable logic op once and for all.
       DxvkLogicOpState loState;
       loState.enableLogicOp = VK_FALSE;
       loState.logicOp       = VK_LOGIC_OP_CLEAR;
@@ -93,6 +94,8 @@ namespace dxvk {
 
     m_dxsoOptions = DxsoOptions(this, m_d3d9Options);
 
+    // Check if VK_EXT_robustness2 is supported, so we can optimize the number of constants we need to copy.
+    // Also check the required alignments.
     const bool supportsRobustness2 = m_dxvkDevice->features().extRobustness2.robustBufferAccess2;
     bool useRobustConstantAccess = supportsRobustness2;
     if (useRobustConstantAccess) {
@@ -108,8 +111,9 @@ namespace dxvk {
       }
       useRobustConstantAccess &= m_psLayout.totalSize() % m_robustUBOAlignment == 0;
     }
-    
+
     if (!useRobustConstantAccess) {
+      // Disable optimized constant copies, we always have to copy all constants.
       m_vsFloatConstsCount = m_vsLayout.floatCount;
       m_vsIntConstsCount   = m_vsLayout.intCount;
       m_vsBoolConstsCount  = m_vsLayout.boolCount;
@@ -120,13 +124,15 @@ namespace dxvk {
       }
     }
 
+    // Check for VK_EXT_graphics_pipeline_libraries
     m_usingGraphicsPipelines = dxvkDevice->features().extGraphicsPipelineLibrary.graphicsPipelineLibrary;
 
+    // Check for VK_EXT_depth_bias_control and set up initial state
     m_depthBiasRepresentation = { VK_DEPTH_BIAS_REPRESENTATION_LEAST_REPRESENTABLE_VALUE_FORMAT_EXT, false };
     if (dxvkDevice->features().extDepthBiasControl.depthBiasControl) {
       if (dxvkDevice->features().extDepthBiasControl.depthBiasExact)
         m_depthBiasRepresentation.depthBiasExact = true;
-      
+
       if (dxvkDevice->features().extDepthBiasControl.floatRepresentation) {
         m_depthBiasRepresentation.depthBiasRepresentation = VK_DEPTH_BIAS_REPRESENTATION_FLOAT_EXT;
         m_depthBiasScale = 1.0f;
@@ -490,7 +496,7 @@ namespace dxvk {
       * an application should release any explicit render targets,
       * depth stencil surfaces, additional swap chains, state blocks,
       * and D3DPOOL_DEFAULT resources associated with the device.
-      * 
+      *
       * We have to check after ResetState clears the references held by SetTexture, etc.
       * This matches what Windows D3D9 does.
     */
@@ -628,11 +634,14 @@ namespace dxvk {
     try {
       void* initialData = nullptr;
 
+      // On Windows Vista (so most likely D3D9Ex), pSharedHandle can be used to pass initial data for a texture,
+      // but only for a very specific type of texture.
       if (Pool == D3DPOOL_SYSTEMMEM && Levels == 1 && pSharedHandle != nullptr) {
         initialData = *(reinterpret_cast<void**>(pSharedHandle));
         pSharedHandle = nullptr;
       }
 
+      // Shared textures have to be in POOL_DEFAULT
       if (pSharedHandle != nullptr && Pool != D3DPOOL_DEFAULT)
         return D3DERR_INVALIDCALL;
 
@@ -699,7 +708,7 @@ namespace dxvk {
       const Com<D3D9Texture3D> texture = new D3D9Texture3D(this, &desc);
       m_initializer->InitTexture(texture->GetCommonTexture());
       *ppVolumeTexture = texture.ref();
-      
+
       if (desc.Pool == D3DPOOL_DEFAULT)
         m_losableResourceCounter++;
 
@@ -756,7 +765,7 @@ namespace dxvk {
       const Com<D3D9TextureCube> texture = new D3D9TextureCube(this, &desc);
       m_initializer->InitTexture(texture->GetCommonTexture());
       *ppCubeTexture = texture.ref();
-      
+
       if (desc.Pool == D3DPOOL_DEFAULT)
         m_losableResourceCounter++;
 
@@ -1529,7 +1538,7 @@ namespace dxvk {
       RECT scissorRect;
       scissorRect.left    = 0;
       scissorRect.top     = 0;
-      
+
       if (likely(rt != nullptr)) {
         auto rtSize = rt->GetSurfaceExtent();
         viewport.Width  = rtSize.width;
@@ -1560,15 +1569,17 @@ namespace dxvk {
       return D3D_OK;
 
     // Do a strong flush if the first render target is changed.
-    ConsiderFlush(RenderTargetIndex == 0 
+    ConsiderFlush(RenderTargetIndex == 0
       ? GpuFlushType::ImplicitStrongHint
       : GpuFlushType::ImplicitWeakHint);
     m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
 
     m_state.renderTargets[RenderTargetIndex] = rt;
 
+    // Update feedback loop tracking bitmasks
     UpdateActiveRTs(RenderTargetIndex);
 
+    // Update render target alpha swizzle bitmask
     uint32_t originalAlphaSwizzleRTs = m_alphaSwizzleRTs;
 
     m_alphaSwizzleRTs &= ~(1 << RenderTargetIndex);
@@ -5068,7 +5079,7 @@ namespace dxvk {
       D3D9BufferSlice slice = AllocStagingBuffer(pSrcTexture->GetMipSize(SrcSubresource));
       VkDeviceSize pitch = align(srcBlockCount.width * formatElementSize, 4);
 
-      const DxvkFormatInfo* convertedFormatInfo = lookupFormatInfo(convertFormat.FormatColor);      
+      const DxvkFormatInfo* convertedFormatInfo = lookupFormatInfo(convertFormat.FormatColor);
       VkImageSubresourceLayers convertedDstLayers = { convertedFormatInfo->aspectMask, dstSubresource.mipLevel, dstSubresource.arrayLayer, 1 };
 
       util::packImageData(
@@ -5642,6 +5653,7 @@ namespace dxvk {
         ? sizeof(D3D9FixedFunctionVertexBlendDataSW)
         : sizeof(D3D9FixedFunctionVertexBlendDataHW));
 
+    // Allocate constant buffer for values that would otherwise get passed as spec constants for fast-linked pipelines to use.
     if (m_usingGraphicsPipelines) {
       m_specBuffer = D3D9ConstantBuffer(this,
         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
@@ -5669,11 +5681,15 @@ namespace dxvk {
 
     uint32_t floatCount = m_vsFloatConstsCount;
     if (constSet.meta.needsConstantCopies) {
+      // If the shader requires us to preserve shader defined constants,
+      // we copy those over. We need to adjust the amount of used floats accordingly.
       auto shader = GetCommonShader(m_state.vertexShader);
       floatCount = std::max(floatCount, shader->GetMaxDefinedConstant() + 1);
     }
+    // If we statically know which is the last float constant accessed by the shader, we don't need to copy the rest.
     floatCount = std::min(floatCount, constSet.meta.maxConstIndexF);
 
+    // Calculate data sizes for each constant type.
     const uint32_t floatDataSize = floatCount * sizeof(Vector4);
     const uint32_t intDataSize   = std::min(constSet.meta.maxConstIndexI, m_vsIntConstsCount) * sizeof(Vector4i);
     const uint32_t boolDataSize  = divCeil(std::min(constSet.meta.maxConstIndexB, m_vsBoolConstsCount), 32u) * uint32_t(sizeof(uint32_t));
@@ -5684,6 +5700,8 @@ namespace dxvk {
       auto mapPtr = CopySoftwareConstants(constSet.buffer, Src.fConsts, floatDataSize);
 
       if (constSet.meta.needsConstantCopies) {
+        // Copy shader defined constants over so they can be accessed
+        // with relative addressing.
         Vector4* data = reinterpret_cast<Vector4*>(mapPtr);
 
         auto& shaderConsts = GetCommonShader(m_state.vertexShader)->GetConstants();
@@ -5731,14 +5749,19 @@ namespace dxvk {
 
     uint32_t floatCount = ShaderStage == DxsoProgramType::VertexShader ? m_vsFloatConstsCount : m_psFloatConstsCount;
     if (constSet.meta.needsConstantCopies) {
+      // If the shader requires us to preserve shader defined constants,
+      // we copy those over. We need to adjust the amount of used floats accordingly.
       auto shader = GetCommonShader(Shader);
       floatCount = std::max(floatCount, shader->GetMaxDefinedConstant() + 1);
     }
+    // If we statically know which is the last float constant accessed by the shader, we don't need to copy the rest.
     floatCount = std::min(constSet.meta.maxConstIndexF, floatCount);
 
+    // There are very few int constants, so we put those into the same buffer at the start.
+    // We always allocate memory for all possible int constants to make sure alignment works out.
     const uint32_t intRange = caps::MaxOtherConstants * sizeof(Vector4i);
-    const uint32_t intDataSize = constSet.meta.maxConstIndexI * sizeof(Vector4i);
     uint32_t floatDataSize = floatCount * sizeof(Vector4);
+    // Determine amount of floats and buffer size based on highest used float constant and alignment
     const uint32_t alignment = constSet.buffer.GetAlignment();
     const uint32_t bufferSize = align(std::max(floatDataSize + intRange, alignment), alignment);
     floatDataSize = bufferSize - intRange;
@@ -5746,12 +5769,15 @@ namespace dxvk {
     void* mapPtr = constSet.buffer.Alloc(bufferSize);
     auto* dst = reinterpret_cast<HardwareLayoutType*>(mapPtr);
 
+    const uint32_t intDataSize = constSet.meta.maxConstIndexI * sizeof(Vector4i);
     if (constSet.meta.maxConstIndexI != 0)
       std::memcpy(dst->iConsts, Src.iConsts, intDataSize);
     if (constSet.meta.maxConstIndexF != 0)
       std::memcpy(dst->fConsts, Src.fConsts, floatDataSize);
 
     if (constSet.meta.needsConstantCopies) {
+      // Copy shader defined constants over so they can be accessed
+      // with relative addressing.
       Vector4* data = reinterpret_cast<Vector4*>(dst->fConsts);
 
       auto& shaderConsts = GetCommonShader(Shader)->GetConstants();
@@ -6551,6 +6577,9 @@ namespace dxvk {
         if (i != 0)
           mode.writeMask = cWriteMasks[i - 1];
 
+        // Adjust the blend factor based on the render target alpha swizzle bit mask.
+        // Specific formats such as the XRGB ones require a ONE swizzle for alpha
+        // which cannot be directly applied with the image view of the attachment.
         const bool alphaSwizzle = cAlphaMasks & (1 << i);
 
         auto NormalizeFactor = [alphaSwizzle](VkBlendFactor Factor) {
@@ -8407,6 +8436,7 @@ namespace dxvk {
         ctx->setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, i, cSpecInfo.data[i]);
     });
 
+    // Write spec constants into buffer for fast-linked pipelines to use it.
     if (m_usingGraphicsPipelines) {
       // TODO: Make uploading specialization information less naive.
       auto mapPtr = m_specBuffer.AllocSlice();
