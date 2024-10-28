@@ -1142,6 +1142,7 @@ namespace dxvk {
     if (m_hud != nullptr) {
       m_hud->addItem<hud::HudClientApiItem>("api", 1, GetApiName());
       m_hud->addItem<hud::HudSamplerCount>("samplers", -1, m_parent);
+      m_hud->addItem<hud::HudSrgbSwitches>("srgbswitches", -1, m_parent);
       m_hud->addItem<hud::HudFixedFunctionShaders>("ffshaders", -1, m_parent);
       m_hud->addItem<hud::HudSWVPState>("swvp", -1, m_parent);
 

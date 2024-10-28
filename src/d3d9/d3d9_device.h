@@ -1048,6 +1048,14 @@ namespace dxvk {
       return DxvkCsChunkRef(chunk, &m_csChunkPool);
     }
 
+    uint32_t GetSrgbSwitches() const {
+      return m_srgbCounter;
+    }
+
+    void ResetSrgbSwitches() {
+      m_srgbCounter = 0u;
+    }
+
   private:
 
     template<bool AllowFlush = true, typename Cmd>
@@ -1496,6 +1504,8 @@ namespace dxvk {
     // Written by CS thread
     alignas(CACHE_LINE_SIZE)
     std::atomic<uint64_t>           m_lastSamplerStats = { 0u };
+
+    uint32_t m_srgbCounter = 0u;
   };
 
 }

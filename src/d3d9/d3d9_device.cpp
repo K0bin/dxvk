@@ -2304,6 +2304,7 @@ namespace dxvk {
 
         case D3DRS_SRGBWRITEENABLE:
           m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
+          m_srgbCounter++;
           break;
 
         case D3DRS_DEPTHBIAS:

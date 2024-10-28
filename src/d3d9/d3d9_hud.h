@@ -31,6 +31,29 @@ namespace dxvk::hud {
 
   };
 
+  class HudSrgbSwitches : public HudItem {
+
+  public:
+
+    HudSrgbSwitches(D3D9DeviceEx* device);
+
+    void update(dxvk::high_resolution_clock::time_point time);
+
+    HudPos render(
+      const DxvkContextObjects& ctx,
+      const HudPipelineKey&     key,
+      const HudOptions&         options,
+            HudRenderer&        renderer,
+            HudPos              position);
+
+  private:
+
+    D3D9DeviceEx* m_device;
+
+    std::string m_srgbSwitches;
+
+  };
+
   /**
    * \brief HUD item to display unmappable memory
    */

@@ -29,6 +29,34 @@ namespace dxvk::hud {
     return position;
   }
 
+  HudSrgbSwitches::HudSrgbSwitches(D3D9DeviceEx* device)
+    : m_device       (device)
+    , m_srgbSwitches ("0"){
+
+  }
+
+
+  void HudSrgbSwitches::update(dxvk::high_resolution_clock::time_point time) {
+    m_srgbSwitches = str::format(m_device->GetSrgbSwitches());
+    m_device->ResetSrgbSwitches();
+  }
+
+
+  HudPos HudSrgbSwitches::render(
+    const DxvkContextObjects& ctx,
+    const HudPipelineKey&     key,
+    const HudOptions&         options,
+          HudRenderer&        renderer,
+          HudPos              position) {
+    position.y += 16;
+    renderer.drawText(16, position, 0xffc0ff00u, "SRGBWRITEENABLE switches:");
+    renderer.drawText(16, { position.x + 400, position.y }, 0xffffffffu, m_srgbSwitches);
+
+    position.y += 8;
+    return position;
+  }
+
+
   HudTextureMemory::HudTextureMemory(D3D9DeviceEx* device)
   : m_device          (device)
   , m_allocatedString ("")
