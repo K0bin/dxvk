@@ -12,6 +12,7 @@
 #include "d3d9_constant_buffer.h"
 #include "d3d9_constant_set.h"
 #include "d3d9_mem.h"
+#include "d3d9_bound_resources.h"
 
 #include "d3d9_state.h"
 
@@ -807,15 +808,11 @@ namespace dxvk {
     template <uint32_t Index>
     void UpdateAnyColorWrites();
 
-    void UpdateTextureBitmasks(uint32_t index, DWORD combinedUsage);
-
     void UpdateActiveHazardsRT(uint32_t rtMask);
 
     void UpdateActiveHazardsDS(uint32_t texMask);
 
     void MarkRenderHazards();
-
-    void UpdateActiveFetch4(uint32_t stateSampler);
 
     void UploadManagedTexture(D3D9CommonTexture* pResource);
 
@@ -1488,6 +1485,8 @@ namespace dxvk {
     uint32_t                        m_activeVertexBuffers                = 0;
     uint32_t                        m_activeVertexBuffersToUpload        = 0;
     uint32_t                        m_activeVertexBuffersToUploadPerDraw = 0;
+
+    D3D9BoundResources              m_boundResources;
 
     // m_fetch4Enabled is whether fetch4 is currently enabled
     // from the application.

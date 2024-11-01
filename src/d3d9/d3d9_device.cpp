@@ -60,7 +60,8 @@ namespace dxvk {
     , m_flushTracker    (m_d3d9Options.reproducibleCommandStream)
     , m_d3d9Interop     ( this )
     , m_d3d9On12        ( this )
-    , m_d3d8Bridge      ( this ) {
+    , m_d3d8Bridge      ( this )
+    , m_boundResources ( m_state ) {
     // If we can SWVP, then we use an extended constant set
     // as SWVP has many more slots available than HWVP.
     bool canSWVP = CanSWVP();
@@ -4220,11 +4221,11 @@ namespace dxvk {
       else if (unlikely(Value == Fetch4Disabled))
         m_fetch4Enabled &= ~samplerBit;
 
-      UpdateActiveFetch4(StateSampler);
+      m_boundResources.UpdateActiveFetch4(StateSampler);
     }
 
     if (unlikely(Type == D3DSAMP_MAGFILTER && (m_fetch4Enabled & samplerBit)))
-      UpdateActiveFetch4(StateSampler);
+      m_boundResources.UpdateActiveFetch4(StateSampler);
 
     return D3D_OK;
   }
@@ -4272,7 +4273,7 @@ namespace dxvk {
     DWORD combinedUsage = oldUsage | newUsage;
     TextureChangePrivate(m_state.textures[StateSampler], pTexture);
     m_dirtyTextures |= 1u << StateSampler;
-    UpdateTextureBitmasks(StateSampler, combinedUsage);
+    m_boundResources.UpdateTextureBitmasks(StateSampler, combinedUsage);
 
     return D3D_OK;
   }
@@ -6011,66 +6012,6 @@ namespace dxvk {
   }
 
 
-  inline void D3D9DeviceEx::UpdateTextureBitmasks(uint32_t index, DWORD combinedUsage) {
-    const uint32_t bit = 1 << index;
-
-    m_activeTextureRTs       &= ~bit;
-    m_activeTextureDSs       &= ~bit;
-    m_activeTextures         &= ~bit;
-    m_activeTexturesToUpload &= ~bit;
-    m_activeTexturesToGen    &= ~bit;
-
-    auto tex = GetCommonTexture(m_state.textures[index]);
-    if (tex != nullptr) {
-      m_activeTextures |= bit;
-
-      if (unlikely(tex->IsRenderTarget()))
-        m_activeTextureRTs |= bit;
-
-      if (unlikely(tex->IsDepthStencil()))
-        m_activeTextureDSs |= bit;
-
-      if (unlikely(tex->NeedsAnyUpload()))
-        m_activeTexturesToUpload |= bit;
-
-      if (unlikely(tex->NeedsMipGen()))
-        m_activeTexturesToGen |= bit;
-
-      // Update shadow sampler mask
-      const bool oldDepth = m_depthTextures & bit;
-      const bool newDepth = tex->IsShadow();
-
-      if (oldDepth != newDepth) {
-        m_depthTextures ^= bit;
-        m_dirtySamplerStates |= bit;
-      }
-
-      // Update dref clamp mask
-      m_drefClamp &= ~bit;
-      m_drefClamp |= uint32_t(tex->IsUpgradedToD32f()) << index;
-
-      const bool oldCube = m_cubeTextures & bit;
-      const bool newCube = tex->GetType() == D3DRTYPE_CUBETEXTURE;
-      if (oldCube != newCube) {
-        m_cubeTextures ^= bit;
-        m_dirtySamplerStates |= bit;
-      }
-
-      if (unlikely(m_fetch4Enabled & bit))
-        UpdateActiveFetch4(index);
-    } else {
-      if (unlikely(m_fetch4 & bit))
-        UpdateActiveFetch4(index);
-    }
-
-    if (unlikely(combinedUsage & D3DUSAGE_RENDERTARGET))
-      UpdateActiveHazardsRT(bit);
-
-    if (unlikely(combinedUsage & D3DUSAGE_DEPTHSTENCIL))
-      UpdateActiveHazardsDS(bit);
-  }
-
-
   inline void D3D9DeviceEx::UpdateActiveHazardsRT(uint32_t texMask) {
     auto masks = m_psShaderMasks;
     masks.rtMask      &= m_activeRTsWhichAreTextures;
@@ -6165,27 +6106,6 @@ namespace dxvk {
         TransitionImage(tex, m_hazardLayout);
         m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
       }
-    }
-  }
-
-
-  void D3D9DeviceEx::UpdateActiveFetch4(uint32_t stateSampler) {
-    auto& state = m_state.samplerStates;
-
-    const uint32_t samplerBit = 1u << stateSampler;
-
-    auto texture = GetCommonTexture(m_state.textures[stateSampler]);
-    const bool textureSupportsFetch4 = texture != nullptr && texture->SupportsFetch4();
-
-    const bool fetch4Enabled = m_fetch4Enabled & samplerBit;
-    const bool pointSampled  = state[stateSampler][D3DSAMP_MAGFILTER] == D3DTEXF_POINT;
-    const bool shouldFetch4  = fetch4Enabled && textureSupportsFetch4 && pointSampled;
-
-    if (unlikely(shouldFetch4 != !!(m_fetch4 & samplerBit))) {
-      if (shouldFetch4)
-        m_fetch4 |= samplerBit;
-      else
-        m_fetch4 &= ~samplerBit;
     }
   }
 
