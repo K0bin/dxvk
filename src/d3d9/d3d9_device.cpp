@@ -709,6 +709,7 @@ namespace dxvk {
       m_initializer->InitTexture(texture->GetCommonTexture());
       *ppVolumeTexture = texture.ref();
 
+      // The device cannot be reset if there's any remaining default resources
       if (desc.Pool == D3DPOOL_DEFAULT)
         m_losableResourceCounter++;
 
@@ -766,6 +767,8 @@ namespace dxvk {
       m_initializer->InitTexture(texture->GetCommonTexture());
       *ppCubeTexture = texture.ref();
 
+
+      // The device cannot be reset if there's any remaining default resources
       if (desc.Pool == D3DPOOL_DEFAULT)
         m_losableResourceCounter++;
 
@@ -808,6 +811,8 @@ namespace dxvk {
       const Com<D3D9VertexBuffer> buffer = new D3D9VertexBuffer(this, &desc);
       m_initializer->InitBuffer(buffer->GetCommonBuffer());
       *ppVertexBuffer = buffer.ref();
+
+      // The device cannot be reset if there's any remaining default resources
       if (desc.Pool == D3DPOOL_DEFAULT)
         m_losableResourceCounter++;
 
@@ -849,6 +854,8 @@ namespace dxvk {
       const Com<D3D9IndexBuffer> buffer = new D3D9IndexBuffer(this, &desc);
       m_initializer->InitBuffer(buffer->GetCommonBuffer());
       *ppIndexBuffer = buffer.ref();
+
+      // The device cannot be reset if there's any remaining default resources
       if (desc.Pool == D3DPOOL_DEFAULT)
         m_losableResourceCounter++;
 
@@ -972,8 +979,10 @@ namespace dxvk {
                     0u };
     }
 
+    // The source surface must be in D3DPOOL_SYSTEMMEM so we just treat it as just another texture upload except with a different source.
     UpdateTextureFromBuffer(dstTextureInfo, srcTextureInfo, dst->GetSubresource(), src->GetSubresource(), srcOffset, extent, dstOffset);
 
+    // The contents of the mapping no longer match the image.
     dstTextureInfo->SetNeedsReadback(dst->GetSubresource(), true);
 
     if (dstTextureInfo->IsAutomaticMip())
@@ -1017,6 +1026,8 @@ namespace dxvk {
     if (srcFirstMipExtent != dstFirstMipExtent) {
       // UpdateTexture can be used with textures that have different mip lengths.
       // It will either match the the top mips or the bottom ones.
+      // If the largest mip maps don't match in size, we try to take the smallest ones
+      // of the source.
 
       srcMipOffset = srcTexInfo->Desc()->MipLevels - mipLevels;
       srcFirstMipExtent = util::computeMipLevelExtent(srcTexInfo->GetExtent(), srcMipOffset);
@@ -1027,10 +1038,12 @@ namespace dxvk {
       return D3DERR_INVALIDCALL;
 
     for (uint32_t a = 0; a < arraySlices; a++) {
+      // The docs claim that the dirty box is just a performance optimization, however in practice games rely on it.
       const D3DBOX& box = srcTexInfo->GetDirtyBox(a);
       if (box.Left >= box.Right || box.Top >= box.Bottom || box.Front >= box.Back)
         continue;
 
+      // The dirty box is only tracked for mip level 0
       VkExtent3D mip0Extent = {
         uint32_t(box.Right - box.Left),
         uint32_t(box.Bottom - box.Top),
@@ -1039,13 +1052,17 @@ namespace dxvk {
       VkOffset3D mip0Offset = { int32_t(box.Left), int32_t(box.Top), int32_t(box.Front) };
 
       for (uint32_t dstMip = 0; dstMip < mipLevels; dstMip++) {
+        // Scale the dirty box for the respective mip level
         uint32_t srcMip = dstMip + srcMipOffset;
         uint32_t srcSubresource = srcTexInfo->CalcSubresource(a, srcMip);
         uint32_t dstSubresource = dstTexInfo->CalcSubresource(a, dstMip);
         VkExtent3D extent = util::computeMipLevelExtent(mip0Extent, srcMip);
         VkOffset3D offset = util::computeMipLevelOffset(mip0Offset, srcMip);
 
+        // The source surface must be in D3DPOOL_SYSTEMMEM so we just treat it as just another texture upload except with a different source.
         UpdateTextureFromBuffer(dstTexInfo, srcTexInfo, dstSubresource, srcSubresource, offset, extent, offset);
+
+        // The contents of the mapping no longer match the image.
         dstTexInfo->SetNeedsReadback(dstSubresource, true);
       }
     }
@@ -1579,7 +1596,8 @@ namespace dxvk {
     // Update feedback loop tracking bitmasks
     UpdateActiveRTs(RenderTargetIndex);
 
-    // Update render target alpha swizzle bitmask
+    // Update render target alpha swizzle bitmask if we need to fix up the alpha channel
+    // for XRGB formats
     uint32_t originalAlphaSwizzleRTs = m_alphaSwizzleRTs;
 
     m_alphaSwizzleRTs &= ~(1 << RenderTargetIndex);
@@ -1654,6 +1672,7 @@ namespace dxvk {
     ConsiderFlush(GpuFlushType::ImplicitWeakHint);
     m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
 
+    // Update depth bias if necessary
     if (ds != nullptr && m_depthBiasRepresentation.depthBiasRepresentation != VK_DEPTH_BIAS_REPRESENTATION_FLOAT_EXT) {
       const int32_t vendorId = m_dxvkDevice->adapter()->deviceProperties().vendorID;
       const bool exact = m_depthBiasRepresentation.depthBiasExact;
@@ -3530,6 +3549,9 @@ namespace dxvk {
 
     m_state.indices = buffer;
 
+    // Don't unbind the buffer if the game sets a nullptr here.
+    // Operation Flashpoint Red River breaks if we do that.
+    // EndScene will clean it up if necessary.
     if (buffer != nullptr)
       BindIndices();
 
@@ -4223,17 +4245,24 @@ namespace dxvk {
     // We need to check our ops and disable respective stages.
     // Given we have transition from a null resource to
     // a valid resource or vice versa.
-    if (StateSampler < caps::MaxTexturesPS) {
-      const uint32_t offset = StateSampler * 2;
+    const bool isPSSampler = StateSampler < caps::MaxTexturesPS;
+    if (isPSSampler) {
       const uint32_t textureType = newTexture != nullptr
         ? uint32_t(newTexture->GetType() - D3DRTYPE_TEXTURE)
         : 0;
+      // There are 4 texture types, so we need 2 bits.
+      const uint32_t offset = StateSampler * 2;
       const uint32_t textureBitMask = 0b11u       << offset;
       const uint32_t textureBits    = textureType << offset;
 
+      // In fixed function shaders and SM < 3 we put the type mask
+      // into a spec constant to select the used sampler type.
       m_textureTypes &= ~textureBitMask;
       m_textureTypes |=  textureBits;
 
+      // If we either bind a new texture or unbind the old one,
+      // we need to update the fixed function shader
+      // because we generate a different shader based on whether each texture is bound.
       if (newTexture == nullptr || oldTexture == nullptr)
         m_flags.set(D3D9DeviceFlag::DirtyFFPixelShader);
     }
@@ -4243,33 +4272,7 @@ namespace dxvk {
     DWORD combinedUsage = oldUsage | newUsage;
     TextureChangePrivate(m_state.textures[StateSampler], pTexture);
     m_dirtyTextures |= 1u << StateSampler;
-    UpdateActiveTextures(StateSampler, combinedUsage);
-
-    if (newTexture != nullptr) {
-      const bool oldDepth = m_depthTextures & (1u << StateSampler);
-      const bool newDepth = newTexture->IsShadow();
-
-      if (oldDepth != newDepth) {
-        m_depthTextures ^= 1u << StateSampler;
-        m_dirtySamplerStates |= 1u << StateSampler;
-      }
-
-      m_drefClamp &= ~(1u << StateSampler);
-      m_drefClamp |= uint32_t(newTexture->IsUpgradedToD32f()) << StateSampler;
-
-      const bool oldCube = m_cubeTextures & (1u << StateSampler);
-      const bool newCube = newTexture->GetType() == D3DRTYPE_CUBETEXTURE;
-      if (oldCube != newCube) {
-        m_cubeTextures ^= 1u << StateSampler;
-        m_dirtySamplerStates |= 1u << StateSampler;
-      }
-
-      if (unlikely(m_fetch4Enabled & (1u << StateSampler)))
-        UpdateActiveFetch4(StateSampler);
-    } else {
-      if (unlikely(m_fetch4 & (1u << StateSampler)))
-        UpdateActiveFetch4(StateSampler);
-    }
+    UpdateTextureBitmasks(StateSampler, combinedUsage);
 
     return D3D_OK;
   }
@@ -4547,12 +4550,6 @@ namespace dxvk {
     if (stagingBufferAllocated > MaxStagingMemoryInFlight)
       m_stagingBufferFence->wait(stagingBufferAllocated - MaxStagingMemoryInFlight);
   }
-
-
-  bool D3D9DeviceEx::ShouldRecord() {
-    return m_recorder != nullptr && !m_recorder->IsApplying();
-  }
-
 
   D3D9_VK_FORMAT_MAPPING D3D9DeviceEx::LookupFormat(
     D3D9Format            Format) const {
@@ -5979,7 +5976,7 @@ namespace dxvk {
   }
 
 
-  inline void D3D9DeviceEx::UpdateActiveTextures(uint32_t index, DWORD combinedUsage) {
+  inline void D3D9DeviceEx::UpdateTextureBitmasks(uint32_t index, DWORD combinedUsage) {
     const uint32_t bit = 1 << index;
 
     m_activeTextureRTs       &= ~bit;
@@ -6003,6 +6000,32 @@ namespace dxvk {
 
       if (unlikely(tex->NeedsMipGen()))
         m_activeTexturesToGen |= bit;
+
+      // Update shadow sampler mask
+      const bool oldDepth = m_depthTextures & bit;
+      const bool newDepth = tex->IsShadow();
+
+      if (oldDepth != newDepth) {
+        m_depthTextures ^= bit;
+        m_dirtySamplerStates |= bit;
+      }
+
+      // Update dref clamp mask
+      m_drefClamp &= ~bit;
+      m_drefClamp |= uint32_t(tex->IsUpgradedToD32f()) << index;
+
+      const bool oldCube = m_cubeTextures & bit;
+      const bool newCube = tex->GetType() == D3DRTYPE_CUBETEXTURE;
+      if (oldCube != newCube) {
+        m_cubeTextures ^= bit;
+        m_dirtySamplerStates |= bit;
+      }
+
+      if (unlikely(m_fetch4Enabled & bit))
+        UpdateActiveFetch4(index);
+    } else {
+      if (unlikely(m_fetch4 & bit))
+        UpdateActiveFetch4(index);
     }
 
     if (unlikely(combinedUsage & D3DUSAGE_RENDERTARGET))
