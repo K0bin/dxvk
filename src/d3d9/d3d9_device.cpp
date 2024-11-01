@@ -4685,7 +4685,6 @@ namespace dxvk {
     }
 
     auto& formatMapping = pResource->GetFormatMapping();
-
     const DxvkFormatInfo* formatInfo = formatMapping.IsValid()
       ? lookupFormatInfo(formatMapping.FormatColor) : UnsupportedFormatInfo(pResource->Desc()->Format);
 
@@ -4697,6 +4696,7 @@ namespace dxvk {
 
     bool fullResource = pBox == nullptr;
     if (unlikely(!fullResource)) {
+      // Check whether the box passed as argument matches or exceeds the entire texture.
       VkOffset3D lockOffset;
       VkExtent3D lockExtent;
 
@@ -4711,7 +4711,7 @@ namespace dxvk {
     // If we are not locking the entire image
     // a partial discard is meant to occur.
     // We can't really implement that, so just ignore discard
-    // if we are not locking the full resource
+    // if we are not locking the full resource.
 
     // DISCARD is also ignored for MANAGED and SYSTEMEM.
     // DISCARD is not ignored for non-DYNAMIC unlike what the docs say.
@@ -4722,22 +4722,17 @@ namespace dxvk {
     if (desc.Usage & D3DUSAGE_WRITEONLY)
       Flags &= ~D3DLOCK_READONLY;
 
-    const bool readOnly = Flags & D3DLOCK_READONLY;
-    pResource->SetReadOnlyLocked(Subresource, readOnly);
-
-    bool renderable = desc.Usage & (D3DUSAGE_RENDERTARGET | D3DUSAGE_DEPTHSTENCIL);
-
     // If we recently wrote to the texture on the gpu,
     // then we need to copy -> buffer
     // We are also always dirty if we are a render target,
     // a depth stencil, or auto generate mipmaps.
+    bool renderable = desc.Usage & (D3DUSAGE_RENDERTARGET | D3DUSAGE_DEPTHSTENCIL);
     bool needsReadback = pResource->NeedsReadback(Subresource) || renderable;
 
     // Skip readback if we discard is specified. We can only do this for textures that have an associated Vulkan image.
     // Any other texture might write to the Vulkan staging buffer directly. (GetBackbufferData for example)
     needsReadback &= pResource->GetImage() != nullptr || !(Flags & D3DLOCK_DISCARD);
     pResource->SetNeedsReadback(Subresource, false);
-
 
     if (unlikely(pResource->GetMapMode() == D3D9_COMMON_TEXTURE_MAP_MODE_BACKED || needsReadback)) {
       // Create mapping buffer if it doesn't exist yet. (POOL_DEFAULT)
@@ -4748,6 +4743,10 @@ namespace dxvk {
     void* mapPtr = pResource->GetData(Subresource);
 
     if (unlikely(needsReadback)) {
+      // The texture was written to on the GPU.
+      // This can be either the image (for D3DPOOL_DEFAULT)
+      // or the buffer directly (for D3DPOOL_SYSTEMMEM).
+
       DxvkBufferSlice mappedBufferSlice = pResource->GetBufferSlice(Subresource);
       const Rc<DxvkBuffer> mappedBuffer = pResource->GetBuffer();
 
@@ -4774,6 +4773,9 @@ namespace dxvk {
         // lock MSAA render targets even though
         // that's entirely illegal and they explicitly
         // tell us that they do NOT want to lock them...
+        //
+        // resourceImage is null because the image reference was moved to mappedImage
+        // for images that need to be resolved.
         if (resourceImage != nullptr) {
           EmitCs([
             cMainImage    = resourceImage,
@@ -4801,6 +4803,8 @@ namespace dxvk {
           });
         }
 
+        // if packedFormat is VK_FORMAT_UNDEFINED
+        // DxvkContext::copyImageToBuffer will automatically take the format from the image
         VkFormat packedFormat = GetPackedDepthStencilFormat(desc.Format);
 
         EmitCs([
@@ -4818,6 +4822,7 @@ namespace dxvk {
         TrackTextureMappingBufferSequenceNumber(pResource, Subresource);
       }
 
+      // Wait until the buffer is idle which may include the copy (and resolve) we just issued.
       if (!WaitForResource(*mappedBuffer, pResource->GetMappingBufferSequenceNumber(Subresource), Flags))
         return D3DERR_WASSTILLDRAWING;
     }
@@ -4825,7 +4830,8 @@ namespace dxvk {
     const bool atiHack = desc.Format == D3D9Format::ATI1 || desc.Format == D3D9Format::ATI2;
     // Set up map pointer.
     if (atiHack) {
-      // We need to lie here. The game is expected to use this info and do a workaround.
+      // The API didn't treat this as a block compressed format here.
+      // So we need to lie here. The game is expected to use this info and do a workaround.
       // It's stupid. I know.
       pLockedBox->RowPitch   = align(std::max(desc.Width >> MipLevel, 1u), 4);
       pLockedBox->SlicePitch = pLockedBox->RowPitch * std::max(desc.Height >> MipLevel, 1u);
@@ -4844,8 +4850,10 @@ namespace dxvk {
 
     pResource->SetLocked(Subresource, true);
 
+    // Make sure the amount of mapped texture memory stays below the threshold.
     UnmapTextures();
 
+    const bool readOnly = Flags & D3DLOCK_READONLY;
     const bool noDirtyUpdate = Flags & D3DLOCK_NO_DIRTY_UPDATE;
     if ((desc.Pool == D3DPOOL_DEFAULT || !noDirtyUpdate) && !readOnly) {
       if (pBox && MipLevel != 0) {
@@ -4863,6 +4871,7 @@ namespace dxvk {
     }
 
     if (IsPoolManaged(desc.Pool) && !readOnly) {
+      // Managed textures are uploaded at draw time.
       pResource->SetNeedsUpload(Subresource, true);
 
       for (uint32_t i : bit::BitMask(m_activeTextures)) {
@@ -4945,6 +4954,7 @@ namespace dxvk {
 
     const D3DBOX& box = pResource->GetDirtyBox(subresource.arrayLayer);
 
+    // The dirty box is only tracked for mip 0. Scale it for the mip level we're gonna upload.
     VkExtent3D mip0Extent = { box.Right - box.Left, box.Bottom - box.Top, box.Back - box.Front };
     VkExtent3D extent = util::computeMipLevelExtent(mip0Extent, subresource.mipLevel);
     VkOffset3D mip0Offset = { int32_t(box.Left), int32_t(box.Top), int32_t(box.Front) };
@@ -4966,6 +4976,8 @@ namespace dxvk {
     VkOffset3D SrcOffset,
     VkExtent3D SrcExtent,
     VkOffset3D DestOffset) {
+    // Wait until the amount of used staging memory is under a certain threshold to avoid using
+    // too much memory and even more so to avoid using too much address space.
     WaitStagingBuffer();
 
     const Rc<DxvkImage> image = pDestTexture->GetImage();
@@ -4996,6 +5008,9 @@ namespace dxvk {
     }
 
     if (likely(convertFormat.FormatType == D3D9ConversionFormat_None)) {
+      // The texture does not use a format that needs to be converted in a compute shader.
+      // So we just need to make sure the passed size and offset are not out of range and properly aligned,
+      // copy the data to a staging buffer and then copy that on the GPU to the actual image.
       VkOffset3D alignedDestOffset = {
         int32_t(alignDown(DestOffset.x, formatInfo->blockSize.width)),
         int32_t(alignDown(DestOffset.y, formatInfo->blockSize.height)),
@@ -5022,6 +5037,8 @@ namespace dxvk {
           + srcOffsetBlockCount.y * pitch
           + srcOffsetBlockCount.x * formatInfo->elementSize;
 
+      // Get the mapping pointer from MapTexture to map the texture and keep track of that
+      // in case it is unmappable.
       const void* mapPtr = MapTexture(pSrcTexture, SrcSubresource);
       VkDeviceSize dirtySize = extentBlockCount.width * extentBlockCount.height * extentBlockCount.depth * formatInfo->elementSize;
       D3D9BufferSlice slice = AllocStagingBuffer(dirtySize);
@@ -5050,8 +5067,10 @@ namespace dxvk {
       TrackTextureMappingBufferSequenceNumber(pSrcTexture, SrcSubresource);
     }
     else {
+      // The texture uses a format which gets converted by a compute shader.
       const void* mapPtr = MapTexture(pSrcTexture, SrcSubresource);
 
+      // The compute shader does not support only converting a subrect of the texture
       if (unlikely(SrcOffset.x != 0 || SrcOffset.y != 0 || SrcOffset.z != 0
         || DestOffset.x != 0 || DestOffset.y != 0 || DestOffset.z != 0
         || SrcExtent != srcTexLevelExtent)) {
@@ -5178,14 +5197,17 @@ namespace dxvk {
     const bool directMapping = pResource->GetMapMode() == D3D9_COMMON_BUFFER_MAP_MODE_DIRECT;
     const bool needsReadback = pResource->NeedsReadback();
 
-    Rc<DxvkBuffer> mappingBuffer = pResource->GetBuffer<D3D9_COMMON_BUFFER_TYPE_MAPPING>();
-
     uint8_t* data = nullptr;
 
     if ((Flags & D3DLOCK_DISCARD) && (directMapping || needsReadback)) {
+      // If we're not directly mapped and don't need readback,
+      // the buffer is not currently getting used anyway
+      // so there's no reason to waste memory by discarding.
+
       // Allocate a new backing slice for the buffer and set
       // it as the 'new' mapped slice. This assumes that the
       // only way to invalidate a buffer is by mapping it.
+      Rc<DxvkBuffer> mappingBuffer = pResource->GetBuffer<D3D9_COMMON_BUFFER_TYPE_MAPPING>();
       auto bufferSlice = pResource->DiscardMapSlice();
       data = reinterpret_cast<uint8_t*>(bufferSlice->mapPtr());
 
@@ -5199,17 +5221,21 @@ namespace dxvk {
       pResource->SetNeedsReadback(false);
     }
     else {
+      // The application either didn't specify DISCARD or the buffer is guaranteed to be idle anyway.
+
       // Use map pointer from previous map operation. This
       // way we don't have to synchronize with the CS thread
       // if the map mode is D3DLOCK_NOOVERWRITE.
       data = reinterpret_cast<uint8_t*>(pResource->GetMappedSlice()->mapPtr());
 
-      const bool needsReadback = pResource->NeedsReadback();
       const bool readOnly = Flags & D3DLOCK_READONLY;
       // NOOVERWRITE promises that they will not write in a currently used area.
       const bool noOverwrite = Flags & D3DLOCK_NOOVERWRITE;
       const bool directMapping = pResource->GetMapMode() == D3D9_COMMON_BUFFER_MAP_MODE_DIRECT;
+
+      // If we're not directly mapped, we can rely on needsReadback to tell us if a sync is required.
       const bool skipWait = (!needsReadback && (readOnly || !directMapping)) || noOverwrite;
+
       if (!skipWait) {
         const Rc<DxvkBuffer> mappingBuffer = pResource->GetBuffer<D3D9_COMMON_BUFFER_TYPE_MAPPING>();
         if (!WaitForResource(*mappingBuffer, pResource->GetMappingBufferSequenceNumber(), Flags))
@@ -5221,7 +5247,6 @@ namespace dxvk {
 
     // The offset/size is not clamped to or affected by the desc size.
     data += OffsetToLock;
-
     *ppbData = reinterpret_cast<void*>(data);
 
     DWORD oldFlags = pResource->GetMapFlags();
@@ -5234,13 +5259,18 @@ namespace dxvk {
     pResource->SetMapFlags(Flags | oldFlags);
     pResource->IncrementLockCount();
 
+    // We just mapped a buffer which may have come with an address space cost.
+    // Unmap textures if the amount of mapped texture memory is exceeding the threshold.
     UnmapTextures();
+
     return D3D_OK;
   }
 
 
   HRESULT D3D9DeviceEx::FlushBuffer(
         D3D9CommonBuffer*       pResource) {
+    // Wait until the amount of used staging memory is under a certain threshold to avoid using
+    // too much memory and even more so to avoid using too much address space.
     WaitStagingBuffer();
 
     auto dstBuffer = pResource->GetBufferSlice<D3D9_COMMON_BUFFER_TYPE_REAL>();
@@ -5282,14 +5312,19 @@ namespace dxvk {
     if (pResource->DecrementLockCount() != 0)
       return D3D_OK;
 
+    // Nothing else to do for directly mapped buffers. Those were already written.
     if (pResource->GetMapMode() != D3D9_COMMON_BUFFER_MAP_MODE_BUFFER)
       return D3D_OK;
 
+    // There is no part of the buffer that hasn't been uploaded yet.
+    // This shouldn't happen.
     if (pResource->DirtyRange().IsDegenerate())
       return D3D_OK;
 
     pResource->SetMapFlags(0);
 
+    // Only D3DPOOL_DEFAULT buffers get uploaded in UnlockBuffer.
+    // D3DPOOL_SYSTEMMEM and D3DPOOL_MANAGED get uploaded at draw time.
     if (pResource->Desc()->Pool != D3DPOOL_DEFAULT)
       return D3D_OK;
 

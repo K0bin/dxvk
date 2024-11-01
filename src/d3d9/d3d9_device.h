@@ -1343,9 +1343,12 @@ namespace dxvk {
       D3D9CommonTexture* pResource,
       UINT Subresource);
 
-    void UnmapTextures();
-
     uint64_t GetCurrentSequenceNumber();
+
+    /**
+     * \brief Will unmap the least recently used textures if the amount of mapped texture memory exceeds a threshold.
+     */
+    void UnmapTextures();
 
     /**
      * \brief Get the swapchain that was used the most recently for presenting
