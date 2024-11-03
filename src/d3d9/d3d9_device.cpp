@@ -5264,55 +5264,83 @@ namespace dxvk {
       }
     }
 
-    const bool directMapping = pResource->GetMapMode() == D3D9_COMMON_BUFFER_MAP_MODE_DIRECT;
-    const bool needsReadback = pResource->NeedsReadback();
+    uint32_t doFlags;
+    constexpr uint32_t DoInvalidate = (1u << 0);
+    constexpr uint32_t DoPreserve   = (1u << 1);
+    constexpr uint32_t DoWait       = (1u << 2);
 
-    uint8_t* data = nullptr;
+    const uint32_t bufferSize = pResource->Desc()->Size;
+    const bool directMapping  = pResource->GetMapMode() == D3D9_COMMON_BUFFER_MAP_MODE_DIRECT;
+    const bool needsReadback  = pResource->NeedsReadback();
+    const bool readOnly    = Flags & D3DLOCK_READONLY;
+    const bool noOverwrite = Flags & D3DLOCK_NOOVERWRITE;
+    const bool discard     = Flags & D3DLOCK_DISCARD;
 
-    if ((Flags & D3DLOCK_DISCARD) && (directMapping || needsReadback)) {
-      // If we're not directly mapped and don't need readback,
-      // the buffer is not currently getting used anyway
-      // so there's no reason to waste memory by discarding.
+    auto mappedSlice = pResource->GetMappedSlice();
+    Rc<DxvkBuffer> mappingBuffer = pResource->GetBuffer<D3D9_COMMON_BUFFER_TYPE_MAPPING>();
+    uint8_t* data = reinterpret_cast<uint8_t*>(mappedSlice->mapPtr());
 
-      // Allocate a new backing slice for the buffer and set
-      // it as the 'new' mapped slice. This assumes that the
-      // only way to invalidate a buffer is by mapping it.
-      Rc<DxvkBuffer> mappingBuffer = pResource->GetBuffer<D3D9_COMMON_BUFFER_TYPE_MAPPING>();
-      auto bufferSlice = pResource->DiscardMapSlice();
-      data = reinterpret_cast<uint8_t*>(bufferSlice->mapPtr());
+    if (unlikely(discard && (directMapping || needsReadback))) {
+      // Non-directly mapped buffers go through the staging buffer upload path.
+      // So the only time the buffer can ever be in use on the GPU is through ProcessVertices
+      // and needsReadback tracks that.
+      // If the game passes D3DLOCK_DISCARD, there's no reason for us to waste memory and address space
+      // if we can guarantee that the buffer is not in use on the GPU anyway.
+
+      doFlags = DoInvalidate;
+    } else if (unlikely(!noOverwrite && !readOnly && !discard && directMapping)) {
+      // If the application does not pass any flags that would allow us to skip synchronization
+      // and the buffer is both directly mapped and in cached memory, we can just copy the contents
+      // to a new slice on the CPU to avoid a GPU sync.
+
+      SynchronizeCsThread(DxvkCsThread::SynchronizeAll);
+
+      bool hasWoAccess = mappingBuffer->isInUse(DxvkAccess::Write);
+      bool hasRwAccess = mappingBuffer->isInUse(DxvkAccess::Read);
+
+      // Uncached reads can be so slow that a GPU sync may actually be faster
+      if (hasRwAccess && !hasWoAccess && (mappingBuffer->memFlags() & VK_MEMORY_PROPERTY_HOST_CACHED_BIT)) {
+        doFlags = DoInvalidate | DoPreserve;
+      } else {
+        doFlags = DoWait;
+      }
+    } else {
+      // Not directly mapped buffers never need to be synchronized unless they were written through ProcessVertices
+      // and for directly mapped buffers we can skip synchronization if the application makes us specific guarantees.
+      if (likely((!needsReadback && (readOnly || !directMapping)) || noOverwrite)) {
+        // If we're not directly mapped, we can rely on needsReadback to tell us if a sync is required.
+        doFlags = 0;
+      } else {
+        doFlags = DoWait;
+      }
+    }
+
+    if (doFlags & DoInvalidate) {
+      auto srcSlice = mappedSlice;
+      mappedSlice   = pResource->DiscardMapSlice();
+
+      const uint8_t* srcPtr = data;
+      data = reinterpret_cast<uint8_t*>(mappedSlice->mapPtr());
 
       EmitCs([
         cBuffer      = std::move(mappingBuffer),
-        cBufferSlice = std::move(bufferSlice)
+        cBufferSlice = std::move(mappedSlice)
       ] (DxvkContext* ctx) mutable {
         ctx->invalidateBuffer(cBuffer, std::move(cBufferSlice));
       });
 
+      if (doFlags & DoPreserve) {
+        std::memcpy(data, srcPtr, bufferSize);
+      }
+
       pResource->SetNeedsReadback(false);
     }
-    else {
-      // The application either didn't specify DISCARD or the buffer is guaranteed to be idle anyway.
 
-      // Use map pointer from previous map operation. This
-      // way we don't have to synchronize with the CS thread
-      // if the map mode is D3DLOCK_NOOVERWRITE.
-      data = reinterpret_cast<uint8_t*>(pResource->GetMappedSlice()->mapPtr());
+    if (unlikely(doFlags & DoWait)) {
+      if (!WaitForResource(*mappingBuffer, pResource->GetMappingBufferSequenceNumber(), Flags))
+        return D3DERR_WASSTILLDRAWING;
 
-      const bool readOnly = Flags & D3DLOCK_READONLY;
-      // NOOVERWRITE promises that they will not write in a currently used area.
-      const bool noOverwrite = Flags & D3DLOCK_NOOVERWRITE;
-      const bool directMapping = pResource->GetMapMode() == D3D9_COMMON_BUFFER_MAP_MODE_DIRECT;
-
-      // If we're not directly mapped, we can rely on needsReadback to tell us if a sync is required.
-      const bool skipWait = (!needsReadback && (readOnly || !directMapping)) || noOverwrite;
-
-      if (!skipWait) {
-        const Rc<DxvkBuffer> mappingBuffer = pResource->GetBuffer<D3D9_COMMON_BUFFER_TYPE_MAPPING>();
-        if (!WaitForResource(*mappingBuffer, pResource->GetMappingBufferSequenceNumber(), Flags))
-          return D3DERR_WASSTILLDRAWING;
-
-        pResource->SetNeedsReadback(false);
-      }
+      pResource->SetNeedsReadback(false);
     }
 
     // The offset/size is not clamped to or affected by the desc size.
