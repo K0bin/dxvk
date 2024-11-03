@@ -4597,7 +4597,8 @@ namespace dxvk {
     // that staging buffer memory gets recycled relatively soon.
     constexpr VkDeviceSize MaxStagingMemoryPerSubmission = MaxStagingMemoryInFlight / 3u;
 
-    VkDeviceSize stagingBufferAllocated = m_stagingBuffer.getStatistics().allocatedTotal;
+    DxvkStagingBufferStats stats = GetStagingMemoryStatistics();
+    VkDeviceSize stagingBufferAllocated = stats.allocatedTotal;
 
     if (stagingBufferAllocated > m_stagingMemorySignaled + MaxStagingMemoryPerSubmission) {
       // Perform submission. If the amount of staging memory allocated since the
@@ -4613,6 +4614,25 @@ namespace dxvk {
     // Wait for staging memory to get recycled.
     if (stagingBufferAllocated > MaxStagingMemoryInFlight)
       m_dxvkDevice->waitForFence(*m_stagingBufferFence, stagingBufferAllocated - MaxStagingMemoryInFlight);
+  }
+
+  void D3D9DeviceEx::ThrottleDiscard(
+          VkDeviceSize       Size) {
+    constexpr VkDeviceSize MaxDiscardMemoryInFlight = env::is32BitHostPlatform()
+      ? (1ull << 20)
+      : (4ull << 20);
+
+    m_discardMemoryCounter += Size;
+
+    if (m_discardMemoryCounter - m_discardMemoryOnFlush >= MaxDiscardMemoryInFlight)
+      WaitStagingBuffer();
+  }
+
+  DxvkStagingBufferStats D3D9DeviceEx::GetStagingMemoryStatistics() {
+    DxvkStagingBufferStats stats = m_stagingBuffer.getStatistics();
+    stats.allocatedTotal += m_discardMemoryCounter;
+    stats.allocatedSinceLastReset += m_discardMemoryCounter - m_discardMemoryOnFlush;
+    return stats;
   }
 
 
@@ -5334,6 +5354,11 @@ namespace dxvk {
       }
 
       pResource->SetNeedsReadback(false);
+
+      // Ignore small buffers here. These are often updated per
+      // draw and won't contribute much to memory waste anyway.
+      if (unlikely(bufferSize > DxvkPageAllocator::PageSize))
+        ThrottleDiscard(bufferSize);
     }
 
     if (unlikely(doFlags & DoWait)) {
@@ -6029,7 +6054,7 @@ namespace dxvk {
       m_submitStatus.result = VK_NOT_READY;
 
     // Update signaled staging buffer counter and signal the fence
-    m_stagingMemorySignaled = m_stagingBuffer.getStatistics().allocatedTotal;
+    m_stagingMemorySignaled = GetStagingMemoryStatistics().allocatedTotal;
 
     // Add commands to flush the threaded
     // context, then flush the command list
@@ -6060,6 +6085,9 @@ namespace dxvk {
     // Notify the device that the context has been flushed,
     // this resets some resource initialization heuristics.
     m_initializer->NotifyContextFlush();
+
+    // Reset counter for discarded memory in flight
+    m_discardMemoryOnFlush = m_discardMemoryCounter;
   }
 
 

@@ -1161,6 +1161,18 @@ namespace dxvk {
     void WaitStagingBuffer();
 
     /**
+     * \brief Returns the staging memory statistics
+     * The numbers also include other temporary memory allocation types.
+     */
+    DxvkStagingBufferStats GetStagingMemoryStatistics();
+
+    /**
+     * \brief Throttle the device to reduce the amount of memory that gets allocated for buffer discards
+     */
+    void ThrottleDiscard(
+            VkDeviceSize                Size);
+
+    /**
      * \brief Returns whether the device is currently recording a StateBlock
      */
     inline bool ShouldRecord();
@@ -1432,6 +1444,9 @@ namespace dxvk {
     DxvkStagingBuffer               m_stagingBuffer;
     Rc<sync::Fence>                 m_stagingBufferFence;
     VkDeviceSize                    m_stagingMemorySignaled = 0ull;
+
+    VkDeviceSize                    m_discardMemoryCounter = 0u;
+    VkDeviceSize                    m_discardMemoryOnFlush = 0u;
 
     D3D9Cursor                      m_cursor;
 
