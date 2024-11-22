@@ -3683,6 +3683,49 @@ void DxsoCompiler::emitControlFlowGenericLoop(
 }
 
 
+void DxsoCompiler::emitSrgbConversion() {
+  uint32_t specConstVal = m_spec.get(m_module, m_specUbo, SpecSrgb, 0, 1);
+  uint32_t doSrgb = m_module.opIEqual(m_module.defBoolType(), specConstVal, m_module.constu32(1u));
+  const std::array<uint32_t, 4> repeatSrgb = { doSrgb, doSrgb, doSrgb, doSrgb };
+  uint32_t doSrgbVec = m_module.opCompositeConstruct(m_module.defVectorType(m_module.defBoolType(), m_ps.oColor[0].type.ccount), m_ps.oColor[0].type.ccount, repeatSrgb.data());
+
+  for (uint32_t i = 0; i < caps::MaxSimultaneousRenderTargets; i++) {
+    if (m_ps.oColor[i].id == 0)
+      // Shader doesn't write RT i
+      continue;
+
+    const auto& rtReg = m_ps.oColor[i];
+    const auto rtRegType = getVectorTypeId(rtReg.type);
+    uint32_t linearVal = m_module.opLoad(getVectorTypeId(rtReg.type), rtReg.id);
+
+    uint32_t floatTypeId = this->getScalarTypeId(DxsoScalarType::Float32);
+    uint32_t vec3fTypeId = m_module.defVectorType(floatTypeId, 3);
+    const std::array<uint32_t, 3> indices = { 0, 1, 2 };
+    uint32_t linearVec3 = m_module.opVectorShuffle(vec3fTypeId, linearVal, linearVal, 3, indices.data());
+
+    uint32_t boolTypeId = this->getScalarTypeId(DxsoScalarType::Bool);
+    uint32_t vec3bTypeId = m_module.defVectorType(boolTypeId, 3);
+    const uint32_t lo = m_module.constvec3f32(0.0031308f, 0.0031308f, 0.0031308f);
+    uint32_t isLo = m_module.opFOrdLessThanEqual(vec3bTypeId, linearVec3, lo);
+
+    uint32_t factorConstId = m_module.constvec3f32(12.92f, 12.92f, 12.92f);
+    uint32_t loPart = m_module.opFMul(vec3fTypeId, linearVec3, factorConstId);
+
+    uint32_t hiPart = m_module.opPow(vec3fTypeId, linearVec3, m_module.constvec3f32(5.0f / 12.0f, 5.0f / 12.0f, 5.0f / 12.0f));
+    hiPart = m_module.opFMul(vec3fTypeId, hiPart, m_module.constvec3f32(1.055f, 1.055f, 1.055f));
+    hiPart = m_module.opFSub(vec3fTypeId, hiPart, m_module.constvec3f32(0.055f, 0.055f, 0.055f));
+
+    uint32_t srgbVec3 = m_module.opSelect(vec3fTypeId, isLo, loPart, hiPart);
+    const std::array<uint32_t, 4> finalVec4Indices = {0, 1, 2, 3};
+    uint32_t srgbVec4 = m_module.opVectorShuffle(rtRegType, srgbVec3, linearVal, 4, finalVec4Indices.data());
+
+    uint32_t finalRTOutput = m_module.opSelect(rtRegType, doSrgbVec, srgbVec4, linearVal);
+
+    m_module.opStore(rtReg.id, finalRTOutput);
+  }
+}
+
+
   void DxsoCompiler::emitVsFinalize() {
     this->emitMainFunctionBegin();
 
@@ -3762,6 +3805,7 @@ void DxsoCompiler::emitControlFlowGenericLoop(
 
     this->emitPsProcessing();
     this->emitOutputDepthClamp();
+    this->emitSrgbConversion();
     this->emitFunctionEnd();
   }
 
