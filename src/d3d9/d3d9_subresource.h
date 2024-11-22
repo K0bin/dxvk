@@ -82,7 +82,7 @@ namespace dxvk {
       if (unlikely(!view && !IsNull())) {
         // The backend will ignore the view layout anyway for images
         // that have GENERAL (or FEEDBACK_LOOP) as their layout.
-        // Because of that, we don't need to pay special attention here
+        // Because of that, we don't need to pay special attention heres
         // to whether the image was transitioned because of a feedback loop.
         view = m_texture->CreateView(m_face, m_mipLevel,
           VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
