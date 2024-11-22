@@ -4,6 +4,8 @@
 #include "d3d9_util.h"
 #include "d3d9_spec_constants.h"
 
+#include "../dxso/dxso_srgb.h"
+
 #include "../dxvk/dxvk_hash.h"
 
 #include "../spirv/spirv_module.h"
@@ -2193,6 +2195,11 @@ namespace dxvk {
     m_module.opStore(m_ps.out.COLOR, current);
 
     alphaTestPS();
+
+    const std::array<uint32_t, caps::MaxSimultaneousRenderTargets> rtIds = {
+      m_ps.out.COLOR, 0, 0, 0
+    };
+    dxvk::emitSrgbConversion(m_module, m_spec, m_specUbo, rtIds);
   }
 
   void D3D9FFShaderCompiler::setupPS() {
