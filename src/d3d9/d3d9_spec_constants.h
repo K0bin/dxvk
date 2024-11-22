@@ -30,6 +30,8 @@ namespace dxvk {
     SpecDrefClamp,          // 1 bit for 16 PS samplers       | Bits: 16
     SpecFetch4,             // 1 bit for 16 PS samplers       | Bits: 16
 
+    SpecSrgb,               // 1 bit for 4 render targets     | Bits: 4
+
     SpecConstantCount,
   };
 
@@ -44,7 +46,7 @@ namespace dxvk {
   };
 
   struct D3D9SpecializationInfo {
-    static constexpr uint32_t MaxSpecDwords = 5;
+    static constexpr uint32_t MaxSpecDwords = 6;
 
     static constexpr std::array<BitfieldPosition, SpecConstantCount> Layout{{
       { 0, 0, 32 },  // SamplerType
@@ -65,6 +67,8 @@ namespace dxvk {
 
       { 4, 0,  16 }, // DrefClamp
       { 4, 16, 16 }, // Fetch4
+
+      { 5, 0, 4 },   // SRGB
     }};
 
     template <D3D9SpecConstantId Id, typename T>

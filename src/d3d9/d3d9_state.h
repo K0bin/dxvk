@@ -60,6 +60,8 @@ namespace dxvk {
     PointScaleB,
     PointScaleC,
 
+    Srgb
+
     Count
   };
 
