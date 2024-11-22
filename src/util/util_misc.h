@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cmath>
+
 #include <d3d9types.h>
 
 namespace dxvk {
@@ -10,6 +12,16 @@ namespace dxvk {
     rgba[0] = (float)((color & 0x00ff0000) >> 16) / 255.0f;
     rgba[1] = (float)((color & 0x0000ff00) >> 8)  / 255.0f;
     rgba[2] = (float)((color & 0x000000ff))       / 255.0f;
+  }
+
+  inline void DecodeD3DCOLORAsSRGB(D3DCOLOR Linear, float* rgba) {
+    float colorLinear[4];
+    DecodeD3DCOLOR(Linear, colorLinear);
+
+    rgba[0] = colorLinear[0] < 0.0031308f ? colorLinear[0] * 12.92f : std::pow(colorLinear[0], 5.0f / 12.0f) * 1.055f - 0.055f;
+    rgba[1] = colorLinear[1] < 0.0031308f ? colorLinear[1] * 12.92f : std::pow(colorLinear[1], 5.0f / 12.0f) * 1.055f - 0.055f;
+    rgba[2] = colorLinear[2] < 0.0031308f ? colorLinear[2] * 12.92f : std::pow(colorLinear[2], 5.0f / 12.0f) * 1.055f - 0.055f;
+    rgba[3] = colorLinear[3] < 0.0031308f ? colorLinear[3] * 12.92f : std::pow(colorLinear[3], 5.0f / 12.0f) * 1.055f - 0.055f;
   }
 
   /**

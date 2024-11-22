@@ -1613,6 +1613,18 @@ namespace dxvk {
         : FixedFunctionMask;
     }
 
+    void UpdateRenderTargetSRGB() {
+      bool srgb = !!m_state.renderStates[D3DRS_SRGBWRITEENABLE];
+      bool blending = !!m_state.renderStates[D3DRS_ALPHABLENDENABLE];
+      bool oldSrgbRTs = m_srgbRTs;
+      m_srgbRTs = srgb && blending;
+      if (m_srgbRTs != oldSrgbRTs) {
+        m_specInfo.set<SpecSrgb>(srgb && !m_srgbRTs);
+        m_flags.set(D3D9DeviceFlag::DirtySpecializationEntries);
+        m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
+      }
+    }
+
     GpuFlushType GetMaxFlushType() const;
 
     Com<D3D9InterfaceEx>            m_parent;
@@ -1704,6 +1716,11 @@ namespace dxvk {
 
     DxvkDepthBiasRepresentation     m_depthBiasRepresentation = { VK_DEPTH_BIAS_REPRESENTATION_LEAST_REPRESENTABLE_VALUE_FORMAT_EXT, false };
     float                           m_depthBiasScale  = 0.0f;
+
+    /**
+     * \brief Whether we use SRGB views for render targets.
+     */
+    bool                            m_srgbRTs = false;
 
     uint32_t                        m_robustSSBOAlignment     = 1;
     uint32_t                        m_robustUBOAlignment      = 1;
