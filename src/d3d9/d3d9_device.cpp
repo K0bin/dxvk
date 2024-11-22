@@ -1670,6 +1670,9 @@ namespace dxvk {
     if (m_state.renderTargets[RenderTargetIndex] == rt)
       return D3D_OK;
 
+    // Reset back to spec constant srgb if possible because we'll need to end the render pass anyway
+    UpdateRenderTargetSRGB();
+
     // Do a strong flush if the first render target is changed.
     ConsiderFlush(RenderTargetIndex == 0
       ? GpuFlushType::ImplicitStrongHint
@@ -1759,6 +1762,9 @@ namespace dxvk {
 
     if (m_state.depthStencil == ds)
       return D3D_OK;
+
+    // Reset back to spec constant srgb if possible because we'll need to end the render pass anyway
+    UpdateRenderTargetSRGB();
 
     ConsiderFlush(GpuFlushType::ImplicitWeakHint);
     m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
@@ -1896,7 +1902,11 @@ namespace dxvk {
     clearValueDepth.depthStencil.stencil = Stencil;
 
     VkClearValue clearValueColor;
-    DecodeD3DCOLOR(Color, clearValueColor.color.float32);
+    if (srgb && !m_srgbRTs) {
+      DecodeD3DCOLORAsSRGB(Color, clearValueColor.color.float32);
+    } else {
+      DecodeD3DCOLOR(Color, clearValueColor.color.float32);
+    }
 
     VkImageAspectFlags depthAspectMask = 0;
     if (m_state.depthStencil != nullptr) {
@@ -1970,7 +1980,7 @@ namespace dxvk {
           if (!HasRenderTargetBound(rt))
             continue;
           const auto& rts = m_state.renderTargets[rt];
-          const auto& rtv = rts->GetRenderTargetView(srgb);
+          const auto& rtv = rts->GetRenderTargetView(srgb && m_srgbRTs);
 
           if (likely(rtv != nullptr)) {
             ClearImageView(alignment, offset, extent, rtv, VK_IMAGE_ASPECT_COLOR_BIT, clearValueColor);
@@ -2275,8 +2285,18 @@ namespace dxvk {
       states[State] = Value;
 
       switch (State) {
+        case D3DRS_ALPHABLENDENABLE: {
+          bool srgb = m_state.renderStates[D3DRS_SRGBWRITEENABLE];
+          if (!!Value && srgb) {
+            m_srgbRTs = true;
+            m_specInfo.set<SpecSrgb>(srgb && !m_srgbRTs);
+            m_flags.set(D3D9DeviceFlag::DirtySpecializationEntries);
+            m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
+          }
+          m_flags.set(D3D9DeviceFlag::DirtyBlendState);
+        } break;
+
         case D3DRS_SEPARATEALPHABLENDENABLE:
-        case D3DRS_ALPHABLENDENABLE:
         case D3DRS_BLENDOP:
         case D3DRS_BLENDOPALPHA:
         case D3DRS_DESTBLEND:
@@ -2373,9 +2393,15 @@ namespace dxvk {
           m_flags.set(D3D9DeviceFlag::DirtyViewportScissor);
           break;
 
-        case D3DRS_SRGBWRITEENABLE:
-          m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
-          break;
+        case D3DRS_SRGBWRITEENABLE: {
+          bool blendingEnabled = m_state.renderStates[D3DRS_ALPHABLENDENABLE];
+          if (!!Value && blendingEnabled) {
+            m_srgbRTs = true;
+            m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
+          }
+          m_specInfo.set<SpecSrgb>(!!Value && !m_srgbRTs);
+          m_flags.set(D3D9DeviceFlag::DirtySpecializationEntries);
+        } break;
 
         case D3DRS_DEPTHBIAS:
         case D3DRS_SLOPESCALEDEPTHBIAS:
@@ -6673,8 +6699,6 @@ namespace dxvk {
 
     DxvkRenderTargets attachments;
 
-    bool srgb = m_state.renderStates[D3DRS_SRGBWRITEENABLE];
-
     // Some games break if render targets that get disabled using the color write mask
     // end up shrinking the render area. So we don't bind those.
     // (This impacted Dead Space 1.)
@@ -6775,7 +6799,7 @@ namespace dxvk {
         && rtExtents[i].width >= renderArea.width
         && rtExtents[i].height >= renderArea.height
         && rtSampleCounts[i] == sampleCount)
-          attachments.color[i].view = m_state.renderTargets[i]->GetRenderTargetView(srgb);
+          attachments.color[i].view = m_state.renderTargets[i]->GetRenderTargetView(m_srgbRTs);
     }
 
     // Based on the render area and sample count of actively used render targets,
@@ -8651,6 +8675,8 @@ namespace dxvk {
 
     // Force this if we end up binding the same RT to make scissor change go into effect.
     BindViewportAndScissor();
+
+    UpdateRenderTargetSRGB();
 
     return D3D_OK;
   }
