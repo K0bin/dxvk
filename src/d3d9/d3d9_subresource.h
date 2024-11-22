@@ -88,15 +88,14 @@ namespace dxvk {
       return view;
     }
 
-    inline const Rc<DxvkImageView>& GetRenderTargetView(bool Srgb) {
-      Rc<DxvkImageView>& view = m_renderTargetView.Pick(Srgb);
+    inline const Rc<DxvkImageView>& GetRenderTargetView() {
+      Rc<DxvkImageView>& view = m_renderTargetView.Pick(false);
 
-      if (unlikely(!view && !IsNull())) {
+      if (unlikely(view == nullptr && !IsNull()))
         view = m_texture->CreateView(m_face, m_mipLevel,
           VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
           VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-          Srgb && m_isSrgbCompatible);
-      }
+          false);
 
       return view;
     }

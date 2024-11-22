@@ -1852,7 +1852,6 @@ namespace dxvk {
     const auto& vp = m_state.viewport;
     const auto& sc = m_state.scissorRect;
 
-    bool srgb      = m_state.renderStates[D3DRS_SRGBWRITEENABLE];
     bool scissor   = m_state.renderStates[D3DRS_SCISSORTESTENABLE];
 
     VkOffset3D offset = { int32_t(vp.X),    int32_t(vp.Y),      0  };
@@ -1956,7 +1955,7 @@ namespace dxvk {
           if (!HasRenderTargetBound(rt))
             continue;
           const auto& rts = m_state.renderTargets[rt];
-          const auto& rtv = rts->GetRenderTargetView(srgb);
+          const auto& rtv = rts->GetRenderTargetView();
 
           if (likely(rtv != nullptr)) {
             ClearImageView(alignment, offset, extent, rtv, VK_IMAGE_ASPECT_COLOR_BIT, clearValueColor);
@@ -2360,7 +2359,10 @@ namespace dxvk {
           break;
 
         case D3DRS_SRGBWRITEENABLE:
-          m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
+          if (likely(!old != !Value)) {
+            m_specInfo.set<SpecSrgb>(!!Value);
+            m_flags.set(D3D9DeviceFlag::DirtySpecializationEntries);
+          }
           break;
 
         case D3DRS_DEPTHBIAS:
@@ -6622,8 +6624,6 @@ namespace dxvk {
 
     DxvkRenderTargets attachments;
 
-    bool srgb = m_state.renderStates[D3DRS_SRGBWRITEENABLE];
-
     // D3D9 doesn't have the concept of a framebuffer object,
     // so we'll just create a new one every time the render
     // target bindings are updated. Set up the attachments.
@@ -6707,7 +6707,7 @@ namespace dxvk {
     // otherwise we might end up with unnecessary render pass spills
     boundMask &= (anyColorWriteMask | ~limitsRenderAreaMask);
     for (uint32_t i : bit::BitMask(boundMask))
-      attachments.color[i].view = m_state.renderTargets[i]->GetRenderTargetView(srgb);
+      attachments.color[i].view = m_state.renderTargets[i]->GetRenderTargetView();
 
     const bool depthWrite = m_state.renderStates[D3DRS_ZWRITEENABLE];
 
