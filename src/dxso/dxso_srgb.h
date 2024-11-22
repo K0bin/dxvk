@@ -6,7 +6,7 @@
 
 namespace dxvk {
 
-  void emitSrgbConversion(
+  static void emitSrgbConversion(
     SpirvModule& module,
     D3D9ShaderSpecConstantManager& spec,
     uint32_t specUbo,
