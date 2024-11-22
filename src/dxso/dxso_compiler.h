@@ -698,8 +698,6 @@ namespace dxvk {
     void emitVsFinalize();
     void emitPsFinalize();
 
-    void emitSrgbConversion();
-
     ///////////////////////////
     // Type definition methods
     uint32_t getScalarTypeId(
