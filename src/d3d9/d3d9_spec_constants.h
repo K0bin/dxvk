@@ -19,6 +19,7 @@ namespace dxvk {
     SpecVertexFogMode,      // Range: 0 -> 3                  | Bits: 2
     SpecPixelFogMode,       // Range: 0 -> 3                  | Bits: 2
     SpecFogEnabled,         // Range: 0 -> 1                  | Bits: 1
+    SpecSrgb,               // Range: 0 -> 1                  | Bits: 1
 
     SpecSamplerNull,        // 1 bit for 21 samplers          | Bits: 21
     SpecProjectionType,     // 1 bit for 6 PS 1.x samplers    | Bits: 6
@@ -60,6 +61,7 @@ namespace dxvk {
       { 1, 26, 2 },  // VertexFogMode
       { 1, 28, 2 },  // PixelFogMode
       { 1, 30, 1 },  // FogEnabled
+      { 1, 31, 1 },  // SRGB
 
       { 2, 0,  21 }, // SamplerNull
       { 2, 21, 6 },  // ProjectionType
