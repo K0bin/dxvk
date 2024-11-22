@@ -5215,6 +5215,8 @@ namespace dxvk {
 
     auto& desc = *pResource->Desc();
 
+    DWORD originalFlags = Flags;
+
     // Ignore DISCARD if NOOVERWRITE is set
     if (unlikely((Flags & (D3DLOCK_DISCARD | D3DLOCK_NOOVERWRITE)) == (D3DLOCK_DISCARD | D3DLOCK_NOOVERWRITE)))
       Flags &= ~D3DLOCK_DISCARD;
@@ -5274,12 +5276,64 @@ namespace dxvk {
       // the buffer is not currently getting used anyway
       // so there's no reason to waste memory by discarding.
 
-      // Allocate a new backing slice for the buffer and set
-      // it as the 'new' mapped slice. This assumes that the
-      // only way to invalidate a buffer is by mapping it.
-      Rc<DxvkBuffer> mappingBuffer = pResource->GetBuffer<D3D9_COMMON_BUFFER_TYPE_MAPPING>();
-      auto bufferSlice = pResource->DiscardMapSlice();
-      data = reinterpret_cast<uint8_t*>(bufferSlice->mapPtr());
+    if (unlikely(discard && (directMapping || needsReadback))) {
+      // Non-directly mapped buffers go through the staging buffer upload path.
+      // So the only time the buffer can ever be in use on the GPU is through ProcessVertices
+      // and needsReadback tracks that.
+      // If the game passes D3DLOCK_DISCARD, there's no reason for us to waste memory and address space
+      // if we can guarantee that the buffer is not in use on the GPU anyway.
+
+      doFlags = DoInvalidate;
+    } else if (unlikely(!noOverwrite && !readOnly && !discard && directMapping)) {
+      // If the application does not pass any flags that would allow us to skip synchronization
+      // and the buffer is both directly mapped and in cached memory, we can just copy the contents
+      // to a new slice on the CPU to avoid a GPU sync.
+
+      SynchronizeCsThread(DxvkCsThread::SynchronizeAll);
+
+      bool hasWoAccess = mappingBuffer->isInUse(DxvkAccess::Write);
+      bool hasRwAccess = mappingBuffer->isInUse(DxvkAccess::Read);
+
+      if (hasRwAccess && !hasWoAccess && !(mappingBuffer->memFlags() & VK_MEMORY_PROPERTY_HOST_CACHED_BIT)) {
+        Logger::warn("Would do invalidate preserve if it wasnt for write combined memory.");
+      }
+
+      // Uncached reads can be so slow that a GPU sync may actually be faster
+      if (hasRwAccess && !hasWoAccess && (mappingBuffer->memFlags() & VK_MEMORY_PROPERTY_HOST_CACHED_BIT)) {
+        Logger::warn("Doing invalidate preserve.");
+        doFlags = DoInvalidate | DoPreserve;
+      } else {
+        doFlags = DoWait;
+      }
+    } else {
+      // Not directly mapped buffers never need to be synchronized unless they were written through ProcessVertices
+      // and for directly mapped buffers we can skip synchronization if the application makes us specific guarantees.
+      if (likely((!needsReadback && (readOnly || !directMapping)) || noOverwrite)) {
+        // If we're not directly mapped, we can rely on needsReadback to tell us if a sync is required.
+        doFlags = 0;
+      } else {
+        doFlags = DoWait;
+      }
+    }
+
+    if (doFlags & DoInvalidate) {
+      m_discardMemoryCounter += bufferSize;
+
+      constexpr VkDeviceSize MaxDiscardMemoryPerSubmission = env::is32BitHostPlatform()
+        ? (2ull << 20)
+        : (8ull << 20);
+      if (unlikely(m_discardMemoryCounter - m_discardMemoryOnFlush >= MaxDiscardMemoryPerSubmission)) {
+        Logger::warn(str::format("Ran out of discard memory. ", m_discardMemoryCounter - m_discardMemoryOnFlush, " ", bufferSize, " originalFlags: ", originalFlags, " Pool: ", pResource->Desc()->Pool, " usage: ", pResource->Desc()->Usage));
+        //doFlags = DoWait;
+      }
+    }
+
+    if (doFlags & DoInvalidate) {
+      auto srcSlice = mappedSlice;
+      mappedSlice   = pResource->DiscardMapSlice();
+
+      const uint8_t* srcPtr = data;
+      data = reinterpret_cast<uint8_t*>(mappedSlice->mapPtr());
 
       EmitCs([
         cBuffer      = std::move(mappingBuffer),
