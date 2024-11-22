@@ -3641,6 +3641,11 @@ void DxsoCompiler::emitControlFlowGenericLoop(
 
 
 void DxsoCompiler::emitSrgbConversion() {
+  uint32_t specConstVal = m_spec.get(m_module, m_specUbo, SpecSrgb, 0, 1);
+  uint32_t doSrgb = m_module.opIEqual(m_module.defBoolType(), specConstVal, m_module.constu32(1u));
+  const std::array<uint32_t, 4> repeatSrgb = { doSrgb, doSrgb, doSrgb, doSrgb };
+  uint32_t doSrgbVec = m_module.opCompositeConstruct(m_module.defVectorType(m_module.defBoolType(), m_ps.oColor[0].type.ccount), m_ps.oColor[0].type.ccount, repeatSrgb.data());
+
   for (uint32_t i = 0; i < caps::MaxSimultaneousRenderTargets; i++) {
     if (m_ps.oColor[i].id == 0)
       // Shader doesn't write RT i
@@ -3671,10 +3676,6 @@ void DxsoCompiler::emitSrgbConversion() {
     const std::array<uint32_t, 4> finalVec4Indices = {0, 1, 2, 3};
     uint32_t srgbVec4 = m_module.opVectorShuffle(rtRegType, srgbVec3, linearVal, 4, finalVec4Indices.data());
 
-    uint32_t specConstVal = m_spec.get(m_module, m_specUbo, SpecSrgb, i, 1);
-    uint32_t doSrgb = m_module.opIEqual(m_module.defBoolType(), specConstVal, m_module.constu32(1u));
-    const std::array<uint32_t, 4> repeatSrgb = { doSrgb, doSrgb, doSrgb, doSrgb };
-    uint32_t doSrgbVec = m_module.opCompositeConstruct(m_module.defVectorType(m_module.defBoolType(), rtReg.type.ccount), rtReg.type.ccount, repeatSrgb.data());
     uint32_t finalRTOutput = m_module.opSelect(rtRegType, doSrgbVec, srgbVec4, linearVal);
 
     m_module.opStore(rtReg.id, finalRTOutput);

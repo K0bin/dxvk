@@ -19,6 +19,7 @@ namespace dxvk {
     SpecVertexFogMode,      // Range: 0 -> 3                  | Bits: 2
     SpecPixelFogMode,       // Range: 0 -> 3                  | Bits: 2
     SpecFogEnabled,         // Range: 0 -> 1                  | Bits: 1
+    SpecSrgb,               // Range: 0 -> 1                  | Bits: 1
 
     SpecSamplerNull,        // 1 bit for 21 samplers          | Bits: 21
     SpecProjectionType,     // 1 bit for 6 PS 1.x samplers    | Bits: 6
@@ -29,8 +30,6 @@ namespace dxvk {
 
     SpecDrefClamp,          // 1 bit for 16 PS samplers       | Bits: 16
     SpecFetch4,             // 1 bit for 16 PS samplers       | Bits: 16
-
-    SpecSrgb,               // 1 bit for 4 render targets     | Bits: 4
 
     SpecConstantCount,
   };
@@ -57,6 +56,7 @@ namespace dxvk {
       { 1, 26, 2 },  // VertexFogMode
       { 1, 28, 2 },  // PixelFogMode
       { 1, 30, 1 },  // FogEnabled
+      { 1, 31, 1 },  // SRGB
 
       { 2, 0,  21 }, // SamplerNull
       { 2, 21, 6 },  // ProjectionType
@@ -68,7 +68,6 @@ namespace dxvk {
       { 4, 0,  16 }, // DrefClamp
       { 4, 16, 16 }, // Fetch4
 
-      { 5, 0, 4 },   // SRGB
     }};
 
     template <D3D9SpecConstantId Id, typename T>
