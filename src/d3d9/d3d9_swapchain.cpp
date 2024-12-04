@@ -118,6 +118,7 @@ namespace dxvk {
           HWND     hDestWindowOverride,
     const RGNDATA* pDirtyRegion,
           DWORD    dwFlags) {
+    Logger::warn("End of frame.");
     D3D9DeviceLock lock = m_parent->LockDevice();
 
     m_parent->SetMostRecentlyUsedSwapchain(this);

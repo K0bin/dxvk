@@ -54,6 +54,21 @@ namespace dxvk {
   class D3D9FormatHelper;
   class D3D9UserDefinedAnnotation;
 
+  enum class DirtyFramebufferReason : uint32_t {
+    Srgb,
+    RenderTarget,
+    Initial,
+    DSV,
+    StencilEnableDepthEnable,
+    NVDB,
+    BoundMaskChange,
+    UpdateAnyColorWrites,
+    Hazard,
+    StartHazardRT,
+    StartHazardDS,
+  };
+  using DirtyFramebufferReasons = Flags<DirtyFramebufferReason>;
+
   enum class D3D9DeviceFlag : uint32_t {
     DirtyFramebuffer,
     DirtyClipPlanes,
@@ -1573,6 +1588,8 @@ namespace dxvk {
     // Written by CS thread
     alignas(CACHE_LINE_SIZE)
     std::atomic<uint64_t>           m_lastSamplerStats = { 0u };
+
+    DirtyFramebufferReasons         m_dirtyFrameBufferReason = 0;
   };
 
 }

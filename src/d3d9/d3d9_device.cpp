@@ -158,6 +158,7 @@ namespace dxvk {
 
     // Initially set all the dirty flags so we
     // always end up giving the backend *something* to work with.
+    m_dirtyFrameBufferReason.set(DirtyFramebufferReason::Initial);
     m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
     m_flags.set(D3D9DeviceFlag::DirtyClipPlanes);
     m_flags.set(D3D9DeviceFlag::DirtyDepthStencilState);
@@ -1662,6 +1663,7 @@ namespace dxvk {
     ConsiderFlush(RenderTargetIndex == 0
       ? GpuFlushType::ImplicitStrongHint
       : GpuFlushType::ImplicitWeakHint);
+    m_dirtyFrameBufferReason.set(DirtyFramebufferReason::RenderTarget);
     m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
 
     m_state.renderTargets[RenderTargetIndex] = rt;
@@ -1743,6 +1745,7 @@ namespace dxvk {
       return D3D_OK;
 
     ConsiderFlush(GpuFlushType::ImplicitWeakHint);
+    m_dirtyFrameBufferReason.set(DirtyFramebufferReason::DSV);
     m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
 
     // Update depth bias if necessary
@@ -2377,8 +2380,10 @@ namespace dxvk {
         [[fallthrough]];
         case D3DRS_STENCILENABLE:
         case D3DRS_ZENABLE:
-          if (likely(m_state.depthStencil != nullptr))
+          if (likely(m_state.depthStencil != nullptr)) {
             m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
+            m_dirtyFrameBufferReason.set(DirtyFramebufferReason::StencilEnableDepthEnable);
+          }
 
           m_flags.set(D3D9DeviceFlag::DirtyDepthStencilState);
           break;
@@ -2407,7 +2412,10 @@ namespace dxvk {
           break;
 
         case D3DRS_SRGBWRITEENABLE:
+          if (likely(!old != !Value)) {
           m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
+            m_dirtyFrameBufferReason.set(DirtyFramebufferReason::Srgb);
+          }
           break;
 
         case D3DRS_DEPTHBIAS:
@@ -2543,8 +2551,10 @@ namespace dxvk {
           if (states[D3DRS_ADAPTIVETESS_X] == uint32_t(D3D9Format::NVDB) || oldNVDB) {
             m_flags.set(D3D9DeviceFlag::DirtyDepthBounds);
 
-            if (m_state.depthStencil != nullptr && m_state.renderStates[D3DRS_ZENABLE])
+            if (m_state.depthStencil != nullptr && m_state.renderStates[D3DRS_ZENABLE]) {
+              m_dirtyFrameBufferReason.set(DirtyFramebufferReason::NVDB);
               m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
+            }
             break;
           }
         [[fallthrough]];
@@ -3734,8 +3744,10 @@ namespace dxvk {
 
     uint32_t oldUseMask = boundMask & anyColorWriteMask & m_psShaderMasks.rtMask;
     uint32_t newUseMask = boundMask & anyColorWriteMask & newShaderMasks.rtMask;
-    if (oldUseMask != newUseMask)
+    if (oldUseMask != newUseMask) {
+      m_dirtyFrameBufferReason.set(DirtyFramebufferReason::BoundMaskChange);
       m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
+    }
 
     if (m_psShaderMasks.samplerMask != newShaderMasks.samplerMask ||
         m_psShaderMasks.rtMask != newShaderMasks.rtMask) {
@@ -6087,6 +6099,7 @@ namespace dxvk {
     bool bound = HasRenderTargetBound(Index);
     if (Index == 0 || bound) {
       if (bound) {
+        m_dirtyFrameBufferReason.set(DirtyFramebufferReason::UpdateAnyColorWrites);
         m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
       }
 
@@ -6238,6 +6251,7 @@ namespace dxvk {
       auto tex = GetCommonTexture(m_state.textures[samplerIdx]);
       if (unlikely(!tex->MarkTransitionedToHazardLayout())) {
         TransitionImage(tex, m_hazardLayout);
+        m_dirtyFrameBufferReason.set(DirtyFramebufferReason::StartHazardRT);
         m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
       }
     }
@@ -6248,6 +6262,7 @@ namespace dxvk {
       auto tex = m_state.depthStencil->GetCommonTexture();
       if (unlikely(!tex->MarkTransitionedToHazardLayout())) {
         TransitionImage(tex, m_hazardLayout);
+        m_dirtyFrameBufferReason.set(DirtyFramebufferReason::StartHazardDS);
         m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
       }
     }
@@ -6456,6 +6471,42 @@ namespace dxvk {
 
   void D3D9DeviceEx::BindFramebuffer() {
     m_flags.clr(D3D9DeviceFlag::DirtyFramebuffer);
+
+    Logger::warn("Binding framebuffer. Reasons:");
+    if (m_dirtyFrameBufferReason.test(DirtyFramebufferReason::Initial)) {
+      Logger::warn("\tInitial");
+    }
+    if (m_dirtyFrameBufferReason.test(DirtyFramebufferReason::Srgb)) {
+      Logger::warn("\tSrgb change");
+    }
+    if (m_dirtyFrameBufferReason.test(DirtyFramebufferReason::RenderTarget)) {
+      Logger::warn("\tRenderTarget change");
+    }
+    if (m_dirtyFrameBufferReason.test(DirtyFramebufferReason::DSV)) {
+      Logger::warn("\tDSV change");
+    }
+    if (m_dirtyFrameBufferReason.test(DirtyFramebufferReason::StencilEnableDepthEnable)) {
+      Logger::warn("\tDS state change");
+    }
+    if (m_dirtyFrameBufferReason.test(DirtyFramebufferReason::NVDB)) {
+      Logger::warn("\tNV Depth bounds state change");
+    }
+    if (m_dirtyFrameBufferReason.test(DirtyFramebufferReason::BoundMaskChange)) {
+      Logger::warn("\tBound mask change");
+    }
+    if (m_dirtyFrameBufferReason.test(DirtyFramebufferReason::UpdateAnyColorWrites)) {
+      Logger::warn("\tAnyColorWrites state change");
+    }
+    if (m_dirtyFrameBufferReason.test(DirtyFramebufferReason::Hazard)) {
+      Logger::warn("\tActive hazard change");
+    }
+    if (m_dirtyFrameBufferReason.test(DirtyFramebufferReason::StartHazardRT)) {
+      Logger::warn("\tHazard started on RT");
+    }
+    if (m_dirtyFrameBufferReason.test(DirtyFramebufferReason::StartHazardDS)) {
+      Logger::warn("\tHazard start on DSV");
+    }
+    m_dirtyFrameBufferReason.clrAll();
 
     DxvkRenderTargets attachments;
 
@@ -7078,6 +7129,7 @@ namespace dxvk {
     if (unlikely((!m_lastHazardsDS) != (!m_activeHazardsDS))
      || unlikely((!m_lastHazardsRT) != (!m_activeHazardsRT))) {
       m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
+      m_dirtyFrameBufferReason.set(DirtyFramebufferReason::Hazard);
       m_lastHazardsDS = m_activeHazardsDS;
       m_lastHazardsRT = m_activeHazardsRT;
     }
