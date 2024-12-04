@@ -483,6 +483,20 @@ namespace dxvk {
       }
     }
   }
+
+
+  void DxvkShader::eliminateClipDistance(SpirvCodeBuffer& code) {
+
+    uint32_t clipDistanceVarId = 0;
+    for (auto ins : code) {
+      if (ins.opCode() == spv::OpDecorate && ins.arg(2) == spv::DecorationBuiltIn && ins.arg(3) == spv::BuiltInClipDistance) {
+        clipDistanceVarId = ins.arg(1);
+
+        if (ins.opCode() == spv::OpFunction)
+          break;
+      }
+    }
+  }
   
 
   void DxvkShader::emitOutputSwizzles(

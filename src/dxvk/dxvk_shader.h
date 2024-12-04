@@ -275,6 +275,9 @@ namespace dxvk {
             SpirvCodeBuffer&          code,
             uint32_t                  location);
 
+    static void eliminateClipDistance(
+            SpirvCodeBuffer&          code);
+
     static void emitOutputSwizzles(
             SpirvCodeBuffer&          code,
             uint32_t                  outputMask,
