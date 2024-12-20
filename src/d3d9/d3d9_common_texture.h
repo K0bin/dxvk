@@ -490,6 +490,10 @@ namespace dxvk {
 
     ID3D9VkInteropTexture* GetVkInterop() { return &m_d3d9Interop; }
 
+    uint32_t lastBoundAsRt = 0;
+
+    bool wasBackBuffer = false;
+
   private:
 
     D3D9DeviceEx*                 m_device;

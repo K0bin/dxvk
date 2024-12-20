@@ -1117,6 +1117,7 @@ namespace dxvk {
       DxvkCsChunk* chunk = m_csChunkPool.allocChunk(DxvkCsChunkFlag::SingleUse);
       return DxvkCsChunkRef(chunk, &m_csChunkPool);
     }
+    uint32_t m_frame = 0;
 
   private:
 

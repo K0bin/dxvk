@@ -822,6 +822,13 @@ namespace dxvk {
     m_parent->EndFrame();
     m_parent->Flush();
 
+{
+    D3D9CommonTexture* tex = m_backBuffers[0]->GetCommonTexture();
+    if (tex->lastBoundAsRt != m_parent->m_frame - 1) {
+      Logger::warn("Texture wasnt bound as RT");
+    }
+}
+
     // Retrieve the image and image view to present
     Rc<DxvkImage> swapImage = m_backBuffers[0]->GetCommonTexture()->GetImage();
     Rc<DxvkImageView> swapImageView = m_backBuffers[0]->GetImageView(false);
@@ -915,12 +922,18 @@ namespace dxvk {
 
     SyncFrameLatency();
 
+    m_parent->ColorFill(m_backBuffers[0].ptr(), nullptr, D3DCOLOR(0));
     // Rotate swap chain buffers so that the back
     // buffer at index 0 becomes the front buffer.
-    for (uint32_t i = 1; i < m_backBuffers.size(); i++)
-      m_backBuffers[i]->Swap(m_backBuffers[i - 1].ptr());
+    /*for (uint32_t i = 1; i < m_backBuffers.size(); i++)
+      m_backBuffers[i]->Swap(m_backBuffers[i - 1].ptr());*/
 
     m_parent->m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
+
+
+{
+    m_parent->ColorFill(m_backBuffers[0].ptr(), nullptr, D3DCOLOR(0));
+}
   }
 
 
@@ -1095,6 +1108,8 @@ namespace dxvk {
         Logger::err(e.message());
         return D3DERR_OUTOFVIDEOMEMORY;
       }
+
+      surface->GetCommonTexture()->wasBackBuffer = true;
 
       m_backBuffers.emplace_back(surface);
     }

@@ -1726,7 +1726,43 @@ namespace dxvk {
     if (m_state.renderTargets[RenderTargetIndex] == nullptr)
       return D3DERR_NOTFOUND;
 
-    *ppRenderTarget = m_state.renderTargets[RenderTargetIndex].ref();
+    auto& rt = m_state.renderTargets[RenderTargetIndex];
+    D3D9CommonTexture* tex = rt->GetCommonTexture();
+
+    if (tex->wasBackBuffer) {
+      //Logger::warn(str::format("Retrieving backbuffer with GetRT"));
+
+      HRESULT res = D3D_OK;
+      bool found = false;
+      bool imgFound = false;
+      for (uint32_t i = 0; res != D3DERR_NOTFOUND && (!found || !imgFound); i++) {
+        D3D9Surface* surf = m_implicitSwapchain->GetBackBuffer(i);
+        if (surf == nullptr) {
+          res = D3DERR_NOTFOUND;
+          continue;
+        }
+
+        if (rt->GetCommonTexture()->GetImage() == surf->GetCommonTexture()->GetImage()) {
+          imgFound = true;
+        }
+
+        if (rt.ptr() == surf) {
+          //Logger::warn("Backbuffer is part of current swapchain");
+          found = true;
+        }
+      }
+      if (!found) {
+          Logger::warn("Backbuffer is outdated!");
+      }
+      if (!imgFound) {
+        Logger::warn("Backbuffer img not found");
+      }
+
+    } else {
+      //Logger::warn(str::format("Retrieving other RT with GetRT"));
+    }
+
+    *ppRenderTarget = rt.ref();
 
     return D3D_OK;
   }
@@ -4026,6 +4062,8 @@ namespace dxvk {
     const RGNDATA* pDirtyRegion,
           DWORD dwFlags) {
 
+    m_frame++;
+
     if (m_cursor.IsSoftwareCursor()) {
       m_cursor.RefreshSoftwareCursorPosition();
 
@@ -4345,6 +4383,13 @@ namespace dxvk {
 
     auto oldTexture = GetCommonTexture(m_state.textures[StateSampler]);
     auto newTexture = GetCommonTexture(pTexture);
+
+    if (newTexture != nullptr && (newTexture->Desc()->Usage & D3DUSAGE_RENDERTARGET) != 0 && ((newTexture->Desc()->Width == 1920 && newTexture->Desc()->Height == 1080) || (newTexture->Desc()->Width == 1280 && newTexture->Desc()->Height == 720))) {
+
+      if (newTexture->lastBoundAsRt != m_frame) {
+        //Logger::warn(str::format("Binding RT as texture that wasn't rendered to this frame. FRAME: ", m_frame, " LAST RENDERED TO: ", newTexture->lastBoundAsRt));
+      }
+    }
 
     // We need to check our ops and disable respective stages.
     // Given we have transition from a null resource to
@@ -7351,6 +7396,31 @@ namespace dxvk {
     if (unlikely(m_flags.test(D3D9DeviceFlag::DirtyIndexBuffer) && UploadIBO)) {
       BindIndices();
       m_flags.clr(D3D9DeviceFlag::DirtyIndexBuffer);
+    }
+
+    for (uint32_t i = 0; i < m_state.renderTargets.size(); i++) {
+      auto& rt = m_state.renderTargets[i];
+      if (rt == nullptr)
+        continue;
+
+      D3D9CommonTexture* tex = rt->GetCommonTexture();
+      tex->lastBoundAsRt = m_frame;
+
+      if (tex->wasBackBuffer) {
+        for (uint32_t i = 0; i < m_state.textures->size(); i++) {
+          auto& boundTex = m_state.textures[i];
+          if (boundTex == nullptr)
+            continue;
+
+          D3D9CommonTexture* newTexture = GetCommonTexture(boundTex);
+          if (newTexture != nullptr && (newTexture->Desc()->Usage & D3DUSAGE_RENDERTARGET) != 0 && ((newTexture->Desc()->Width == 1920 && newTexture->Desc()->Height == 1080) || (newTexture->Desc()->Width == 1280 && newTexture->Desc()->Height == 720))) {
+            if (newTexture->lastBoundAsRt != m_frame) {
+              Logger::warn(str::format("Binding RT as texture that wasn't rendered to this frame. FRAME: ", m_frame, " LAST RENDERED TO: ", newTexture->lastBoundAsRt));
+            }
+          }
+        }
+
+      }
     }
   }
 
