@@ -222,14 +222,18 @@ namespace dxvk {
     auto vk = m_device->vkd();
 
     while (!m_stopped.load()) {
+      Logger::warn("dxvk-queue start");
       std::unique_lock<dxvk::mutex> lock(m_mutex);
 
+      Logger::warn("dxvk-queue inside lock");
       if (m_finishQueue.empty()) {
         auto t0 = dxvk::high_resolution_clock::now();
 
+      Logger::warn("dxvk-queue wait for submit cond");
         m_submitCond.wait(lock, [this] {
           return m_stopped.load() || !m_finishQueue.empty();
         });
+      Logger::warn("dxvk-queue got submit cond");
 
         auto t1 = dxvk::high_resolution_clock::now();
         m_gpuIdle += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
@@ -239,58 +243,84 @@ namespace dxvk {
         return;
       
       DxvkSubmitEntry entry = std::move(m_finishQueue.front());
+      Logger::warn("dxvk-queue got entry");
       lock.unlock();
       
       if (entry.submit.cmdList != nullptr) {
+      Logger::warn("dxvk-queue got cmdlist");
         VkResult status = m_lastError.load();
 
         if (status != VK_ERROR_DEVICE_LOST) {
           std::array<VkSemaphore, 2> semaphores = { m_semaphores.graphics, m_semaphores.transfer };
           std::array<uint64_t, 2> timelines = { entry.timelines.graphics, entry.timelines.transfer };
 
-          if (entry.latency.tracker)
+          if (entry.latency.tracker) {
+      Logger::warn("dxvk-queue notify latency");
             entry.latency.tracker->notifyGpuExecutionBegin(entry.latency.frameId);
+
+      Logger::warn("dxvk-queue notify latency done");
+          }
 
           VkSemaphoreWaitInfo waitInfo = { VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO };
           waitInfo.semaphoreCount = semaphores.size();
           waitInfo.pSemaphores = semaphores.data();
           waitInfo.pValues = timelines.data();
 
+      Logger::warn("dxvk-queue wait semaphore");
           status = vk->vkWaitSemaphores(vk->device(), &waitInfo, ~0ull);
+      Logger::warn("dxvk-queue wait semaphore done");
 
-          if (entry.latency.tracker && status == VK_SUCCESS)
+          if (entry.latency.tracker && status == VK_SUCCESS) {
+      Logger::warn("dxvk-queue notify gpu exec");
             entry.latency.tracker->notifyGpuExecutionEnd(entry.latency.frameId);
+      Logger::warn("dxvk-queue notify gpu exec done");
+          }
         }
 
         if (status != VK_SUCCESS) {
           m_lastError = status;
 
-          if (status != VK_ERROR_DEVICE_LOST)
+          if (status != VK_ERROR_DEVICE_LOST) {
+      Logger::warn("dxvk-queue wait for idle");
             m_device->waitForIdle();
+      Logger::warn("dxvk-queue wait for idle done");
+          }
         }
       } else if (entry.present.presenter != nullptr) {
+      Logger::warn("dxvk-queue got presenter");
         // Signal the frame and then immediately destroy the reference.
         // This is necessary since the front-end may want to explicitly
         // destroy the presenter object. 
         entry.present.presenter->signalFrame(entry.present.frameId, entry.latency.tracker);
+      Logger::warn("dxvk-queue signalled presenter");
         entry.present.presenter = nullptr;
+      Logger::warn("dxvk-queue dropped presenter");
       }
 
       // Release resources and signal events, then immediately wake
       // up any thread that's currently waiting on a resource in
       // order to reduce delays as much as possible.
-      if (entry.submit.cmdList != nullptr)
+      if (entry.submit.cmdList != nullptr) {
+      Logger::warn("dxvk-queue notifying objects");
         entry.submit.cmdList->notifyObjects();
+      Logger::warn("dxvk-queue done notifying objects");
+      }
 
+      Logger::warn("dxvk-queue lock again");
       lock.lock();
+
+      Logger::warn("dxvk-queue got lock");
       m_finishQueue.pop();
       m_finishCond.notify_all();
       lock.unlock();
+      Logger::warn("dxvk-queue done locking");
 
       // Free the command list and associated objects now
       if (entry.submit.cmdList != nullptr) {
+      Logger::warn("dxvk-queue free cmd list");
         entry.submit.cmdList->reset();
         m_device->recycleCommandList(entry.submit.cmdList);
+      Logger::warn("dxvk-queue done freeing cmd list");
       }
     }
   }

@@ -65,39 +65,53 @@ namespace dxvk {
 
 
   VkResult Presenter::checkSwapChainStatus() {
+    Logger::warn("checkSwapChainStatus 0");
     std::lock_guard lock(m_surfaceMutex);
+    Logger::warn("checkSwapChainStatus 1");
 
-    if (!m_swapchain)
-      return recreateSwapChain();
+    if (!m_swapchain) {
+      VkResult res= recreateSwapChain();
+    Logger::warn("checkSwapChainStatus 2-0");
+      return res;
+    }
 
+    Logger::warn("checkSwapChainStatus 2-1");
     return VK_SUCCESS;
   }
 
 
   VkResult Presenter::acquireNextImage(PresenterSync& sync, Rc<DxvkImage>& image) {
+    Logger::warn("Acquire A");
+    Logger::warn("acquireNextImage 0");
     std::unique_lock lock(m_surfaceMutex);
+    Logger::warn("acquireNextImage 1");
 
     // Don't acquire more than one image at a time
     VkResult status = VK_SUCCESS;
 
+Logger::warn("Acquire B");
     m_surfaceCond.wait(lock, [this, &status] {
       status = m_device->getDeviceStatus();
       return !m_presentPending || status < 0;
     });
+    Logger::warn("Acquire C");
 
-    if (status < 0)
+    if (status < 0) {
+    Logger::warn("acquireNextImage 2-0");
       return status;
+    }
 
     // Ensure that the swap chain gets recreated if it is dirty
     bool hasSwapchain = m_swapchain != VK_NULL_HANDLE;
-
-    updateSwapChain();
+Logger::warn("Acquire D");
+    updateSwapChain();Logger::warn("Acquire E");
 
     // Don't acquire if we already did so after present
     if (m_acquireStatus == VK_NOT_READY && m_swapchain) {
       PresenterSync sync = m_semaphores.at(m_frameIndex);
-
+Logger::warn("Acquire F");
       waitForSwapchainFence(sync);
+      Logger::warn("Acquire G");
 
       m_acquireStatus = m_vkd->vkAcquireNextImageKHR(m_vkd->device(),
         m_swapchain, std::numeric_limits<uint64_t>::max(),
@@ -107,31 +121,45 @@ namespace dxvk {
     // This is a normal occurence, but may be useful for
     // debugging purposes in case WSI goes wrong somehow.
     if (m_acquireStatus != VK_SUCCESS && m_swapchain)
-      Logger::info(str::format("Presenter: Got ", m_acquireStatus, ", recreating swapchain"));
+      Logger::info(str::format("A Presenter: Got ", m_acquireStatus, ", recreating swapchain"));
+
+    Logger::warn("Acquire H");
 
     // If the swap chain is out of date, recreate it and retry. It
     // is possible that we do not get a new swap chain here, e.g.
     // because the window is minimized.
     if (m_acquireStatus != VK_SUCCESS || !m_swapchain) {
+      Logger::warn("Acquire I");
       VkResult vr = recreateSwapChain();
+      Logger::warn("Acquire J");
 
       if (vr == VK_NOT_READY && hasSwapchain)
         Logger::info("Presenter: Surface does not allow swapchain creation.");
 
-      if (vr != VK_SUCCESS)
+      if (vr != VK_SUCCESS) {
+    Logger::warn("acquireNextImage 2-1");
         return softError(vr);
+      }
+
+      Logger::warn("Acquire K");
 
       PresenterSync sync = m_semaphores.at(m_frameIndex);
 
+Logger::warn("Acquire L");
       m_acquireStatus = m_vkd->vkAcquireNextImageKHR(m_vkd->device(),
         m_swapchain, std::numeric_limits<uint64_t>::max(),
         sync.acquire, VK_NULL_HANDLE, &m_imageIndex);
 
+        Logger::warn("Acquire M");
+
       if (m_acquireStatus < 0) {
         Logger::info(str::format("Presenter: Got ", m_acquireStatus, " from fresh swapchain"));
+        Logger::warn("Acquire N ERR");
+    Logger::warn("acquireNextImage 2-2");
         return softError(m_acquireStatus);
       }
     }
+    Logger::warn("Acquire O");
 
     // Update HDR metadata after a successful acquire. We know
     // that there won't be a present in flight at this point.
@@ -143,16 +171,20 @@ namespace dxvk {
           1, &m_swapchain, &(*m_hdrMetadata));
       }
     }
+    Logger::warn("Acquire P");
 
     // Apply latency sleep mode if the swapchain supports it
     if (m_latencySleepModeDirty && m_latencySleepMode) {
       m_latencySleepModeDirty = false;
 
       if (m_latencySleepSupported) {
+        Logger::warn("Acquire Q");
         m_vkd->vkSetLatencySleepModeNV(m_vkd->device(),
           m_swapchain, &(*m_latencySleepMode));
+          Logger::warn("Acquire R");
       }
     }
+    Logger::warn("Acquire S");
 
     // Set dynamic present mode for the next frame if possible
     if (!m_dynamicModes.empty())
@@ -161,8 +193,10 @@ namespace dxvk {
     // Return relevant Vulkan objects for the acquired image
     sync = m_semaphores.at(m_frameIndex);
     image = m_images.at(m_imageIndex);
+    Logger::warn("Acquire T");
 
     m_presentPending = true;
+    Logger::warn("acquireNextImage 2-3");
     return m_acquireStatus;
   }
 
@@ -197,6 +231,7 @@ namespace dxvk {
       fenceInfo.pNext = const_cast<void*>(std::exchange(info.pNext, &fenceInfo));
     }
 
+      Logger::warn("presentImage A2");
     VkResult status = m_vkd->vkQueuePresentKHR(
       m_device->queues().graphics.queueHandle, &info);
 
@@ -221,6 +256,7 @@ namespace dxvk {
       frame.tracker = tracker;
       frame.mode = m_presentMode;
       frame.result = status;
+      Logger::warn(str::format("emplacing frame: ", frameId));
 
       m_frameCond.notify_one();
     }
@@ -228,26 +264,35 @@ namespace dxvk {
     // On a successful present, try to acquire next image already, in
     // order to hide potential delays from the application thread.
     if (status == VK_SUCCESS) {
+    Logger::warn("presentImage A");
       PresenterSync& nextSync = m_semaphores.at(m_frameIndex);
       waitForSwapchainFence(nextSync);
+      Logger::warn("presentImage B");
 
       m_acquireStatus = m_vkd->vkAcquireNextImageKHR(m_vkd->device(),
         m_swapchain, std::numeric_limits<uint64_t>::max(),
         nextSync.acquire, VK_NULL_HANDLE, &m_imageIndex);
+      Logger::warn("presentImage C");
     }
+
+      Logger::warn("presentImage C2");
 
     // Recreate the swapchain on the next acquire, even if we get suboptimal.
     // There is no guarantee that suboptimal state is returned by both functions.
+    Logger::warn("presentImage 0");
     std::lock_guard lock(m_surfaceMutex);
+    Logger::warn("presentImage 1");
 
     if (status != VK_SUCCESS) {
-      Logger::info(str::format("Presenter: Got ", status, ", recreating swapchain"));
+      Logger::info(str::format("B Presenter: Got ", status, ", recreating swapchain"));
 
       m_dirtySwapchain = true;
     }
 
     m_presentPending = false;
     m_surfaceCond.notify_one();
+      Logger::warn("presentImage D");
+      Logger::warn("presentImage 2");
     return status;
   }
 
@@ -261,6 +306,7 @@ namespace dxvk {
     if (m_device->features().khrPresentWait.presentWait) {
       std::lock_guard lock(m_frameMutex);
       m_lastSignaled = frameId;
+      Logger::warn(str::format("last signalled: ", frameId));
       m_frameCond.notify_one();
     } else {
       m_fpsLimiter.delay();
@@ -273,41 +319,55 @@ namespace dxvk {
 
 
   bool Presenter::supportsColorSpace(VkColorSpaceKHR colorspace) {
+    Logger::warn("supportsColorSpace 0");
     std::lock_guard lock(m_surfaceMutex);
+    Logger::warn("supportsColorSpace 1");
 
     if (!m_surface) {
       VkResult vr = createSurface();
 
-      if (vr != VK_SUCCESS)
+      if (vr != VK_SUCCESS) {
+    Logger::warn("supportsColorSpace 2-0");
         return false;
+      }
     }
 
     std::vector<VkSurfaceFormatKHR> surfaceFormats;
     getSupportedFormats(surfaceFormats);
 
     for (const auto& surfaceFormat : surfaceFormats) {
-      if (surfaceFormat.colorSpace == colorspace)
+      if (surfaceFormat.colorSpace == colorspace) {
+    Logger::warn("supportsColorSpace 2-1");
         return true;
+      }
 
       for (const auto& fallback : s_colorSpaceFallbacks) {
-        if (fallback.first == colorspace && fallback.second == surfaceFormat.colorSpace)
+        if (fallback.first == colorspace && fallback.second == surfaceFormat.colorSpace) {
+    Logger::warn("supportsColorSpace 2-2");
           return true;
+        }
       }
     }
 
+    Logger::warn("supportsColorSpace 2-3");
     return false;
   }
 
 
   void Presenter::invalidateSurface() {
+    Logger::warn("invalidateSurface 0");
     std::lock_guard lock(m_surfaceMutex);
+    Logger::warn("invalidateSurface 1");
 
     m_dirtySurface = true;
+    Logger::warn("invalidateSurface 2");
   }
 
 
   void Presenter::destroyResources() {
+    Logger::warn("destroyResources 0");
     std::unique_lock lock(m_surfaceMutex);
+    Logger::warn("destroyResources 1");
 
     m_surfaceCond.wait(lock, [this] {
       VkResult status = m_device->getDeviceStatus();
@@ -316,15 +376,20 @@ namespace dxvk {
 
     destroySwapchain();
     destroySurface();
+    Logger::warn("destroyResources 2");
   }
 
 
   void Presenter::setLatencySleepModeNv(
     const VkLatencySleepModeInfoNV& sleepMode) {
+    Logger::warn("setLatencySleepModeNv 0");
     std::unique_lock lock(m_surfaceMutex);
+    Logger::warn("setLatencySleepModeNv 1");
 
-    if (sleepMode.sType != VK_STRUCTURE_TYPE_LATENCY_SLEEP_MODE_INFO_NV)
+    if (sleepMode.sType != VK_STRUCTURE_TYPE_LATENCY_SLEEP_MODE_INFO_NV) {
+    Logger::warn("setLatencySleepModeNv 2-0");
       return;
+    }
 
     if (sleepMode.pNext)
       Logger::warn("Presenter: Extended sleep mode info not supported");
@@ -335,8 +400,10 @@ namespace dxvk {
                   && !sleepMode.lowLatencyBoost
                   && !sleepMode.minimumIntervalUs;
 
-    if (!m_latencySleepMode && isDefault)
+    if (!m_latencySleepMode && isDefault) {
+    Logger::warn("setLatencySleepModeNv 2-1");
       return;
+    }
 
     m_dirtySwapchain |= !m_latencySleepMode;
 
@@ -349,13 +416,16 @@ namespace dxvk {
 
     m_latencySleepMode = sleepMode;
     m_latencySleepMode->pNext = nullptr;
+    Logger::warn("setLatencySleepModeNv 2-2");
   }
 
 
   dxvk::high_resolution_clock::time_point Presenter::setLatencyMarkerNv(
           uint64_t                frameId,
           VkLatencyMarkerNV       marker) {
+    Logger::warn("setLatencyMarkerNv 0");
     std::unique_lock lock(m_surfaceMutex);
+    Logger::warn("setLatencyMarkerNv 1");
 
     if (!m_latencySleepMode) {
       // Applications may use latency markers without enabling
@@ -363,6 +433,7 @@ namespace dxvk {
       m_latencySleepMode = { VK_STRUCTURE_TYPE_LATENCY_SLEEP_MODE_INFO_NV };
       m_dirtySwapchain = true;
 
+    Logger::warn("setLatencyMarkerNv 2-0");
       return dxvk::high_resolution_clock::now();
     }
 
@@ -379,19 +450,26 @@ namespace dxvk {
     }
 
     auto t1 = dxvk::high_resolution_clock::now();
+    Logger::warn("setLatencyMarkerNv 2-1");
     return t0 + (t1 - t0) / 2u;
   }
 
 
   dxvk::high_resolution_clock::duration Presenter::latencySleepNv() {
+    Logger::warn("latencySleepNv 0");
     std::unique_lock lock(m_surfaceMutex);
+    Logger::warn("latencySleepNv 1");
 
-    if (!m_latencySleepSupported)
+    if (!m_latencySleepSupported) {
+    Logger::warn("latencySleepNv 2-0");
       return dxvk::high_resolution_clock::duration(0u);
+    }
 
     if (!m_latencySemaphore) {
-      if (createLatencySemaphore() != VK_SUCCESS)
+      if (createLatencySemaphore() != VK_SUCCESS) {
+        Logger::warn("latencySleepNv 2-1");
         return dxvk::high_resolution_clock::duration(0u);
+      }
     }
 
     VkLatencySleepInfoNV info = { VK_STRUCTURE_TYPE_LATENCY_SLEEP_INFO_NV };
@@ -400,6 +478,7 @@ namespace dxvk {
 
     m_vkd->vkLatencySleepNV(m_vkd->device(), m_swapchain, &info);
 
+    Logger::warn("latencySleepNv 2-2");
     lock.unlock();
 
     auto t0 = dxvk::high_resolution_clock::now();
@@ -412,6 +491,7 @@ namespace dxvk {
     m_vkd->vkWaitSemaphores(m_vkd->device(), &waitInfo, ~0ull);
 
     auto t1 = dxvk::high_resolution_clock::now();
+    Logger::warn("latencySleepNv 3");
     return t1 - t0;
   }
 
@@ -419,22 +499,29 @@ namespace dxvk {
   uint32_t Presenter::getLatencyTimingsNv(
           uint32_t                timingCount,
           VkLatencyTimingsFrameReportNV* timings) {
+    Logger::warn("getLatencyTimingsNv 0");
     std::unique_lock lock(m_surfaceMutex);
+    Logger::warn("getLatencyTimingsNv 1");
 
-    if (!m_latencySleepSupported)
+    if (!m_latencySleepSupported) {
+    Logger::warn("getLatencyTimingsNv 2-0");
       return 0u;
+    }
 
     VkGetLatencyMarkerInfoNV info = { VK_STRUCTURE_TYPE_GET_LATENCY_MARKER_INFO_NV };
     info.timingCount = timingCount;
     info.pTimings = timings;
 
     m_vkd->vkGetLatencyTimingsNV(m_vkd->device(), m_swapchain, &info);
+    Logger::warn("getLatencyTimingsNv 2-2");
     return info.timingCount;
   }
 
 
   void Presenter::setSyncInterval(uint32_t syncInterval) {
+    Logger::warn("setSyncInterval 0");
     std::lock_guard lock(m_surfaceMutex);
+    Logger::warn("setSyncInterval 1");
 
     // Normalize sync interval for present modes. We currently
     // cannot support anything other than 1 natively anyway.
@@ -446,6 +533,7 @@ namespace dxvk {
       if (m_dynamicModes.empty())
         m_dirtySwapchain = true;
     }
+    Logger::warn("setSyncInterval 2");
   }
 
 
@@ -455,30 +543,39 @@ namespace dxvk {
 
 
   void Presenter::setSurfaceFormat(VkSurfaceFormatKHR format) {
+    Logger::warn("setSurfaceFormat 0");
     std::lock_guard lock(m_surfaceMutex);
+    Logger::warn("setSurfaceFormat 1");
 
     if (m_preferredFormat.format != format.format || m_preferredFormat.colorSpace != format.colorSpace) {
       m_preferredFormat = format;
       m_dirtySwapchain = true;
     }
+    Logger::warn("setSurfaceFormat 2");
   }
 
 
   void Presenter::setSurfaceExtent(VkExtent2D extent) {
+    Logger::warn("setSurfaceExtent 0");
     std::lock_guard lock(m_surfaceMutex);
+    Logger::warn("setSurfaceExtent 1");
 
     if (m_preferredExtent != extent) {
       m_preferredExtent = extent;
       m_dirtySwapchain = true;
     }
+    Logger::warn("setSurfaceExtent 2");
   }
 
 
   void Presenter::setHdrMetadata(VkHdrMetadataEXT hdrMetadata) {
+    Logger::warn("setHdrMetadata 0");
     std::lock_guard lock(m_surfaceMutex);
+    Logger::warn("setHdrMetadata 1");
 
     if (hdrMetadata.sType != VK_STRUCTURE_TYPE_HDR_METADATA_EXT) {
       m_hdrMetadata = std::nullopt;
+    Logger::warn("setHdrMetadata 2-0");
       return;
     }
 
@@ -489,27 +586,43 @@ namespace dxvk {
     m_hdrMetadata->pNext = nullptr;
 
     m_hdrMetadataDirty = true;
+    Logger::warn("setHdrMetadata 2-1");
   }
 
 
   VkResult Presenter::recreateSwapChain() {
+    Logger::warn("recreateSwapchain A");
     VkResult vr;
 
-    if (m_swapchain)
+    if (m_swapchain) {
+      Logger::warn("recreateSwapchain B");
       destroySwapchain();
+      Logger::warn("recreateSwapchain C");
+    }
 
     if (m_surface) {
+      Logger::warn("recreateSwapchain D");
       vr = createSwapChain();
 
-      if (vr == VK_ERROR_SURFACE_LOST_KHR)
+    Logger::warn("recreateSwapchain E");
+
+      if (vr == VK_ERROR_SURFACE_LOST_KHR) {
+    Logger::warn("recreateSwapchain F");
         destroySurface();
+    Logger::warn("recreateSwapchain G");
+      }
     }
 
     if (!m_surface) {
+    Logger::warn("recreateSwapchain H");
       vr = createSurface();
+    Logger::warn("recreateSwapchain I");
 
-      if (vr == VK_SUCCESS)
+      if (vr == VK_SUCCESS) {
+    Logger::warn("recreateSwapchain J");
         vr = createSwapChain();
+    Logger::warn("recreateSwapchain K");
+      }
     }
 
     return vr;
@@ -517,6 +630,7 @@ namespace dxvk {
 
 
   void Presenter::updateSwapChain() {
+    Logger::warn("updateSwapchain");
     if (m_dirtySurface || m_dirtySwapchain) {
       destroySwapchain();
       m_dirtySwapchain = false;
@@ -1133,16 +1247,21 @@ namespace dxvk {
 
 
   void Presenter::destroySwapchain() {
+    Logger::warn("destroySwapchain");
     // Wait for the presentWait worker to finish using
     // the swapchain before destroying it.
     std::unique_lock lock(m_frameMutex);
+    Logger::warn("destroySwapchain inside lock");
 
     m_frameDrain.wait(lock, [this] {
       return m_frameQueue.empty();
     });
+    Logger::warn("destroySwapchain after frame drain");
 
     for (auto& sem : m_semaphores)
       waitForSwapchainFence(sem);
+
+    Logger::warn("destroySwapchain after semaphores");
 
     for (const auto& sem : m_semaphores) {
       m_vkd->vkDestroySemaphore(m_vkd->device(), sem.acquire, nullptr);
@@ -1165,13 +1284,16 @@ namespace dxvk {
 
     m_latencySleepModeDirty = true;
     m_latencySleepSupported = false;
+    Logger::warn("destroySwapchain done");
   }
 
 
   void Presenter::destroySurface() {
+    Logger::warn("destroySurface");
     m_vki->vkDestroySurfaceKHR(m_vki->instance(), m_surface, nullptr);
 
     m_surface = VK_NULL_HANDLE;
+    Logger::warn("destroySurface done");
   }
 
 
@@ -1206,28 +1328,38 @@ namespace dxvk {
     std::unique_lock lock(m_frameMutex);
 
     while (true) {
+      Logger::warn("frame thread start");
       // Wait for all GPU work for this frame to complete in order to maintain
       // ordering guarantees of the frame signal w.r.t. objects being released
       m_frameCond.wait(lock, [this] {
+        Logger::warn(str::format("frame queue length: ", m_frameQueue.size()));
+        if (!m_frameQueue.empty())
+          Logger::warn(str::format("frame queue front id: ", m_frameQueue.front().frameId, " last signaled: ", m_lastSignaled));
         return !m_frameQueue.empty() && m_frameQueue.front().frameId <= m_lastSignaled;
       });
+      Logger::warn("frame thread wakeup");
 
       // Use a frame ID of 0 as an exit condition
       PresenterFrame frame = m_frameQueue.front();
+      Logger::warn(str::format("frame thread GOT ONE front id: ", m_frameQueue.front().frameId, " last signaled: ", m_lastSignaled));
 
       if (!frame.frameId) {
+      Logger::warn("frame thread bye bye");
         m_frameQueue.pop();
         return;
       }
 
       lock.unlock();
+      Logger::warn("frame thread unlocked");
 
       // If the present operation has succeeded, actually wait for it to complete.
       // Don't bother with it on MAILBOX / IMMEDIATE modes since doing so would
       // restrict us to the display refresh rate on some platforms (XWayland).
       if (frame.result >= 0 && (frame.mode == VK_PRESENT_MODE_FIFO_KHR || frame.mode == VK_PRESENT_MODE_FIFO_RELAXED_KHR)) {
+      Logger::warn("frame thread wait present");
         VkResult vr = m_vkd->vkWaitForPresentKHR(m_vkd->device(),
           m_swapchain, frame.frameId, std::numeric_limits<uint64_t>::max());
+      Logger::warn("frame thread wait present done");
 
         if (vr < 0 && vr != VK_ERROR_OUT_OF_DATE_KHR && vr != VK_ERROR_SURFACE_LOST_KHR)
           Logger::err(str::format("Presenter: vkWaitForPresentKHR failed: ", vr));
@@ -1236,24 +1368,35 @@ namespace dxvk {
       // Signal latency tracker right away to get more accurate
       // measurements if the frame rate limiter is enabled.
       if (frame.tracker) {
+      Logger::warn("frame thread notify present");
         frame.tracker->notifyGpuPresentEnd(frame.frameId);
+      Logger::warn("frame thread notify present done");
         frame.tracker = nullptr;
       }
 
       // Apply FPS limtier here to align it as closely with scanout as we can,
       // and delay signaling the frame latency event to emulate behaviour of a
       // low refresh rate display as closely as we can.
+      Logger::warn("frame thread limiter");
       m_fpsLimiter.delay();
+      Logger::warn("frame thread limiter done");
 
       // Always signal even on error, since failures here
       // are transparent to the front-end.
+      Logger::warn("frame thread signal");
       m_signal->signal(frame.frameId);
+      Logger::warn("frame thread signal done");
 
       // Wake up any thread that may be waiting for the queue to become empty
+      Logger::warn("frame thread lock");
       lock.lock();
+      Logger::warn("frame thread locked");
 
+      Logger::warn("frame thread pop");
       m_frameQueue.pop();
+      Logger::warn("frame thread popped + notify");
       m_frameDrain.notify_one();
+      Logger::warn("frame thread done");
     }
   }
 

@@ -439,7 +439,7 @@ namespace dxvk {
     // Deliberately ignore proprietary mobile drivers here,
     // DXVK probably doesn't run on those at all anyway
     bool tilerMode = m_adapter->matchesDriver(VK_DRIVER_ID_MESA_TURNIP)
-                  || m_adapter->matchesDriver(VK_DRIVER_ID_MESA_HONEYKRISP)
+                  //|| m_adapter->matchesDriver(VK_DRIVER_ID_MESA_HONEYKRISP)
                   || m_adapter->matchesDriver(VK_DRIVER_ID_MESA_PANVK)
                   || m_adapter->matchesDriver(VK_DRIVER_ID_MESA_V3DV)
                   || m_adapter->matchesDriver(VK_DRIVER_ID_IMAGINATION_OPEN_SOURCE_MESA);
