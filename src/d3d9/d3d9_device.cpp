@@ -2851,6 +2851,48 @@ namespace dxvk {
   }
 
 
+  void D3D9DeviceEx::BatchDraw(
+    const VkDrawIndirectCommand&            draw) {
+    // Batch consecutive draws if there are no state changes
+    if (m_csDataType == D3D9CmdType::Draw) {
+      auto* drawInfo = m_csChunk->pushData(m_csData, 1u);
+
+      if (likely(drawInfo)) {
+        new (drawInfo) VkDrawIndirectCommand(draw);
+        return;
+      }
+    }
+
+    EmitCsCmd<VkDrawIndirectCommand>(D3D9CmdType::Draw, 1u,
+      [] (DxvkContext* ctx, const VkDrawIndirectCommand* draws, size_t count) {
+        ctx->draw(count, draws);
+      });
+
+    new (m_csData->first()) VkDrawIndirectCommand(draw);
+  }
+
+
+  void D3D9DeviceEx::BatchDrawIndexed(
+    const VkDrawIndexedIndirectCommand&     draw) {
+    // Batch consecutive draws if there are no state changes
+    if (m_csDataType == D3D9CmdType::DrawIndexed) {
+      auto* drawInfo = m_csChunk->pushData(m_csData, 1u);
+
+      if (likely(drawInfo)) {
+        new (drawInfo) VkDrawIndexedIndirectCommand(draw);
+        return;
+      }
+    }
+
+    EmitCsCmd<VkDrawIndexedIndirectCommand>(D3D9CmdType::DrawIndexed, 1u,
+      [] (DxvkContext* ctx, const VkDrawIndexedIndirectCommand* draws, size_t count) {
+        ctx->drawIndexed(count, draws);
+      });
+
+    new (m_csData->first()) VkDrawIndexedIndirectCommand(draw);
+  }
+
+
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::DrawPrimitive(
           D3DPRIMITIVETYPE PrimitiveType,
           UINT             StartVertex,
@@ -2879,24 +2921,12 @@ namespace dxvk {
 
     PrepareDraw(PrimitiveType, !dynamicSysmemVBOs, false);
 
-    EmitCs([this,
-      cPrimType    = PrimitiveType,
-      cPrimCount   = PrimitiveCount,
-      cStartVertex = StartVertex
-    ](DxvkContext* ctx) {
-      uint32_t vertexCount = GetVertexCount(cPrimType, cPrimCount);
-
-      ApplyPrimitiveType(ctx, cPrimType);
-
-      // Tests on Windows show that D3D9 does not do non-indexed instanced draws.
-
-      VkDrawIndirectCommand draw = { };
-      draw.vertexCount   = vertexCount;
-      draw.instanceCount = 1u;
-      draw.firstVertex   = cStartVertex;
-
-      ctx->draw(1u, &draw);
-    });
+    VkDrawIndirectCommand draw = GenerateDrawInfo(
+      PrimitiveType,
+      PrimitiveCount,
+      StartVertex
+    );
+    BatchDraw(draw);
 
     return D3D_OK;
   }
@@ -2931,25 +2961,14 @@ namespace dxvk {
 
     PrepareDraw(PrimitiveType, !dynamicSysmemVBOs, !dynamicSysmemIBO);
 
-    EmitCs([this,
-      cPrimType        = PrimitiveType,
-      cPrimCount       = PrimitiveCount,
-      cStartIndex      = StartIndex,
-      cBaseVertexIndex = BaseVertexIndex,
-      cInstanceCount   = GetInstanceCount()
-    ](DxvkContext* ctx) {
-      auto drawInfo = GenerateDrawInfo(cPrimType, cPrimCount, cInstanceCount);
-
-      ApplyPrimitiveType(ctx, cPrimType);
-
-      VkDrawIndexedIndirectCommand draw = { };
-      draw.indexCount    = drawInfo.vertexCount;
-      draw.instanceCount = drawInfo.instanceCount;
-      draw.firstIndex    = cStartIndex;
-      draw.vertexOffset  = cBaseVertexIndex;
-
-      ctx->drawIndexed(1u, &draw);
-    });
+    VkDrawIndexedIndirectCommand draw = GenerateIndexedDrawInfo(
+      PrimitiveType,
+      PrimitiveCount,
+      GetInstanceCount(),
+      StartIndex,
+      BaseVertexIndex
+    );
+    BatchDrawIndexed(draw);
 
     return D3D_OK;
   }
@@ -2978,14 +2997,11 @@ namespace dxvk {
     auto upSlice = AllocUPBuffer(bufferSize);
     FillUPVertexBuffer(upSlice.mapPtr, pVertexStreamZeroData, dataSize, bufferSize);
 
-    EmitCs([this,
+    EmitCs([
       cBufferSlice  = std::move(upSlice.slice),
-      cPrimType     = PrimitiveType,
       cStride       = VertexStreamZeroStride,
       cVertexCount  = vertexCount
     ](DxvkContext* ctx) mutable {
-      ApplyPrimitiveType(ctx, cPrimType);
-
       // Tests on Windows show that D3D9 does not do non-indexed instanced draws.
       VkDrawIndirectCommand draw = { };
       draw.vertexCount = cVertexCount;
@@ -3049,8 +3065,6 @@ namespace dxvk {
                         static_cast<D3D9Format>(IndexDataFormat))
     ](DxvkContext* ctx) {
       auto drawInfo = GenerateDrawInfo(cPrimType, cPrimCount, cInstanceCount);
-
-      ApplyPrimitiveType(ctx, cPrimType);
 
       VkDrawIndexedIndirectCommand draw = { };
       draw.indexCount    = drawInfo.vertexCount;
@@ -3122,7 +3136,7 @@ namespace dxvk {
       nullptr
     );
 
-    PrepareDraw(D3DPT_FORCE_DWORD, !dynamicSysmemVBOs, false);
+    PrepareDraw(D3DPT_POINTLIST, !dynamicSysmemVBOs, false);
 
     if (decl == nullptr) {
       DWORD FVF = dst->Desc()->FVF;
@@ -3163,8 +3177,6 @@ namespace dxvk {
 
         Logger::warn("D3D9DeviceEx::ProcessVertices: instancing unsupported");
       }
-
-      ApplyPrimitiveType(ctx, D3DPT_POINTLIST);
 
       // Unbind the pixel shader, we aren't drawing
       // to avoid val errors / UB.
@@ -7208,17 +7220,31 @@ namespace dxvk {
     }
   }
 
-
-  D3D9DrawInfo D3D9DeviceEx::GenerateDrawInfo(
+  VkDrawIndexedIndirectCommand D3D9DeviceEx::GenerateIndexedDrawInfo(
           D3DPRIMITIVETYPE PrimitiveType,
           UINT             PrimitiveCount,
-          UINT             InstanceCount) {
-    D3D9DrawInfo drawInfo;
-    drawInfo.vertexCount = GetVertexCount(PrimitiveType, PrimitiveCount);
-    drawInfo.instanceCount = m_iaState.streamsInstanced & m_iaState.streamsUsed
+          UINT             InstanceCount,
+          UINT             StartIndex,
+          INT              BaseVertexIndex) {
+    VkDrawIndexedIndirectCommand draw = { };
+    draw.indexCount    = GetVertexCount(PrimitiveType, PrimitiveCount);
+    draw.instanceCount = m_iaState.streamsInstanced & m_iaState.streamsUsed
       ? InstanceCount
       : 1u;
-    return drawInfo;
+    draw.firstIndex    = StartIndex;
+    draw.vertexOffset  = BaseVertexIndex;
+    return draw;
+  }
+
+  VkDrawIndirectCommand D3D9DeviceEx::GenerateDrawInfo(
+          D3DPRIMITIVETYPE PrimitiveType,
+          UINT             PrimitiveCount,
+          UINT             StartVertex) {
+    VkDrawIndirectCommand draw = { };
+    draw.vertexCount   = GetVertexCount(PrimitiveType, PrimitiveCount);
+    draw.instanceCount = 1u;
+    draw.firstVertex   = StartVertex;
+    return draw;
   }
 
 
@@ -7406,6 +7432,16 @@ namespace dxvk {
     if (unlikely(m_flags.test(D3D9DeviceFlag::DirtyIndexBuffer) && UploadIBO)) {
       BindIndices();
       m_flags.clr(D3D9DeviceFlag::DirtyIndexBuffer);
+    }
+
+    if (unlikely(m_iaState.primitiveType != PrimitiveType)) {
+      m_iaState.primitiveType = PrimitiveType;
+      EmitCs([
+        cPrimType = PrimitiveType
+      ] (DxvkContext* ctx) {
+        auto iaState = DecodeInputAssemblyState(cPrimType);
+        ctx->setInputAssemblyState(iaState);
+      });
     }
   }
 
@@ -8068,19 +8104,6 @@ namespace dxvk {
   bool D3D9DeviceEx::UseProgrammablePS() {
     return m_state.pixelShader != nullptr;
   }
-
-
-  void D3D9DeviceEx::ApplyPrimitiveType(
-    DxvkContext*      pContext,
-    D3DPRIMITIVETYPE  PrimType) {
-    if (m_iaState.primitiveType != PrimType) {
-      m_iaState.primitiveType = PrimType;
-
-      auto iaState = DecodeInputAssemblyState(PrimType);
-      pContext->setInputAssemblyState(iaState);
-    }
-  }
-
 
   void D3D9DeviceEx::ResolveZ() {
     D3D9Surface*           src = m_state.depthStencil.ptr();

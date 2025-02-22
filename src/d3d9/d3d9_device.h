@@ -99,14 +99,24 @@ namespace dxvk {
     NotReset = 2,
   };
 
-  struct D3D9DrawInfo {
-    uint32_t vertexCount;
-    uint32_t instanceCount;
-  };
-
   struct D3D9BufferSlice {
     DxvkBufferSlice slice = {};
     void*           mapPtr = nullptr;
+  };
+
+
+  /**
+   * \brief D3D9 command type
+   *
+   * Used to identify the type of command
+   * data most recently added to a CS chunk.
+   */
+  enum class D3D9CmdType : uint32_t {
+    None,
+    Draw,
+    DrawIndexed,
+    DrawUp,
+    DrawIndexedUp,
   };
 
   class D3D9DeviceEx final : public ComObjectClamp<IDirect3DDevice9Ex> {
@@ -438,6 +448,12 @@ namespace dxvk {
             D3DFORMAT        IndexDataFormat,
       const void*            pVertexStreamZeroData,
             UINT             VertexStreamZeroStride);
+
+    void BatchDraw(
+      const VkDrawIndirectCommand&            draw);
+
+    void BatchDrawIndexed(
+      const VkDrawIndexedIndirectCommand&     draw);
 
     HRESULT STDMETHODCALLTYPE ProcessVertices(
             UINT                         SrcStartIndex,
@@ -929,11 +945,18 @@ namespace dxvk {
             DWORD              RenderTargetIndex,
             IDirect3DSurface9* pRenderTarget);
 
-    D3D9DrawInfo GenerateDrawInfo(
+    VkDrawIndexedIndirectCommand GenerateIndexedDrawInfo(
       D3DPRIMITIVETYPE PrimitiveType,
       UINT             PrimitiveCount,
-      UINT             InstanceCount);
-    
+      UINT             InstanceCount,
+      UINT             StartIndex,
+      INT              BaseVertexIndex);
+
+    VkDrawIndirectCommand GenerateDrawInfo(
+      D3DPRIMITIVETYPE PrimitiveType,
+      UINT             PrimitiveCount,
+      UINT             StartVertex);
+
     uint32_t GetInstanceCount() const;
 
     void PrepareDraw(D3DPRIMITIVETYPE PrimitiveType, bool UploadVBOs, bool UploadIBOs);
@@ -1123,6 +1146,11 @@ namespace dxvk {
 
     template<bool AllowFlush = true, typename Cmd>
     void EmitCs(Cmd&& command) {
+      if (unlikely(m_csDataType != D3D9CmdType::None)) {
+        m_csData = nullptr;
+        m_csDataType = D3D9CmdType::None;
+      }
+
       if (unlikely(!m_csChunk->push(command))) {
         EmitCsChunk(std::move(m_csChunk));
         m_csChunk = AllocCsChunk();
@@ -1134,10 +1162,31 @@ namespace dxvk {
       }
     }
 
+    template<typename M, bool AllowFlush = true, typename Cmd>
+    void EmitCsCmd(D3D9CmdType type, size_t count, Cmd&& command) {
+      m_csDataType = type;
+      m_csData = m_csChunk->pushCmd<M, Cmd>(command, count);
+
+      if (unlikely(!m_csData)) {
+        EmitCsChunk(std::move(m_csChunk));
+        m_csChunk = AllocCsChunk();
+
+        if constexpr (AllowFlush)
+          ConsiderFlush(GpuFlushType::ImplicitWeakHint);
+
+        // We must record this command after the potential
+        // flush since the caller may still access the data
+        m_csData = m_csChunk->pushCmd<M, Cmd>(command, count);
+      }
+    }
+
     void EmitCsChunk(DxvkCsChunkRef&& chunk);
 
     void FlushCsChunk() {
       if (likely(!m_csChunk->empty())) {
+        m_csData = nullptr;
+        m_csDataType = D3D9CmdType::None;
+
         EmitCsChunk(std::move(m_csChunk));
         m_csChunk = AllocCsChunk();
       }
@@ -1543,6 +1592,8 @@ namespace dxvk {
     DxvkCsThread                    m_csThread;
     DxvkCsChunkRef                  m_csChunk;
     uint64_t                        m_csSeqNum = 0ull;
+    D3D9CmdType                     m_csDataType = D3D9CmdType::None;
+    DxvkCsDataBlock*                m_csData = nullptr;
 
     Rc<sync::Fence>                 m_submissionFence;
     uint64_t                        m_submissionId = 0ull;
