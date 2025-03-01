@@ -2852,9 +2852,12 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::BatchDraw(
-    const VkDrawIndirectCommand&            draw) {
+          bool                   upDraw,
+    const VkDrawIndirectCommand& draw) {
+    D3D9CmdType expectedDrawType = upDraw ? D3D9CmdType::DrawUp : D3D9CmdType::Draw;
+
     // Batch consecutive draws if there are no state changes
-    if (m_csDataType == D3D9CmdType::Draw) {
+    if (m_csDataType == expectedDrawType) {
       auto* drawInfo = m_csChunk->pushData(m_csData, 1u);
 
       if (likely(drawInfo)) {
@@ -2863,7 +2866,7 @@ namespace dxvk {
       }
     }
 
-    EmitCsCmd<VkDrawIndirectCommand>(D3D9CmdType::Draw, 1u,
+    EmitCsCmd<VkDrawIndirectCommand>(expectedDrawType, 1u,
       [] (DxvkContext* ctx, const VkDrawIndirectCommand* draws, size_t count) {
         ctx->draw(count, draws);
       });
@@ -2873,9 +2876,12 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::BatchDrawIndexed(
+          bool                              upDraw,
     const VkDrawIndexedIndirectCommand&     draw) {
+    D3D9CmdType expectedDrawType = upDraw ? D3D9CmdType::DrawIndexedUp : D3D9CmdType::DrawIndexed;
+
     // Batch consecutive draws if there are no state changes
-    if (m_csDataType == D3D9CmdType::DrawIndexed) {
+    if (m_csDataType == expectedDrawType) {
       auto* drawInfo = m_csChunk->pushData(m_csData, 1u);
 
       if (likely(drawInfo)) {
@@ -2884,7 +2890,7 @@ namespace dxvk {
       }
     }
 
-    EmitCsCmd<VkDrawIndexedIndirectCommand>(D3D9CmdType::DrawIndexed, 1u,
+    EmitCsCmd<VkDrawIndexedIndirectCommand>(expectedDrawType, 1u,
       [] (DxvkContext* ctx, const VkDrawIndexedIndirectCommand* draws, size_t count) {
         ctx->drawIndexed(count, draws);
       });
@@ -2919,6 +2925,7 @@ namespace dxvk {
       nullptr
     );
 
+    EndUPDraws();
     PrepareDraw(PrimitiveType, !dynamicSysmemVBOs, false);
 
     VkDrawIndirectCommand draw = GenerateDrawInfo(
@@ -2926,7 +2933,7 @@ namespace dxvk {
       PrimitiveCount,
       StartVertex
     );
-    BatchDraw(draw);
+    BatchDraw(false, draw);
 
     return D3D_OK;
   }
@@ -2959,6 +2966,7 @@ namespace dxvk {
       &dynamicSysmemIBO
     );
 
+    EndUPDraws();
     PrepareDraw(PrimitiveType, !dynamicSysmemVBOs, !dynamicSysmemIBO);
 
     VkDrawIndexedIndirectCommand draw = GenerateIndexedDrawInfo(
@@ -2968,7 +2976,7 @@ namespace dxvk {
       StartIndex,
       BaseVertexIndex
     );
-    BatchDrawIndexed(draw);
+    BatchDrawIndexed(false, draw);
 
     return D3D_OK;
   }
@@ -2987,6 +2995,12 @@ namespace dxvk {
     if (unlikely(!PrimitiveCount))
       return S_OK;
 
+    if (unlikely(m_csDataType == D3D9CmdType::DrawIndexedUp)) {
+      EmitCs([](DxvkContext* ctx) {
+        ctx->bindIndexBuffer(DxvkBufferSlice(), VK_INDEX_TYPE_UINT32);
+      });
+    }
+
     PrepareDraw(PrimitiveType, false, false);
 
     uint32_t vertexCount = GetVertexCount(PrimitiveType, PrimitiveCount);
@@ -2994,23 +3008,41 @@ namespace dxvk {
     const uint32_t dataSize = GetUPDataSize(vertexCount, VertexStreamZeroStride);
     const uint32_t bufferSize = GetUPBufferSize(vertexCount, VertexStreamZeroStride);
 
-    auto upSlice = AllocUPBuffer(bufferSize);
+    uint32_t alignment = CACHE_LINE_SIZE;
+    bool rebind = true;
+    if (
+      m_csDataType == D3D9CmdType::DrawIndexedUp
+      && m_upDrawInfo.boundSlice.defined()
+      && m_upDrawInfo.vertexStride == VertexStreamZeroStride) {
+      alignment = VertexStreamZeroStride;
+      rebind = false;
+    }
+
+    auto upSlice = AllocUPBuffer(align(bufferSize, alignment));
     FillUPVertexBuffer(upSlice.mapPtr, pVertexStreamZeroData, dataSize, bufferSize);
+
+    if (rebind) {
+      m_upDrawInfo.boundSlice   = upSlice.slice;
+      m_upDrawInfo.vertexStride = VertexStreamZeroStride;
+      m_upDrawInfo.indexStride  = 0;
+      m_upDrawInfo.indexBufferOffset = 0;
 
     EmitCs([
       cBufferSlice  = std::move(upSlice.slice),
-      cStride       = VertexStreamZeroStride,
-      cVertexCount  = vertexCount
+        cStride       = VertexStreamZeroStride
     ](DxvkContext* ctx) mutable {
-      // Tests on Windows show that D3D9 does not do non-indexed instanced draws.
-      VkDrawIndirectCommand draw = { };
-      draw.vertexCount = cVertexCount;
-      draw.instanceCount = 1u;
-
       ctx->bindVertexBuffer(0, std::move(cBufferSlice), cStride);
-      ctx->draw(1u, &draw);
-      ctx->bindVertexBuffer(0, DxvkBufferSlice(), 0);
-    });
+      });
+
+      VkDrawIndirectCommand draw = GenerateDrawInfo(PrimitiveType, PrimitiveCount, 0);
+      BatchDraw(true, draw);
+    } else {
+      VkDrawIndirectCommand draw = GenerateDrawInfo(
+        PrimitiveType,
+        PrimitiveCount,
+        (upSlice.slice.offset() - m_upDrawInfo.boundSlice.offset()) / VertexStreamZeroStride);
+      BatchDraw(true, draw);
+    }
 
     m_state.vertexBuffers[0].vertexBuffer = nullptr;
     m_state.vertexBuffers[0].offset       = 0;
@@ -3041,41 +3073,59 @@ namespace dxvk {
 
     uint32_t vertexCount = GetVertexCount(PrimitiveType, PrimitiveCount);
 
-    const uint32_t vertexDataSize = GetUPDataSize(MinVertexIndex + NumVertices, VertexStreamZeroStride);
-    const uint32_t vertexBufferSize = GetUPBufferSize(MinVertexIndex + NumVertices, VertexStreamZeroStride);
-
     const uint32_t indexSize = IndexDataFormat == D3DFMT_INDEX16 ? 2 : 4;
     const uint32_t indicesSize = vertexCount * indexSize;
 
+    const uint32_t vertexDataSize = GetUPDataSize(MinVertexIndex + NumVertices, VertexStreamZeroStride);
+    const uint32_t vertexBufferSize = align(GetUPBufferSize(MinVertexIndex + NumVertices, VertexStreamZeroStride), indexSize);
+
     const uint32_t upSize = vertexBufferSize + indicesSize;
 
-    auto upSlice = AllocUPBuffer(upSize);
+    uint32_t alignment = CACHE_LINE_SIZE;
+    bool rebind = true;
+    if (
+      m_csDataType == D3D9CmdType::DrawIndexedUp
+      && (VertexStreamZeroStride % indexSize) == 0 // should always be the case
+      && m_upDrawInfo.vertexStride == VertexStreamZeroStride
+      && m_upDrawInfo.indexStride == indexSize) {
+      alignment = VertexStreamZeroStride;
+      rebind = false;
+    }
+
+    auto upSlice = AllocUPBuffer(align(upSize, alignment));
     uint8_t* data = reinterpret_cast<uint8_t*>(upSlice.mapPtr);
     FillUPVertexBuffer(data, pVertexStreamZeroData, vertexDataSize, vertexBufferSize);
     std::memcpy(data + vertexBufferSize, pIndexData, indicesSize);
 
-    EmitCs([this,
+    rebind |= !upSlice.slice.matchesBuffer(upSlice.slice);
+
+    if (rebind) {
+      m_upDrawInfo.boundSlice   = upSlice.slice;
+      m_upDrawInfo.vertexStride = VertexStreamZeroStride;
+      m_upDrawInfo.indexStride  = indexSize;
+      m_upDrawInfo.indexBufferOffset = vertexBufferSize;
+
+      EmitCs([
       cVertexSize   = vertexBufferSize,
       cBufferSlice  = std::move(upSlice.slice),
-      cPrimType     = PrimitiveType,
-      cPrimCount    = PrimitiveCount,
       cStride       = VertexStreamZeroStride,
-      cInstanceCount = GetInstanceCount(),
-      cIndexType    = DecodeIndexType(
-                        static_cast<D3D9Format>(IndexDataFormat))
-    ](DxvkContext* ctx) {
-      auto drawInfo = GenerateDrawInfo(cPrimType, cPrimCount, cInstanceCount);
-
-      VkDrawIndexedIndirectCommand draw = { };
-      draw.indexCount    = drawInfo.vertexCount;
-      draw.instanceCount = drawInfo.instanceCount;
-
-      ctx->bindVertexBuffer(0, cBufferSlice.subSlice(0, cVertexSize), cStride);
+        cIndexType    = DecodeIndexType(static_cast<D3D9Format>(IndexDataFormat))
+      ](DxvkContext* ctx) mutable {
+        ctx->bindVertexBuffer(0, std::move(cBufferSlice), cStride);
       ctx->bindIndexBuffer(cBufferSlice.subSlice(cVertexSize, cBufferSlice.length() - cVertexSize), cIndexType);
-      ctx->drawIndexed(1u, &draw);
-      ctx->bindVertexBuffer(0, DxvkBufferSlice(), 0);
-      ctx->bindIndexBuffer(DxvkBufferSlice(), VK_INDEX_TYPE_UINT32);
-    });
+      });
+
+      VkDrawIndexedIndirectCommand draw = GenerateIndexedDrawInfo(PrimitiveType, PrimitiveCount, GetInstanceCount(), 0, 0);
+      BatchDrawIndexed(true, draw);
+    } else {
+      VkDrawIndexedIndirectCommand draw = GenerateIndexedDrawInfo(
+        PrimitiveType,
+        PrimitiveCount,
+        GetInstanceCount(),
+        (upSlice.slice.offset() - (m_upDrawInfo.boundSlice.offset() + m_upDrawInfo.indexBufferOffset)) / indexSize,
+        (upSlice.slice.offset() - m_upDrawInfo.boundSlice.offset()) / VertexStreamZeroStride);
+      BatchDrawIndexed(true, draw);
+    }
 
     m_state.vertexBuffers[0].vertexBuffer = nullptr;
     m_state.vertexBuffers[0].offset       = 0;
@@ -3084,6 +3134,22 @@ namespace dxvk {
     m_state.indices = nullptr;
 
     return D3D_OK;
+  }
+
+  void D3D9DeviceEx::EndUPDraws() {
+    if (likely(m_csDataType != D3D9CmdType::DrawUp && m_csDataType != D3D9CmdType::DrawIndexedUp))
+      return;
+
+    EmitCs([
+      cUnbindIndexBuffer = m_csDataType == D3D9CmdType::DrawIndexedUp
+    ](DxvkContext* ctx) {
+      ctx->bindVertexBuffer(0, DxvkBufferSlice(), 0);
+      if (cUnbindIndexBuffer) {
+        ctx->bindIndexBuffer(DxvkBufferSlice(), VK_INDEX_TYPE_UINT32);
+      }
+    });
+
+    m_upDrawInfo = {};
   }
 
 
@@ -3549,6 +3615,8 @@ namespace dxvk {
         OffsetInBytes,
         Stride);
 
+    EndUPDraws();
+
     auto& vbo = m_state.vertexBuffers[StreamNumber];
     bool needsUpdate = vbo.vertexBuffer != buffer;
 
@@ -3639,6 +3707,8 @@ namespace dxvk {
 
     if (unlikely(ShouldRecord()))
       return m_recorder->SetStreamSourceFreq(StreamNumber, Setting);
+
+    EndUPDraws();
 
     if (m_state.streamFreq[StreamNumber] == Setting)
       return D3D_OK;
@@ -4638,9 +4708,8 @@ namespace dxvk {
       }
     }
 
-    VkDeviceSize alignedSize = align(size, CACHE_LINE_SIZE);
-
-    if (unlikely(m_upBufferOffset + alignedSize > UPBufferSize)) {
+    if (unlikely(m_upBufferOffset + size > UPBufferSize)) {
+      m_upDrawInfo.boundSlice = {};
       auto slice = m_upBuffer->allocateStorage();
 
       m_upBufferOffset = 0;
@@ -4655,10 +4724,10 @@ namespace dxvk {
     }
 
     D3D9BufferSlice result;
-    result.slice = DxvkBufferSlice(m_upBuffer, m_upBufferOffset, size);
+    result.slice = DxvkBufferSlice(m_upBuffer, m_upBufferOffset, m_upBuffer->info().size - m_upBufferOffset);
     result.mapPtr = reinterpret_cast<char*>(m_upBufferMapPtr) + m_upBufferOffset;
 
-    m_upBufferOffset += alignedSize;
+    m_upBufferOffset += size;
     return result;
   }
 

@@ -105,6 +105,14 @@ namespace dxvk {
   };
 
 
+  struct D3D9UpDrawInfo {
+    DxvkBufferSlice boundSlice = {};
+    UINT            vertexStride = 0;
+    UINT            indexStride = 0;
+    UINT            indexBufferOffset = 0;
+  };
+
+
   /**
    * \brief D3D9 command type
    *
@@ -449,11 +457,15 @@ namespace dxvk {
       const void*            pVertexStreamZeroData,
             UINT             VertexStreamZeroStride);
 
+    void EndUPDraws();
+
     void BatchDraw(
-      const VkDrawIndirectCommand&            draw);
+            bool                   upDraw,
+      const VkDrawIndirectCommand& draw);
 
     void BatchDrawIndexed(
-      const VkDrawIndexedIndirectCommand&     draw);
+            bool                          upDraw,
+      const VkDrawIndexedIndirectCommand& draw);
 
     HRESULT STDMETHODCALLTYPE ProcessVertices(
             UINT                         SrcStartIndex,
