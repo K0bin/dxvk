@@ -3,6 +3,7 @@
 #include "d3d9_annotation.h"
 #include "d3d9_common_texture.h"
 #include "d3d9_interface.h"
+#include "d3d9_multithread.h"
 #include "d3d9_swapchain.h"
 #include "d3d9_caps.h"
 #include "d3d9_util.h"
@@ -27,6 +28,7 @@
 
 #include <algorithm>
 #include <cfloat>
+#include <vector>
 #ifdef MSC_VER
 #pragma fenv_access (on)
 #endif
@@ -3027,11 +3029,11 @@ namespace dxvk {
       m_upDrawInfo.indexStride  = 0;
       m_upDrawInfo.indexBufferOffset = 0;
 
-    EmitCs([
-      cBufferSlice  = std::move(upSlice.slice),
+      EmitCs([
+        cBufferSlice  = std::move(upSlice.slice),
         cStride       = VertexStreamZeroStride
-    ](DxvkContext* ctx) mutable {
-      ctx->bindVertexBuffer(0, std::move(cBufferSlice), cStride);
+      ](DxvkContext* ctx) mutable {
+        ctx->bindVertexBuffer(0, std::move(cBufferSlice), cStride);
       });
 
       VkDrawIndirectCommand draw = GenerateDrawInfo(PrimitiveType, PrimitiveCount, 0);
@@ -3106,13 +3108,13 @@ namespace dxvk {
       m_upDrawInfo.indexBufferOffset = vertexBufferSize;
 
       EmitCs([
-      cVertexSize   = vertexBufferSize,
-      cBufferSlice  = std::move(upSlice.slice),
-      cStride       = VertexStreamZeroStride,
+        cVertexSize   = vertexBufferSize,
+        cBufferSlice  = std::move(upSlice.slice),
+        cStride       = VertexStreamZeroStride,
         cIndexType    = DecodeIndexType(static_cast<D3D9Format>(IndexDataFormat))
       ](DxvkContext* ctx) mutable {
         ctx->bindVertexBuffer(0, std::move(cBufferSlice), cStride);
-      ctx->bindIndexBuffer(cBufferSlice.subSlice(cVertexSize, cBufferSlice.length() - cVertexSize), cIndexType);
+        ctx->bindIndexBuffer(cBufferSlice.subSlice(cVertexSize, cBufferSlice.length() - cVertexSize), cIndexType);
       });
 
       VkDrawIndexedIndirectCommand draw = GenerateIndexedDrawInfo(PrimitiveType, PrimitiveCount, GetInstanceCount(), 0, 0);
@@ -4143,6 +4145,12 @@ namespace dxvk {
           HWND hDestWindowOverride,
     const RGNDATA* pDirtyRegion,
           DWORD dwFlags) {
+
+    {
+      D3D9DeviceLock lock = LockDevice();
+      m_frame++;
+      m_vertexConstantFIter = 0;
+    }
 
     if (m_cursor.IsSoftwareCursor()) {
       D3D9_SOFTWARE_CURSOR* pSoftwareCursor = m_cursor.GetSoftwareCursor();
@@ -7816,13 +7824,53 @@ namespace dxvk {
     if (unlikely(StartRegister + Count > regCountSoftware))
       return D3DERR_INVALIDCALL;
 
+    UINT originalCount = Count;
+
     Count = UINT(
       std::max<INT>(
         std::clamp<INT>(Count + StartRegister, 0, regCountHardware) - INT(StartRegister),
         0));
 
-    if (unlikely(Count == 0))
+    if (unlikely(Count == 0)) {
+      Logger::info("Skipping vertex shader constants because count is 0");
       return D3D_OK;
+    }
+
+    if (unlikely(originalCount != Count)) {
+      Logger::info(str::format("Vertex shader constant count was changed from: ", originalCount, " to ", Count));
+    }
+
+    if constexpr (ProgramType == DxsoProgramType::VertexShader) {
+      if constexpr (ConstantType == D3D9ConstantType::Float) {
+        if (Count >= 9999) {
+          std::vector<Vector4> data;
+          data.resize(Count);
+          memcpy(data.data(), pConstantData, sizeof(Vector4) * Count);
+          size_t srcPtr = reinterpret_cast<size_t>(pConstantData);
+
+          uint32_t lastMatchInFrame = 0;
+          for (auto iter = m_shaderConstantWrites.rbegin(); iter < m_shaderConstantWrites.rend(); iter++) {
+            if (m_frame - iter->frame > 500) {
+              break;
+            }
+            if (iter->startRegister != StartRegister || iter->data.size() != data.size() || m_frame == iter->frame || m_frame == lastMatchInFrame /* || m_vertexConstantFIter != iter->iteration*/) {
+              continue;
+            }
+            lastMatchInFrame = iter->frame;
+            if (iter->data == data) {
+              Logger::warn(str::format("USING THE SAME DATA AS IN FRAME ", iter->frame, " ITER: ", iter->iteration, " src ptr: ", iter->srcPointer, " Start: ", iter->startRegister, " Count: ", iter->data.size()));
+              Logger::warn(str::format("Current: ", m_frame, " ITER: ", m_vertexConstantFIter, " src ptr: ", srcPtr, " Start: ", StartRegister, " Count: ", data.size(), " Frame Diff: ", m_frame - iter->frame));
+            }
+          }
+          m_shaderConstantWrites.push_back({ m_frame, m_vertexConstantFIter, srcPtr, StartRegister, std::move(data) });
+
+          m_vertexConstantFIter++;
+        }
+      }
+    }
+
+
+    //Logger::info(str::format("Setting vertex shader constants: shader constant count was changed from: ", originalCount, " to ", Count));
 
     if (unlikely(pConstantData == nullptr))
       return D3DERR_INVALIDCALL;

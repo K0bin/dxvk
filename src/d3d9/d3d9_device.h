@@ -42,6 +42,14 @@
 
 namespace dxvk {
 
+  struct D3D9VertexShaderConstData {
+    uint32_t frame;
+    uint32_t iteration;
+    size_t srcPointer;
+    uint32_t startRegister;
+    std::vector<Vector4> data;
+  };
+
   class D3D9InterfaceEx;
   class D3D9SwapChainEx;
   class D3D9CommonTexture;
@@ -146,6 +154,7 @@ namespace dxvk {
     friend class DxvkD3D8Bridge;
     friend D3D9VkInteropDevice;
   public:
+  uint32_t m_frame = 0;
 
     D3D9DeviceEx(
             D3D9InterfaceEx*       pParent,
@@ -1642,6 +1651,13 @@ namespace dxvk {
 
     uint64_t                        m_lastSamplerLiveCount = 0u;
     uint64_t                        m_lastSamplerBindCount = 0u;
+
+    D3D9UpDrawInfo                  m_upDrawInfo;
+
+    D3D9BufferSlice                 m_lastUpSlice;
+
+    std::vector<D3D9VertexShaderConstData> m_shaderConstantWrites;
+    uint32_t m_vertexConstantFIter = 0;
 
     // Written by CS thread
     alignas(CACHE_LINE_SIZE)

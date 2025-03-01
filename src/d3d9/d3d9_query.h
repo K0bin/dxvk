@@ -72,6 +72,8 @@ namespace dxvk {
 
     D3DQUERYTYPE      m_queryType;
 
+    uint32_t          m_spinCount = 0;
+
     D3D9_VK_QUERY_STATE m_state;
 
     std::array<Rc<DxvkQuery>, MaxGpuQueries> m_query;

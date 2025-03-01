@@ -97,6 +97,8 @@ namespace dxvk {
   HRESULT STDMETHODCALLTYPE D3D9Query::Issue(DWORD dwIssueFlags) {
     // Note: No need to submit to CS if we don't do anything!
 
+    m_spinCount = 0;
+
     if (dwIssueFlags == D3DISSUE_BEGIN) {
       if (QueryBeginnable(m_queryType)) {
         if (m_state == D3D9_VK_QUERY_BEGUN && QueryEndable(m_queryType)) {
@@ -104,6 +106,7 @@ namespace dxvk {
           m_parent->End(this);
         }
 
+        //Logger::warn(str::format("Beginning query. ", reinterpret_cast<size_t>(this), " frame: ", m_parent->m_frame));
         m_parent->Begin(this);
 
         m_state = D3D9_VK_QUERY_BEGUN;
@@ -116,6 +119,7 @@ namespace dxvk {
 
         m_resetCtr.fetch_add(1, std::memory_order_acquire);
 
+        //Logger::warn(str::format("Ending query. ", reinterpret_cast<size_t>(this), " frame: ", m_parent->m_frame));
         m_parent->End(this);
 
       }
@@ -129,9 +133,15 @@ namespace dxvk {
   HRESULT STDMETHODCALLTYPE D3D9Query::GetData(void* pData, DWORD dwSize, DWORD dwGetDataFlags) {
     D3D9DeviceLock lock = m_parent->LockDevice();
 
+    m_spinCount++;
+    if (m_spinCount < 64) {
+     //return S_FALSE;
+    }
+
     bool flush = dwGetDataFlags & D3DGETDATA_FLUSH;
 
     if (unlikely(m_parent->IsDeviceLost())) {
+      Logger::warn(str::format("Device lost. ", reinterpret_cast<size_t>(this), " frame: ", m_parent->m_frame));
       return flush ? D3DERR_DEVICELOST : S_FALSE;
     }
 
@@ -146,6 +156,7 @@ namespace dxvk {
           *static_cast<bool*>(pData) = true;
         }
       }
+      Logger::warn(str::format("Query is cached. ", reinterpret_cast<size_t>(this), " frame: ", m_parent->m_frame));
       return D3D_OK;
     }
 
@@ -164,8 +175,10 @@ namespace dxvk {
 
   HRESULT D3D9Query::GetQueryData(void* pData, DWORD dwSize) {
     // Let the game know that calling end might be a good idea...
-    if (m_state == D3D9_VK_QUERY_BEGUN)
+    if (m_state == D3D9_VK_QUERY_BEGUN) {
+      Logger::warn(str::format("Query not ended. ", reinterpret_cast<size_t>(this), " frame: ", m_parent->m_frame));
       return S_FALSE;
+    }
 
     if (unlikely(!pData && dwSize))
       return D3DERR_INVALIDCALL;
@@ -173,11 +186,15 @@ namespace dxvk {
     // The game forgot to even issue the query!
     // Let's do it for them...
     // This will issue both the begin, and the end.
-    if (m_state == D3D9_VK_QUERY_INITIAL)
+    if (m_state == D3D9_VK_QUERY_INITIAL) {
+      Logger::warn(str::format("Game forgot to issue query. ", reinterpret_cast<size_t>(this), " frame: ", m_parent->m_frame));
       this->Issue(D3DISSUE_END);
+    }
 
-    if (m_resetCtr != 0u)
+    if (m_resetCtr != 0u) {
+      Logger::warn(str::format("False bc resetctr. ", reinterpret_cast<size_t>(this), " frame: ", m_parent->m_frame));
       return S_FALSE;
+    }
 
     if (m_queryType == D3DQUERYTYPE_EVENT) {
       DxvkGpuEventStatus status = m_event[0]->test();
@@ -207,8 +224,10 @@ namespace dxvk {
          || status == DxvkGpuQueryStatus::Failed)
           return D3DERR_INVALIDCALL;
 
-        if (status == DxvkGpuQueryStatus::Pending)
-          return S_FALSE;
+        if (status == DxvkGpuQueryStatus::Pending) {
+          //Logger::warn(str::format("Query still pending. ", reinterpret_cast<size_t>(this), " frame: ", m_parent->m_frame));
+          //return S_FALSE;
+        }
       }
 
       if (pData == nullptr)
@@ -224,7 +243,7 @@ namespace dxvk {
           break;
 
         case D3DQUERYTYPE_OCCLUSION:
-          m_dataCache.Occlusion = DWORD(queryData[0].occlusion.samplesPassed);
+          m_dataCache.Occlusion = 64; //DWORD(queryData[0].occlusion.samplesPassed);
           break;
 
         case D3DQUERYTYPE_TIMESTAMP:
