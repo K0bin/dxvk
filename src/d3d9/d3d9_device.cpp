@@ -7734,14 +7734,22 @@ namespace dxvk {
     if constexpr (ProgramType == DxsoProgramType::VertexShader) {
       if constexpr (ConstantType == D3D9ConstantType::Float) {
         m_vsFloatConstsCount = std::max(m_vsFloatConstsCount, StartRegister + Count);
+        m_vsFloatConstsConstsChanged += Count;
       } else if constexpr (ConstantType == D3D9ConstantType::Int) {
         m_vsIntConstsCount = std::max(m_vsIntConstsCount, StartRegister + Count);
+        m_vsIntConstsConstsChanged += Count;
       } else /* if constexpr (ConstantType == D3D9ConstantType::Bool) */ {
         m_vsBoolConstsCount = std::max(m_vsBoolConstsCount, StartRegister + Count);
+        m_vsBoolConstsConstsChanged += Count;
       }
     } else {
       if constexpr (ConstantType == D3D9ConstantType::Float) {
         m_psFloatConstsCount = std::max(m_psFloatConstsCount, StartRegister + Count);
+        m_psFloatConstsConstsChanged += Count;
+      } else if constexpr (ConstantType == D3D9ConstantType::Int) {
+        m_psIntConstsConstsChanged += Count;
+      } else /* if constexpr (ConstantType == D3D9ConstantType::Bool) */ {
+        m_psBoolConstsConstsChanged += Count;
       }
     }
 

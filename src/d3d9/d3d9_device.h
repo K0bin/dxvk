@@ -1177,6 +1177,54 @@ namespace dxvk {
       return DxvkCsChunkRef(chunk, &m_csChunkPool);
     }
 
+    uint32_t maxVSFloatConst() const {
+      return m_vsFloatConstsCount;
+    }
+
+    uint32_t maxVSIntConst() const {
+      return m_vsIntConstsCount;
+    }
+
+    uint32_t maxVSBoolConst() const {
+      return m_vsBoolConstsCount;
+    }
+
+    uint32_t maxPSFloatConst() const {
+      return m_psFloatConstsCount;
+    }
+
+    uint32_t maxPSIntConst() const {
+      return m_psLayout.intCount;
+    }
+
+    uint32_t maxPSBoolConst() const {
+      return m_psLayout.boolCount;
+    }
+
+    uint64_t vsFloatConstsChanged() const {
+      return m_vsFloatConstsConstsChanged;
+    }
+
+    uint64_t vsIntConstsChanged() const {
+      return m_vsIntConstsConstsChanged;
+    }
+
+    uint64_t vsBoolConstsChanged() const {
+      return m_vsBoolConstsConstsChanged;
+    }
+
+    uint64_t psFloatConstsChanged() const {
+      return m_psFloatConstsConstsChanged;
+    }
+
+    uint64_t psIntConstsChanged() const {
+      return m_psIntConstsConstsChanged;
+    }
+
+    uint64_t psBoolConstsChanged() const {
+      return m_psBoolConstsConstsChanged;
+    }
+
   private:
 
     template<bool AllowFlush = true, typename Cmd>
@@ -1586,6 +1634,14 @@ namespace dxvk {
     uint32_t                        m_vsIntConstsCount   = 0;
     uint32_t                        m_vsBoolConstsCount  = 0;
     uint32_t                        m_psFloatConstsCount = 0;
+
+    uint64_t                        m_vsFloatConstsConstsChanged = 0;
+    uint64_t                        m_vsIntConstsConstsChanged = 0;
+    uint64_t                        m_vsBoolConstsConstsChanged = 0;
+    uint64_t                        m_psFloatConstsConstsChanged = 0;
+    uint64_t                        m_psIntConstsConstsChanged = 0;
+    uint64_t                        m_psBoolConstsConstsChanged = 0;
+
     VkDeviceSize                    m_boundVSConstantsBufferSize = 0;
     VkDeviceSize                    m_boundPSConstantsBufferSize = 0;
 
