@@ -2863,6 +2863,8 @@ namespace dxvk {
     if (unlikely(!PrimitiveCount))
       return S_OK;
 
+    m_drawCalls++;
+
     bool dynamicSysmemVBOs;
     uint32_t firstIndex     = 0;
     int32_t baseVertexIndex = 0;
@@ -2916,6 +2918,8 @@ namespace dxvk {
     if (unlikely(!PrimitiveCount))
       return S_OK;
 
+    m_drawCalls++;
+
     bool dynamicSysmemVBOs;
     bool dynamicSysmemIBO;
     uint32_t indexCount = GetVertexCount(PrimitiveType, PrimitiveCount);
@@ -2967,6 +2971,8 @@ namespace dxvk {
 
     if (unlikely(!PrimitiveCount))
       return S_OK;
+
+    m_drawCalls++;
 
     PrepareDraw(PrimitiveType, false, false);
 
@@ -3020,6 +3026,8 @@ namespace dxvk {
 
     if (unlikely(!PrimitiveCount))
       return S_OK;
+
+    m_drawCalls++;
 
     PrepareDraw(PrimitiveType, false, false);
 

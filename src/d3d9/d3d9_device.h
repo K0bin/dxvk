@@ -1225,6 +1225,10 @@ namespace dxvk {
       return m_psBoolConstsConstsChanged;
     }
 
+    uint64_t drawCalls() const {
+      return m_drawCalls;
+    }
+
   private:
 
     template<bool AllowFlush = true, typename Cmd>
@@ -1641,6 +1645,8 @@ namespace dxvk {
     uint64_t                        m_psFloatConstsConstsChanged = 0;
     uint64_t                        m_psIntConstsConstsChanged = 0;
     uint64_t                        m_psBoolConstsConstsChanged = 0;
+
+    uint64_t                        m_drawCalls = 0;
 
     VkDeviceSize                    m_boundVSConstantsBufferSize = 0;
     VkDeviceSize                    m_boundPSConstantsBufferSize = 0;

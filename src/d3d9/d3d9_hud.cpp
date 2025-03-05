@@ -161,6 +161,7 @@ namespace dxvk::hud {
     uint64_t psFloatConstsChanged = m_device->psFloatConstsChanged();
     uint64_t psIntConstsChanged = m_device->psIntConstsChanged();
     uint64_t psBoolConstsChanged = m_device->psBoolConstsChanged();
+    uint64_t drawCalls = m_device->drawCalls();
 
     m_maxVSFloatConstsChangedPerFrame = std::max(m_maxVSFloatConstsChangedPerFrame, uint32_t(vsFloatConstsChanged - m_prevVSFloatConstsChanged));
     m_maxVSIntConstsChangedPerFrame = std::max(m_maxVSIntConstsChangedPerFrame, uint32_t(vsIntConstsChanged - m_prevVSIntConstsChanged));
@@ -168,6 +169,7 @@ namespace dxvk::hud {
     m_maxPSFloatConstsChangedPerFrame = std::max(m_maxPSFloatConstsChangedPerFrame, uint32_t(psFloatConstsChanged - m_prevPSFloatConstsChanged));
     m_maxPSIntConstsChangedPerFrame = std::max(m_maxPSIntConstsChangedPerFrame, uint32_t(psIntConstsChanged - m_prevPSIntConstsChanged));
     m_maxPSBoolConstsChangedPerFrame = std::max(m_maxPSBoolConstsChangedPerFrame, uint32_t(psBoolConstsChanged - m_prevPSBoolConstsChanged));
+    m_maxDrawCallsPerFrame = std::max(m_maxDrawCallsPerFrame, uint32_t(drawCalls - m_prevDrawCalls));
 
     m_prevVSFloatConstsChanged = vsFloatConstsChanged;
     m_prevVSIntConstsChanged = vsIntConstsChanged;
@@ -175,18 +177,19 @@ namespace dxvk::hud {
     m_prevPSFloatConstsChanged = psFloatConstsChanged;
     m_prevPSIntConstsChanged = psIntConstsChanged;
     m_prevPSBoolConstsChanged = psBoolConstsChanged;
+    m_prevDrawCalls = drawCalls;
 
     auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(time - m_lastUpdate);
 
     if (elapsed.count() < UpdateInterval && m_vsFloatConstString.size() != 0)
       return;
 
-    m_vsFloatConstString = str::format(m_maxVSFloatConstsChangedPerFrame, " (Copying: ", m_device->maxVSFloatConst(), " per draw)");
-    m_vsIntConstString = str::format(m_maxVSIntConstsChangedPerFrame, " (Copying: ", m_device->maxVSIntConst(), " per draw)");
-    m_vsBoolConstString = str::format(m_maxVSBoolConstsChangedPerFrame, " (Copying: ", m_device->maxVSBoolConst(), " per draw)");
-    m_psFloatConstString = str::format(m_maxPSFloatConstsChangedPerFrame, " (Copying: ", m_device->maxPSFloatConst(), " per draw)");
-    m_psIntConstString = str::format(m_maxPSIntConstsChangedPerFrame, " (Copying: ", m_device->maxPSIntConst(), " per draw)");
-    m_psBoolConstString = str::format(m_maxPSBoolConstsChangedPerFrame, " (Copying: ", m_device->maxPSBoolConst(), " per draw)");
+    m_vsFloatConstString = str::format(m_maxVSFloatConstsChangedPerFrame, ", ", m_maxVSFloatConstsChangedPerFrame / m_maxDrawCallsPerFrame, " per draw, copying: ", m_device->maxVSFloatConst(), " per draw)");
+    m_vsIntConstString = str::format(m_maxVSIntConstsChangedPerFrame, ", ", m_maxVSIntConstsChangedPerFrame / m_maxDrawCallsPerFrame, " per draw, copying: ", m_device->maxVSIntConst(), " per draw)");
+    m_vsBoolConstString = str::format(m_maxVSBoolConstsChangedPerFrame, ", ", m_maxVSBoolConstsChangedPerFrame / m_maxDrawCallsPerFrame, " per draw, copying: ", m_device->maxVSBoolConst(), " per draw)");
+    m_psFloatConstString = str::format(m_maxPSFloatConstsChangedPerFrame, ", ", m_maxPSFloatConstsChangedPerFrame / m_maxDrawCallsPerFrame, " per draw, copying: ", m_device->maxPSFloatConst(), " per draw)");
+    m_psIntConstString = str::format(m_maxPSIntConstsChangedPerFrame, ", ", m_maxPSIntConstsChangedPerFrame / m_maxDrawCallsPerFrame, " per draw, copying: ", m_device->maxPSIntConst(), " per draw)");
+    m_psBoolConstString = str::format(m_maxPSBoolConstsChangedPerFrame, ", ", m_maxPSBoolConstsChangedPerFrame / m_maxDrawCallsPerFrame, " per draw, copying: ", m_device->maxPSBoolConst(), " per draw)");
 
     m_maxVSFloatConstsChangedPerFrame = 0;
     m_maxVSIntConstsChangedPerFrame = 0;
@@ -194,6 +197,7 @@ namespace dxvk::hud {
     m_maxPSFloatConstsChangedPerFrame = 0;
     m_maxPSIntConstsChangedPerFrame = 0;
     m_maxPSBoolConstsChangedPerFrame = 0;
+    m_maxDrawCallsPerFrame = 1;
   }
 
 
