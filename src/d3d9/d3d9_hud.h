@@ -151,7 +151,7 @@ namespace dxvk::hud {
     uint32_t                        m_maxPSFloatConstsChangedPerFrame = 0;
     uint32_t                        m_maxPSIntConstsChangedPerFrame = 0;
     uint32_t                        m_maxPSBoolConstsChangedPerFrame = 0;
-    uint32_t                        m_maxDrawCallsPerFrame = 0;
+    uint32_t                        m_maxDrawCallsPerFrame = 1;
 
     uint32_t                        m_prevVSFloatConstsChanged = 0;
     uint32_t                        m_prevVSIntConstsChanged = 0;
