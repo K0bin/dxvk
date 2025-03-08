@@ -1476,6 +1476,9 @@ namespace dxvk {
 
     GpuFlushType GetMaxFlushType() const;
 
+    template<DxsoProgramType ProgramType, D3D9ConstantType ConstantType, typename T>
+    void SyncCSShaderConsts();
+
     Com<D3D9InterfaceEx>            m_parent;
     D3DDEVTYPE                      m_deviceType;
     HWND                            m_window;
@@ -1603,8 +1606,9 @@ namespace dxvk {
 
     D3D9ConstantLayout              m_vsLayout;
     D3D9ConstantLayout              m_psLayout;
-	
-	D3D9UserDefinedAnnotation*      m_annotation = nullptr;
+    D3D9ShaderConstants             m_consts[DxsoProgramTypes::Count];
+
+  	D3D9UserDefinedAnnotation*      m_annotation = nullptr;
 
     D3D9ViewportInfo                m_viewportInfo;
 
@@ -1649,12 +1653,11 @@ namespace dxvk {
     uint64_t                        m_lastSamplerLiveCount = 0u;
     uint64_t                        m_lastSamplerBindCount = 0u;
 
-    D3D9ConstRingBuffer             m_constRingBuffer;
-
     // Written by CS thread
     alignas(CACHE_LINE_SIZE)
     std::atomic<uint64_t>           m_lastSamplerStats = { 0u };
 
+    // Accessed exclusively by CS thread
     D3D9CSShaderConstants<D3D9ShaderConstantsVSSoftware> m_csVSConsts;
     D3D9CSShaderConstants<D3D9ShaderConstantsPS>         m_csPSConsts;
 

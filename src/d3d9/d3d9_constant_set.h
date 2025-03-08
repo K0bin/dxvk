@@ -14,10 +14,10 @@
 
 namespace dxvk {
 
-  enum class D3D9ConstantType {
-    Float,
-    Int,
-    Bool
+  enum class D3D9ConstantType : uint32_t {
+    Float = 0,
+    Int = 1,
+    Bool = 2,
   };
 
   // We make an assumption later based on the packing of this struct for copying.
@@ -42,6 +42,12 @@ namespace dxvk {
   struct D3D9SwvpConstantBuffers {
     D3D9CSConstantBuffer intBuffer;
     D3D9CSConstantBuffer boolBuffer;
+  };
+
+  struct D3D9ShaderConstants {
+    // Tracking
+    uint32_t firstChangedConst[static_cast<uint32_t>(D3D9ConstantType::Bool) + 1] = {};
+    uint32_t onePastLastChangedConst[static_cast<uint32_t>(D3D9ConstantType::Bool) + 1] = {};
   };
 
   template<typename ShaderConstantsStorage>
