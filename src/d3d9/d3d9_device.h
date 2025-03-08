@@ -12,6 +12,7 @@
 #include "d3d9_constant_buffer.h"
 #include "d3d9_constant_set.h"
 #include "d3d9_mem.h"
+#include "d3d9_const_ring_buffer.h"
 
 #include "d3d9_state.h"
 
@@ -821,8 +822,6 @@ namespace dxvk {
 
     void CreateConstantBuffers();
 
-    void SynchronizeCsThread(uint64_t SequenceNumber);
-
     void Flush();
     void FlushAndSync9On12();
 
@@ -1177,6 +1176,10 @@ namespace dxvk {
       return DxvkCsChunkRef(chunk, &m_csChunkPool);
     }
 
+    uint64_t GetCurrentSequenceNumber();
+
+    void SynchronizeCsThread(uint64_t SequenceNumber);
+
   private:
 
     template<bool AllowFlush = true, typename Cmd>
@@ -1417,8 +1420,6 @@ namespace dxvk {
       D3D9CommonTexture* pResource,
       UINT Subresource);
 
-    uint64_t GetCurrentSequenceNumber();
-
     /**
      * \brief Will unmap the least recently used textures if the amount of mapped texture memory exceeds a threshold.
      */
@@ -1647,6 +1648,8 @@ namespace dxvk {
 
     uint64_t                        m_lastSamplerLiveCount = 0u;
     uint64_t                        m_lastSamplerBindCount = 0u;
+
+    D3D9ConstRingBuffer             m_constRingBuffer;
 
     // Written by CS thread
     alignas(CACHE_LINE_SIZE)

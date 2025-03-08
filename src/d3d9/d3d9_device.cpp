@@ -33,6 +33,8 @@
 
 namespace dxvk {
 
+  const uint32_t ShaderConstRingBufferSize = 16 * 5000;
+
   D3D9DeviceEx::D3D9DeviceEx(
           D3D9InterfaceEx*       pParent,
           D3D9Adapter*           pAdapter,
@@ -61,7 +63,8 @@ namespace dxvk {
     , m_flushTracker       ( GetMaxFlushType() )
     , m_d3d9Interop        ( this )
     , m_d3d9On12           ( this )
-    , m_d3d8Bridge         ( this ) {
+    , m_d3d8Bridge         ( this )
+    , m_constRingBuffer    ( ShaderConstRingBufferSize ) {
     // If we can SWVP, then we use an extended constant set
     // as SWVP has many more slots available than HWVP.
     bool canSWVP = CanSWVP();
@@ -7764,25 +7767,23 @@ namespace dxvk {
         Count);
 
     constexpr uint32_t vectorElementsCount = ConstantType != D3D9ConstantType::Bool ? 4 : 1;
-    const size_t dataSize = Count * vectorElementsCount * sizeof(T);
 
     if (ProgramType == DxsoProgramType::VertexShader && (likely(ConstantType != D3D9ConstantType::Bool) || unlikely(CanSWVP()))) {
+      const T* data = m_constRingBuffer.Push(this, pConstantData, Count * vectorElementsCount);
 
-      DxvkCsDataBlock* csData = EmitCsWithData<T>(Count * vectorElementsCount, [
+      EmitCs([
         &cShaderConsts  = m_csVSConsts,
         cStartRegister  = StartRegister,
-        cFloatEmulation = m_d3d9Options.d3d9FloatEmulation == D3D9FloatEmulation::Enabled
-      ] (DxvkContext* ctx, const T* data, size_t count) {
-        uint32_t vectorsCount;
+        cFloatEmulation = m_d3d9Options.d3d9FloatEmulation == D3D9FloatEmulation::Enabled,
+        cData = data,
+        cCount = Count
+      ] (DxvkContext* ctx) {
         if constexpr (ConstantType == D3D9ConstantType::Float) {
-          vectorsCount = count / 4;
-          cShaderConsts.floatConstsCount = std::max(cShaderConsts.floatConstsCount, cStartRegister + uint32_t(vectorsCount));
+          cShaderConsts.floatConstsCount = std::max(cShaderConsts.floatConstsCount, cStartRegister + uint32_t(cCount));
         } else if constexpr (ConstantType == D3D9ConstantType::Int) {
-          vectorsCount = count / 4;
-          cShaderConsts.intConstsCount = std::max(cShaderConsts.intConstsCount, cStartRegister + uint32_t(vectorsCount));
+          cShaderConsts.intConstsCount = std::max(cShaderConsts.intConstsCount, cStartRegister + uint32_t(cCount));
         } else /* if constexpr (ConstantType == D3D9ConstantType::Bool) */ {
-          vectorsCount = count;
-          cShaderConsts.boolConstsCount = std::max(cShaderConsts.boolConstsCount, cStartRegister + uint32_t(vectorsCount));
+          cShaderConsts.boolConstsCount = std::max(cShaderConsts.boolConstsCount, cStartRegister + uint32_t(cCount));
         }
 
         if constexpr (ConstantType != D3D9ConstantType::Bool) {
@@ -7801,24 +7802,23 @@ namespace dxvk {
           T>(
             &cShaderConsts.constants,
             cStartRegister,
-            data,
-            vectorsCount,
+            cData,
+            cCount,
             cFloatEmulation);
       });
 
-      auto dst = reinterpret_cast<T*>(csData->first());
-      std::memcpy(dst, pConstantData, dataSize);
-
     } else if constexpr (ProgramType == DxsoProgramType::PixelShader && ConstantType != D3D9ConstantType::Bool) {
+      const T* data = m_constRingBuffer.Push(this, pConstantData, Count * vectorElementsCount);
 
-      DxvkCsDataBlock* csData = EmitCsWithData<T>(Count * vectorElementsCount, [
+      EmitCs([
         &cShaderConsts  = m_csPSConsts,
         cStartRegister  = StartRegister,
-        cFloatEmulation = m_d3d9Options.d3d9FloatEmulation == D3D9FloatEmulation::Enabled
-      ] (DxvkContext* ctx, const T* data, size_t count) {
-        const uint32_t vectorsCount = count / 4;
+        cFloatEmulation = m_d3d9Options.d3d9FloatEmulation == D3D9FloatEmulation::Enabled,
+        cData = data,
+        cCount = Count
+      ] (DxvkContext* ctx) {
         if constexpr (ConstantType == D3D9ConstantType::Float) {
-          cShaderConsts.floatConstsCount = std::max(cShaderConsts.floatConstsCount, cStartRegister + uint32_t(vectorsCount));
+          cShaderConsts.floatConstsCount = std::max(cShaderConsts.floatConstsCount, cStartRegister + uint32_t(cCount));
         }
 
         uint32_t maxCount = ConstantType == D3D9ConstantType::Float
@@ -7833,13 +7833,10 @@ namespace dxvk {
           T>(
             &cShaderConsts.constants,
             cStartRegister,
-            data,
-            vectorsCount,
+            cData,
+            cCount,
             cFloatEmulation);
       });
-
-      auto dst = reinterpret_cast<T*>(csData->first());
-      std::memcpy(dst, pConstantData, dataSize);
 
     }
 
