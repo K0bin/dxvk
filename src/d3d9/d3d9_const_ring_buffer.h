@@ -24,6 +24,10 @@ namespace dxvk {
     template<typename T>
     const T* Push(D3D9DeviceEx* Device, const T* pData, uint32_t ElementCount);
 
+    void SetPreviousEntrySeqNum(uint64_t seqNum) {
+      m_entries[m_previousEntry].seqNum = seqNum;
+    }
+
     private:
 
     uint32_t m_size;
