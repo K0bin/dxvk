@@ -85,6 +85,8 @@ namespace dxvk {
     uint32_t             m_maxDefinedConst;
     DxsoDefinedConstants m_constants;
 
+    std::string m_name;
+
   };
 
 }

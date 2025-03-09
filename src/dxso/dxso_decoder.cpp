@@ -1,6 +1,7 @@
 #include "dxso_decoder.h"
 
 #include "dxso_tables.h"
+#include <string>
 
 namespace dxvk {
 
@@ -175,7 +176,7 @@ namespace dxvk {
   }
 
 
-  bool DxsoDecodeContext::decodeInstruction(DxsoCodeIter& iter) {
+  bool DxsoDecodeContext::decodeInstruction(DxsoCodeIter& iter, const std::string& fileName) {
     uint32_t token = iter.read();
 
     m_ctx.instructionIdx++;
@@ -195,6 +196,9 @@ namespace dxvk {
 
     uint32_t tokenLength =
       m_ctx.instruction.tokenLength;
+
+    std::string comment;
+    std::wstring wcomment;
 
     switch (m_ctx.instruction.opcode) {
       case DxsoOpcode::If:
@@ -227,6 +231,233 @@ namespace dxvk {
         return true;
 
       case DxsoOpcode::Comment:
+        comment = std::string(reinterpret_cast<const char*>(iter.ptrAt(0)));
+        //Logger::warn(str::format("Comment: ", comment));
+
+        //Logger::warn(str::format("Comment, filename: ", fileName));
+        if (fileName == "VS_cee48b55a9031cada18a364e8841d5594bad5914") {
+        //if (fileName == "VS_53a71dd90d40de6c0610fb94b43240893cddcd79") {
+          //comment = std::string(reinterpret_cast<const char*>(iter.ptrAt(0)), tokenLength * sizeof(uint32_t));
+          Logger::warn(str::format("Comment with token length: ", tokenLength));
+          Logger::warn(str::format("Char 5: ", static_cast<uint32_t>(*(reinterpret_cast<const char*>(iter.ptrAt(0)) + 4))));
+          //wcomment = std::wstring(reinterpret_cast<const wchar_t*>(iter.ptrAt(0)));
+          //comment = std::string(wcomment.begin(), wcomment.end());
+          Logger::warn(str::format("Comment with string length: ", comment.size()));
+          Logger::warn(str::format("Comment: ", comment));
+          std::vector<char> bytes;
+          bytes.resize(tokenLength * 4 + 1, 0);
+          memcpy(bytes.data(), iter.ptrAt(0), tokenLength * 4);
+
+
+          struct Const {
+            std::string name;
+            uint32_t cIndex;
+            uint32_t size;
+            uint32_t typeSize;
+          };
+          // VS_53a71dd90d40de6c0610fb94b43240893cddcd79
+          /*std::array<Const, 4> shaderConsts = {{
+            { "VSC_WorldToScreen", 4, 4, 4 },
+            { "VSC_CameraVectorForward", 18, 1, 1 },
+            { "VSC_ShadowBiasParams", 29, 1, 1 },
+            { "SkinningMatrices", 70, 180, 3 },
+          }};*/
+
+
+          // VS_cee48b55a9031cada18a364e8841d5594bad5914
+          std::array<Const, 3> shaderConsts = {{
+            { "VSC_LocalToWorld", 0, 3, 4 },
+            { "VSC_WorldToScreen", 4, 4, 4 },
+            { "VSC_WorldToView", 8, 3, 4 },
+          }};
+
+          struct Candidate {
+            uint32_t nameOffset;
+            std::vector<uint32_t> nameLengthWithoutNull;
+            std::vector<uint32_t> nameLengthWithNull;
+            std::vector<uint32_t> indexOffsets;
+            std::vector<uint32_t> sizeOffsets;
+            std::vector<uint32_t> sizeVec4sOffsets;
+            std::vector<uint32_t> sizeFloatsOffsets;
+            std::vector<uint32_t> nameOffsetOffsets;
+          };
+          std::unordered_map<uint32_t, Candidate> candidates;
+          for (uint32_t i = 0; i < shaderConsts.size(); i++) {
+            Candidate candidate = {};
+            candidates.emplace(i, candidate);
+          }
+
+          for (uint32_t i = 1; i < tokenLength; i++) {
+            //Logger::warn(str::format("Token: ", i, ": ", iter.at(i)));
+
+            for (uint32_t byteI = 0; byteI < 4; byteI++) {
+              uint32_t byteOffset = i * 4 + byteI;
+              for (uint32_t shaderConstI = 0; shaderConstI < shaderConsts.size(); shaderConstI++) {
+                const auto& shaderConst = shaderConsts[shaderConstI];
+
+                auto stringlength = strlen(bytes.data() + i * 4 + byteI);
+                if (stringlength == shaderConst.name.size()) {
+                  std::string str(bytes.data() + byteOffset);
+                  if (str == shaderConst.name) {
+                    candidates[shaderConstI].nameOffset = byteOffset;
+                  }
+                }
+
+                if (byteOffset % 1 == 0) {
+                  auto c = static_cast<uint8_t>(*(bytes.data() + byteOffset));
+                  if (c == shaderConst.name.size()) {
+                    candidates[shaderConstI].nameLengthWithoutNull.push_back(byteOffset);
+                  }
+                  if (c == shaderConst.name.size() + 1) {
+                    candidates[shaderConstI].nameLengthWithNull.push_back(byteOffset);
+                  }
+                  if (c == shaderConst.cIndex) {
+                    candidates[shaderConstI].indexOffsets.push_back(byteOffset);
+                  }
+                  if (c == shaderConst.size) {
+                    candidates[shaderConstI].sizeOffsets.push_back(byteOffset);
+                  }
+                  if (c == shaderConst.size / shaderConst.typeSize) {
+                    candidates[shaderConstI].sizeVec4sOffsets.push_back(byteOffset);
+                  }
+                  if (c == shaderConst.size / (shaderConst.typeSize * 4)) {
+                    candidates[shaderConstI].sizeFloatsOffsets.push_back(byteOffset);
+                  }
+                }
+              }
+            }
+          }
+
+          for (uint32_t i = 1; i < tokenLength; i++) {
+            //Logger::warn(str::format("Token: ", i, ": ", iter.at(i)));
+
+            for (uint32_t byteI = 0; byteI < 4; byteI++) {
+              uint32_t byteOffset = i * 4 + byteI;
+              for (uint32_t shaderConstI = 0; shaderConstI < shaderConsts.size(); shaderConstI++) {
+                if (byteOffset % 4 == 0) {
+                  auto c = static_cast<uint32_t>(*(bytes.data() + byteOffset));
+                  c += 4u; // Because "CTAB" at the start
+                  if (c == candidates[shaderConstI].nameOffset) {
+                    candidates[shaderConstI].nameOffsetOffsets.push_back(byteOffset);
+                  }
+                }
+              }
+            }
+          }
+
+          uint32_t firstConstNameOffset = 99999;
+          for (uint32_t shaderConstI = 0; shaderConstI < shaderConsts.size(); shaderConstI++) {
+            const auto& candidate = candidates[shaderConstI];
+            firstConstNameOffset = std::min(firstConstNameOffset, candidate.nameOffset);
+          }
+
+          //#define FIELDNAME indexOffsets
+          //#define FIELDNAME sizeVec4sOffsets
+          #define FIELDNAME nameOffsetOffsets
+
+          std::unordered_set<uint32_t> constStrides;
+          for (uint32_t shaderConstI = 0; shaderConstI < shaderConsts.size(); shaderConstI++) {
+            const auto& candidate = candidates[shaderConstI];
+
+            std::unordered_set<uint32_t> shaderConstStrides;
+            for (uint32_t offset : candidate.FIELDNAME) {
+              for (uint32_t shaderConstI2 = 0; shaderConstI2 < shaderConsts.size(); shaderConstI2++) {
+                if (shaderConstI == shaderConstI2) {
+                  continue;
+                }
+                const auto& candidateB = candidates[shaderConstI2];
+
+                for (uint32_t offsetB : candidateB.FIELDNAME) {
+                  uint32_t diff = uint32_t(std::abs(int32_t(offset) - int32_t(offsetB)));
+                  if (diff == 0) {
+                    continue;
+                  }
+                  shaderConstStrides.insert(diff);
+                }
+              }
+            }
+            for (auto iter = shaderConstStrides.begin(); iter != shaderConstStrides.end(); iter++) {
+              Logger::warn(str::format("Const has possible strides ", *iter));
+            }
+
+            if (shaderConstI == 0) {
+              for (auto iter = shaderConstStrides.begin(); iter != shaderConstStrides.end(); iter++) {
+                Logger::warn(str::format("Inserting ", *iter));
+                constStrides.insert(*iter);
+              }
+            } else {
+              for (auto iter = constStrides.begin(); iter != constStrides.end(); iter++) {
+                if (shaderConstStrides.find(*iter) == shaderConstStrides.end()) {
+                  Logger::warn(str::format("Erasing ", *iter));
+                  constStrides.erase(iter);
+                }
+              }
+            }
+          }
+          for (auto iter = constStrides.begin(); iter != constStrides.end(); iter++) {
+            for (auto iterB = constStrides.begin(); iterB != constStrides.end(); iterB++) {
+              if (*iterB > *iter && ((*iterB) % (*iter)) == 0) {
+                constStrides.erase(iterB);
+              }
+            }
+          }
+          Logger::warn(str::format("Stride candidates"));
+          for (uint32_t stride : constStrides) {
+            Logger::warn(str::format("Stride candidate: ", stride));
+          }
+
+          for (uint32_t shaderConstI = 0; shaderConstI < shaderConsts.size(); shaderConstI++) {
+            const auto& shaderConst = shaderConsts[shaderConstI];
+            const auto& candidate = candidates[shaderConstI];
+            Logger::warn(str::format("Shader constant: ", shaderConst.name));
+            uint32_t nameEnd = candidate.nameOffset + shaderConst.name.size() + 1;
+            uint32_t alignedNameEnd = align(nameEnd, 4);
+            Logger::warn(str::format("Found name at offset: ", candidate.nameOffset, " ends at byte: ", nameEnd, " aligned end: ", alignedNameEnd));
+            for (auto offset : candidate.nameLengthWithNull) {
+              int32_t relativeOffset = int32_t(offset) - int32_t(candidate.nameOffset);
+              int32_t relativeOffsetToEnd = int32_t(offset) - int32_t(alignedNameEnd);
+              int32_t relativeToFirstName = int32_t(offset) - int32_t(firstConstNameOffset);
+              Logger::warn(str::format("Found name length with null at offset: ", offset, " Relative to name: ", relativeOffset, " Relative to name end: ", relativeOffsetToEnd, " Relative to first name: ", relativeToFirstName));
+            }
+            for (auto offset : candidate.nameLengthWithoutNull) {
+              int32_t relativeOffset = int32_t(offset) - int32_t(candidate.nameOffset);
+              int32_t relativeOffsetToEnd = int32_t(offset) - int32_t(alignedNameEnd);
+              int32_t relativeToFirstName = int32_t(offset) - int32_t(firstConstNameOffset);
+              Logger::warn(str::format("Found name length without null at offset: ", offset, " Relative to name: ", relativeOffset, " Relative to name end: ", relativeOffsetToEnd, " Relative to first name: ", relativeToFirstName));
+            }
+            for (auto offset : candidate.indexOffsets) {
+              int32_t relativeOffset = int32_t(offset) - int32_t(candidate.nameOffset);
+              int32_t relativeOffsetToEnd = int32_t(offset) - int32_t(alignedNameEnd);
+              int32_t relativeToFirstName = int32_t(offset) - int32_t(firstConstNameOffset);
+              Logger::warn(str::format("Found index at offset: ", offset, " Relative to name: ", relativeOffset, " Relative to name end: ", relativeOffsetToEnd, " Relative to first name: ", relativeToFirstName));
+            }
+            for (auto offset : candidate.sizeOffsets) {
+              int32_t relativeOffset = int32_t(offset) - int32_t(candidate.nameOffset);
+              int32_t relativeOffsetToEnd = int32_t(offset) - int32_t(alignedNameEnd);
+              int32_t relativeToFirstName = int32_t(offset) - int32_t(firstConstNameOffset);
+              Logger::warn(str::format("Found size at offset: ", offset, " Relative to name: ", relativeOffset, " Relative to name end: ", relativeOffsetToEnd, " Relative to first name: ", relativeToFirstName));
+            }
+            for (auto offset : candidate.sizeVec4sOffsets) {
+              int32_t relativeOffset = int32_t(offset) - int32_t(candidate.nameOffset);
+              int32_t relativeOffsetToEnd = int32_t(offset) - int32_t(alignedNameEnd);
+              int32_t relativeToFirstName = int32_t(offset) - int32_t(firstConstNameOffset);
+              Logger::warn(str::format("Found size in vec4s at offset: ", offset, " Relative to name: ", relativeOffset, " Relative to name end: ", relativeOffsetToEnd, " Relative to first name: ", relativeToFirstName));
+            }
+            for (auto offset : candidate.sizeFloatsOffsets) {
+              int32_t relativeOffset = int32_t(offset) - int32_t(candidate.nameOffset);
+              int32_t relativeOffsetToEnd = int32_t(offset) - int32_t(alignedNameEnd);
+              int32_t relativeToFirstName = int32_t(offset) - int32_t(firstConstNameOffset);
+              Logger::warn(str::format("Found size in floats at offset: ", offset, " Relative to name: ", relativeOffset, " Relative to name end: ", relativeOffsetToEnd, " Relative to first name: ", relativeToFirstName));
+            }
+            for (auto offset : candidate.nameOffsetOffsets) {
+              int32_t relativeOffset = int32_t(offset) - int32_t(candidate.nameOffset);
+              int32_t relativeOffsetToEnd = int32_t(offset) - int32_t(alignedNameEnd);
+              int32_t relativeToFirstName = int32_t(offset) - int32_t(firstConstNameOffset);
+              Logger::warn(str::format("Found name offset at offset: ", offset, " Relative to name: ", relativeOffset, " Relative to name end: ", relativeOffsetToEnd, " Relative to first name: ", relativeToFirstName));
+            }
+          }
+
+        }
         iter = iter.skip(tokenLength);
         return true;
 

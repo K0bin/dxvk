@@ -52,6 +52,9 @@ namespace dxvk {
     uint32_t                  maxChangedConstF = 0;
     uint32_t                  maxChangedConstI = 0;
     uint32_t                  maxChangedConstB = 0;
+
+    uint32_t                  maxSubmissionChangedConstF = 0;
+    uint32_t                  minSubmissionChangedConstF = std::numeric_limits<uint32_t>::max();
   };
 
 }

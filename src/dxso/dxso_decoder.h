@@ -239,7 +239,7 @@ namespace dxvk {
      * number of dwords consumed by the instruction.
      * \param [in] code Code slice
      */
-    bool decodeInstruction(DxsoCodeIter& iter);
+    bool decodeInstruction(DxsoCodeIter& iter, const std::string& fileName);
 
   private:
 

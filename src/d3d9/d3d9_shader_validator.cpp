@@ -55,7 +55,7 @@ namespace dxvk {
       return ValidateHeader(pFile, Line, pdwInst, cdw);
 
     DxsoCodeIter pdwInstIter{ reinterpret_cast<const uint32_t*>(pdwInst) };
-    bool isEndToken = !m_ctx->decodeInstruction(pdwInstIter);
+    bool isEndToken = !m_ctx->decodeInstruction(pdwInstIter, "");
     const DxsoInstructionContext instContext = m_ctx->getInstructionContext();
 
     if (isEndToken)

@@ -3402,6 +3402,10 @@ namespace dxvk {
         || newShader->GetMeta().maxConstIndexB > oldShader->GetMeta().maxConstIndexB;
     }
 
+    if (newShader && newShader->GetMeta().maxConstIndexF > 200) {
+      //Logger::warn(str::format("Lots of vertex consts in ", newShader->GetName()));
+    }
+
     m_state.vertexShader = shader;
 
     if (shader != nullptr) {
@@ -6099,6 +6103,21 @@ namespace dxvk {
   template <bool Synchronize9On12>
   void D3D9DeviceEx::ExecuteFlush() {
     D3D9DeviceLock lock = LockDevice();
+
+    D3D9ConstantSets& vsConstsSet = m_consts[DxsoProgramType::VertexShader];
+    if (vsConstsSet.minSubmissionChangedConstF < vsConstsSet.maxSubmissionChangedConstF)
+      Logger::warn(str::format("Flushing. VS Min: ", vsConstsSet.minSubmissionChangedConstF, ", Max: ", vsConstsSet.maxSubmissionChangedConstF));
+
+    vsConstsSet.maxSubmissionChangedConstF = 0;
+    vsConstsSet.minSubmissionChangedConstF = std::numeric_limits<uint32_t>::max();
+
+    D3D9ConstantSets& psConstsSet = m_consts[DxsoProgramType::VertexShader];
+    if (psConstsSet.minSubmissionChangedConstF < psConstsSet.maxSubmissionChangedConstF)
+      Logger::warn(str::format("Flushing. PS Min: ", psConstsSet.minSubmissionChangedConstF, ", Max: ", psConstsSet.maxSubmissionChangedConstF));
+
+    psConstsSet.maxSubmissionChangedConstF = 0;
+    psConstsSet.minSubmissionChangedConstF = std::numeric_limits<uint32_t>::max();
+
 
     if constexpr (Synchronize9On12)
       m_submitStatus.result = VK_NOT_READY;

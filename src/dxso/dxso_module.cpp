@@ -30,6 +30,7 @@ namespace dxvk {
       fileName, moduleInfo,
       m_header.info(), analysis,
       layout);
+      m_name = fileName;
 
     this->runCompiler(*compiler, m_code.iter());
     m_isgn = compiler->isgn();
@@ -41,6 +42,7 @@ namespace dxvk {
     m_textureTypes    = compiler->textureTypes();
 
     compiler->finalize();
+
 
     // SM 1 doesn't have explicit output registers and uses R0 instead.
     // The shader compiler emits the C0 write in finalize, so we have to get the rt mask
@@ -57,7 +59,7 @@ namespace dxvk {
 
     DxsoDecodeContext decoder(m_header.info());
 
-    while (decoder.decodeInstruction(iter))
+    while (decoder.decodeInstruction(iter, ""))
       analyzer.processInstruction(
         decoder.getInstructionContext());
 
@@ -84,7 +86,7 @@ namespace dxvk {
           DxsoCodeIter        iter) const {
     DxsoDecodeContext decoder(m_header.info());
 
-    while (decoder.decodeInstruction(iter))
+    while (decoder.decodeInstruction(iter, m_name))
       compiler.processInstruction(
         decoder.getInstructionContext());
   }
