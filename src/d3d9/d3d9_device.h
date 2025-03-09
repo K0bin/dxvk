@@ -1653,6 +1653,8 @@ namespace dxvk {
     uint64_t                        m_lastSamplerLiveCount = 0u;
     uint64_t                        m_lastSamplerBindCount = 0u;
 
+    D3D9ConstRingBuffer             m_constRingBuffer;
+
     // Written by CS thread
     alignas(CACHE_LINE_SIZE)
     std::atomic<uint64_t>           m_lastSamplerStats = { 0u };
