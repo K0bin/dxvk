@@ -4,6 +4,8 @@
 #include "dxso_enums.h"
 #include "dxso_code.h"
 
+#include <d3dx9shader.h>
+
 namespace dxvk {
 
   constexpr size_t DxsoMaxTempRegs      = 32;
@@ -192,6 +194,18 @@ namespace dxvk {
     uint32_t uint32[4];
   };
 
+  struct DxsoConstantInfo {
+    std::string      name;
+    D3DXREGISTER_SET set;
+    uint32_t         index;
+    uint32_t         size;
+  };
+
+  struct DxsoConstantsTable {
+    uint32_t                      flags = 0; // D3DXSHADER flags
+    std::vector<DxsoConstantInfo> constants;
+  };
+
   struct DxsoInstructionContext {
     uint32_t                    instructionIdx;
 
@@ -207,6 +221,8 @@ namespace dxvk {
     DxsoDefinition              def;
 
     DxsoDeclaration             dcl;
+
+    DxsoConstantsTable          ctab;
   };
 
   class DxsoDecodeContext {
@@ -262,6 +278,8 @@ namespace dxvk {
 
     void decodeDeclaration(DxsoCodeIter& iter);
     void decodeDefinition(DxsoOpcode opcode, DxsoCodeIter& iter);
+
+    void decodeComment(const DxsoCodeIter& iter);
 
     bool relativeAddressingUsesToken(DxsoInstructionArgumentType type);
 

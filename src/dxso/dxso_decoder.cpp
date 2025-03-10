@@ -2,6 +2,9 @@
 
 #include "dxso_tables.h"
 
+#include <d3dx9shader.h>
+
+
 namespace dxvk {
 
   bool DxsoSemantic::operator== (const DxsoSemantic& b) const {
@@ -174,6 +177,34 @@ namespace dxvk {
       (token & 0x0f000000) >> 24);
   }
 
+  void DxsoDecodeContext::decodeComment(const DxsoCodeIter& iter) {
+    std::string comment = std::string(reinterpret_cast<const char*>(iter.ptrAt(0)));
+
+    if (comment.substr(0, 4) != "CTAB")
+      return;
+
+    uint32_t ctabOffset = 4;
+    D3DXSHADER_CONSTANTTABLE ctab;
+    memcpy(&ctab, reinterpret_cast<const uint8_t*>(iter.ptrAt(0)) + ctabOffset, sizeof(D3DXSHADER_CONSTANTTABLE));
+    std::string creator(reinterpret_cast<const char*>(iter.ptrAt(0)) + ctabOffset + ctab.Creator);
+
+    if (creator.substr(0, strlen("Microsoft")) != "Microsoft")
+      return;
+
+    m_ctx.ctab.flags = ctab.Flags;
+
+    for (uint32_t constIndex = 0; constIndex < ctab.Constants; constIndex++) {
+      uint32_t constInfoStructOffset = ctabOffset + ctab.ConstantInfo + sizeof(D3DXSHADER_CONSTANTINFO) * constIndex;
+      D3DXSHADER_CONSTANTINFO constInfo;
+      memcpy(&constInfo, reinterpret_cast<const uint8_t*>(iter.ptrAt(0)) + constInfoStructOffset, sizeof(D3DXSHADER_CONSTANTINFO));
+      std::string constName(reinterpret_cast<const char*>(iter.ptrAt(0)) + ctabOffset + constInfo.Name);
+
+      m_ctx.ctab.constants.push_back({
+        constName, D3DXREGISTER_SET(constInfo.RegisterSet), constInfo.RegisterIndex, constInfo.RegisterCount
+      });
+    }
+  }
+
 
   bool DxsoDecodeContext::decodeInstruction(DxsoCodeIter& iter) {
     uint32_t token = iter.read();
@@ -227,6 +258,7 @@ namespace dxvk {
         return true;
 
       case DxsoOpcode::Comment:
+        this->decodeComment(iter);
         iter = iter.skip(tokenLength);
         return true;
 

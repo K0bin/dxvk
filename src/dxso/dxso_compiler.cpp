@@ -10,6 +10,8 @@
 #include "dxso_util.h"
 
 #include <cfloat>
+#include <d3dx9.h>
+#include <windows.h>
 
 namespace dxvk {
 
@@ -909,9 +911,20 @@ namespace dxvk {
           m_meta.maxConstIndexF = std::max(m_meta.maxConstIndexF, reg.id.num + 1);
           m_meta.maxConstIndexF = std::min(m_meta.maxConstIndexF, m_layout->floatCount);
         } else {
-          m_meta.maxConstIndexF = m_layout->floatCount;
           m_meta.needsConstantCopies |= m_moduleInfo.options.strictConstantCopies
                                      || m_cFloat.at(reg.id.num) != 0;
+
+          bool hasCtabEntry = false;
+          for (const auto& constEntry : m_analysis->ctab.constants) {
+            if (constEntry.set == D3DXRS_FLOAT4 && constEntry.index == reg.id.num) {
+              m_meta.maxConstIndexF = std::max(m_meta.maxConstIndexF, reg.id.num + constEntry.size);
+              Logger::warn(str::format("Found ctab entry for: ", constEntry.name, " Size: ", constEntry.size, " Saved: ", (m_layout->floatCount - (reg.id.num + constEntry.size)), " vec4s"));
+              hasCtabEntry = true;
+              break;
+            }
+          }
+          if (!hasCtabEntry)
+            m_meta.maxConstIndexF = m_layout->floatCount;
         }
         break;
       

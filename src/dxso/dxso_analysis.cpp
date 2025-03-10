@@ -47,6 +47,9 @@ namespace dxvk {
      || opcode == DxsoOpcode::TexDepth)
       m_analysis->usesDerivatives = true;
 
+    if (opcode == DxsoOpcode::Comment)
+      m_analysis->ctab = ctx.ctab;
+
     m_parentOpcode = ctx.instruction.opcode;
   }
 

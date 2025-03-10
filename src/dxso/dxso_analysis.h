@@ -12,6 +12,8 @@ namespace dxvk {
     bool usesKill        = false;
 
     std::vector<DxsoInstructionContext> coissues;
+
+    DxsoConstantsTable ctab;
   };
 
   class DxsoAnalyzer {
