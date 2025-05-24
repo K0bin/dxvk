@@ -4453,6 +4453,12 @@ namespace dxvk {
         m_flags.set(D3D9DeviceFlag::DirtyFFPixelShader);
     }
 
+    bool oldTextureIsCube = oldTexture != nullptr ? oldTexture->IsCube() : false;
+    bool newTextureIsCube = newTexture != nullptr ? newTexture->IsCube() : false;
+    if (unlikely(oldTextureIsCube != newTextureIsCube)) {
+      m_textureSlotTracking.samplerStateDirty |= 1u << StateSampler;
+    }
+
     DWORD oldUsage = oldTexture != nullptr ? oldTexture->Desc()->Usage : 0;
     DWORD newUsage = newTexture != nullptr ? newTexture->Desc()->Usage : 0;
     DWORD combinedUsage = oldUsage | newUsage;
@@ -6219,13 +6225,6 @@ namespace dxvk {
       m_textureSlotTracking.drefClamp &= ~bit;
       m_textureSlotTracking.drefClamp |= uint32_t(tex->IsUpgradedToD32f()) << index;
 
-      // Update non-seamless cubemap mask
-      const bool oldCube = m_textureSlotTracking.cubes & bit;
-      const bool newCube = tex->GetType() == D3DRTYPE_CUBETEXTURE;
-      if (oldCube != newCube) {
-        m_textureSlotTracking.cubes ^= bit;
-        m_textureSlotTracking.samplerStateDirty |= bit;
-      }
 
       if (unlikely(m_fetch4Enabled & bit))
         UpdateActiveFetch4(index);
@@ -7083,10 +7082,12 @@ namespace dxvk {
 
     m_samplerBindCount++;
 
+    const D3D9CommonTexture* tex = GetCommonTexture(m_state.textures[Sampler]);
+
     EmitCs([this,
       cSlot     = slot,
       cState    = D3D9SamplerInfo(m_state.samplerStates[Sampler]),
-      cIsCube   = bool(m_textureSlotTracking.cubes & (1u << Sampler)),
+      cIsCube   = tex && tex->IsCube(),
       cIsDepth  = bool(m_textureSlotTracking.depth & (1u << Sampler)),
       cBindId   = m_samplerBindCount
     ] (DxvkContext* ctx) {
@@ -8426,7 +8427,6 @@ namespace dxvk {
 
     m_textureSlotTracking.dirty = 0;
     m_textureSlotTracking.depth = 0;
-    m_textureSlotTracking.cubes = 0;
 
     auto& ss = m_state.samplerStates.get();
     for (uint32_t i = 0; i < ss.size(); i++) {
