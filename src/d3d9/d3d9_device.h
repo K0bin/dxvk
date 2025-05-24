@@ -174,9 +174,6 @@ namespace dxvk {
     /** Whether there's a texture bound to a slot that needs to have its mip maps generated */
     uint32_t needsMipGen = 0;
 
-    /** `textureTypes` the last time UpdateFixedFunctionPS was called. Used to check if it changed.  */
-    uint32_t lastTextureTypes = 0;
-
     /** `hazardsRT` the last time PrepareDraw was called. Used to check if it changed.  */
     uint32_t lastHazardsRT = 0;
 
