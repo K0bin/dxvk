@@ -128,7 +128,7 @@ namespace dxvk {
     /** Used to store the type of each bound pixel shader texture.
      * This is used to generate fixed function shader code
      * and for PS 1.1 shaders which do not provide this information in the shader bytecode.
-     * PS 1.1 and fixed function doesn't allow sampling textures in the VS, so we only need the 16 PS slots.
+     * SM 1.1 and fixed function doesn't allow sampling textures in the VS, so we only need the 16 PS slots.
      * There's 3 texture types, so every texture/sampler slot uses 2 bits. */
     uint32_t textureTypes = 0;
 
