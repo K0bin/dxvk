@@ -8542,6 +8542,10 @@ namespace dxvk {
       SetStreamSource(i, nullptr, 0, 0);
     }
 
+    m_amdATOC          = false;
+    m_nvATOC           = false;
+    m_ffZTest          = false;
+
     m_clipPlaneEnabled = false;
     m_depthBiasEnabled = false;
     m_alphaTestEnabled = false;
