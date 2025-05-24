@@ -125,10 +125,6 @@ namespace dxvk {
      * This tracks the texture/sampler slots for which this kind of adjusting needs to be done. */
     uint32_t drefClamp = 0;
 
-    /** Whether the texture bound to each slot is a cubemap.
-     * Used to adjust the address modes and enable non-seamless sampling. */
-    uint32_t cubes = 0;
-
     /** Used to store the type of each bound pixel shader texture.
      * This is used to generate fixed function shader code
      * and for PS 1.1 shaders which do not provide this information in the shader bytecode.
