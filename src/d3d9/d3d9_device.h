@@ -141,6 +141,15 @@ namespace dxvk {
     /** Whether sampler slots whose state has been changed and bindings in the backend need to be updated */
     uint32_t samplerStateDirty = 0;
 
+    /** Whether Fetch 4 is enabled for a sampler slot.
+     * This just means the application enabled it using the sampler state.
+     * It does not mean Fetch 4 is actually active, as that depends on other factors
+     * such as the sampling mode and the texture format. */
+    uint32_t fetch4SamplerState = 0;
+
+    /** Whether Fetch 4 is active. */
+    uint32_t fetch4 = 0;
+
     /** Whether the texture bound to a slot has been changed and bindings in the backend need to be updated */
     uint32_t dirty = 0;
 
@@ -1595,15 +1604,6 @@ namespace dxvk {
     uint32_t                        m_activeVertexBuffers                = 0;
     uint32_t                        m_activeVertexBuffersToUpload        = 0;
     uint32_t                        m_activeVertexBuffersToUploadPerDraw = 0;
-
-    // m_fetch4Enabled is whether fetch4 is currently enabled
-    // from the application.
-    //
-    // m_fetch4 is whether it should be enabled in the shader
-    // ie. are we in a correct state to use it
-    // (enabled + texture supports it + point sampled)
-    uint32_t                        m_fetch4Enabled = 0;
-    uint32_t                        m_fetch4        = 0;
 
     uint32_t                        m_lastSamplerTypesFF = 0;
 
