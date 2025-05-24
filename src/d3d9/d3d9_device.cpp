@@ -7965,9 +7965,9 @@ namespace dxvk {
 
   void D3D9DeviceEx::UpdateFixedFunctionPS() {
     // Shader...
-    if (m_flags.test(D3D9DeviceFlag::DirtyFFPixelShader) || m_lastSamplerTypesFF != m_textureSlotTracking.textureTypes) {
+    if (m_flags.test(D3D9DeviceFlag::DirtyFFPixelShader) || m_textureSlotTracking.lastTextureTypes != m_textureSlotTracking.textureTypes) {
       m_flags.clr(D3D9DeviceFlag::DirtyFFPixelShader);
-      m_lastSamplerTypesFF = m_textureSlotTracking.textureTypes;
+      m_textureSlotTracking.lastTextureTypes = m_textureSlotTracking.textureTypes;
 
       // Used args for a given operation.
       auto ArgsMask = [](DWORD Op) {

@@ -174,10 +174,13 @@ namespace dxvk {
     /** Whether there's a texture bound to a slot that needs to have its mip maps generated */
     uint32_t needsMipGen = 0;
 
-    /** `hazardsRT` the last time PrepareDraw was called  */
+    /** `textureTypes` the last time UpdateFixedFunctionPS was called. Used to check if it changed.  */
+    uint32_t lastTextureTypes = 0;
+
+    /** `hazardsRT` the last time PrepareDraw was called. Used to check if it changed.  */
     uint32_t lastHazardsRT = 0;
 
-    /** `hazardsDS` the last time PrepareDraw was called  */
+    /** `hazardsDS` the last time PrepareDraw was called Used to check if it changed. */
     uint32_t lastHazardsDS = 0;
   };
 
@@ -1604,8 +1607,6 @@ namespace dxvk {
     uint32_t                        m_activeVertexBuffers                = 0;
     uint32_t                        m_activeVertexBuffersToUpload        = 0;
     uint32_t                        m_activeVertexBuffersToUploadPerDraw = 0;
-
-    uint32_t                        m_lastSamplerTypesFF = 0;
 
     D3D9SpecializationInfo          m_specInfo = D3D9SpecializationInfo();
 
