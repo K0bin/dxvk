@@ -151,7 +151,7 @@ namespace dxvk {
     uint32_t fetch4 = 0;
 
     /** Whether the texture bound to a slot has been changed and bindings in the backend need to be updated */
-    uint32_t dirty = 0;
+    uint32_t textureDirty = 0;
 
     /** Whether the texture bound to a slot has D3DUSAGE_RENDERTARGET */
     uint32_t rtUsages = 0;

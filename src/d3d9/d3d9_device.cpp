@@ -3847,7 +3847,7 @@ namespace dxvk {
       // TODO: What fixed function textures are in use?
       // Currently we are making all 8 of them as in use here.
       // Fixed function always uses spec constants to decide the texture type.
-      m_textureSlotTracking.dirty |= newShaderMasks.samplerMask & m_textureSlotTracking.mismatchingTextureTypes;
+      m_textureSlotTracking.textureDirty |= newShaderMasks.samplerMask & m_textureSlotTracking.mismatchingTextureTypes;
       m_textureSlotTracking.mismatchingTextureTypes &= ~newShaderMasks.samplerMask;
     }
 
@@ -4408,7 +4408,7 @@ namespace dxvk {
      || Type == D3DSAMP_BORDERCOLOR)
       m_textureSlotTracking.samplerStateDirty |= samplerBit;
     else if (Type == D3DSAMP_SRGBTEXTURE && (m_textureSlotTracking.bound & samplerBit))
-      m_textureSlotTracking.dirty |= samplerBit;
+      m_textureSlotTracking.textureDirty |= samplerBit;
 
     constexpr DWORD Fetch4Enabled  = MAKEFOURCC('G', 'E', 'T', '4');
     constexpr DWORD Fetch4Disabled = MAKEFOURCC('G', 'E', 'T', '1');
@@ -4463,7 +4463,7 @@ namespace dxvk {
     DWORD newUsage = newTexture != nullptr ? newTexture->Desc()->Usage : 0;
     DWORD combinedUsage = oldUsage | newUsage;
     TextureChangePrivate(m_state.textures[StateSampler], pTexture);
-    m_textureSlotTracking.dirty |= 1u << StateSampler;
+    m_textureSlotTracking.textureDirty |= 1u << StateSampler;
     UpdateTextureBitmasks(StateSampler, combinedUsage);
 
     return D3D_OK;
@@ -6393,7 +6393,7 @@ namespace dxvk {
     if (unlikely(shader->GetInfo().majorVersion() < 2 || m_d3d9Options.forceSamplerTypeSpecConstants)) {
       // SM 1 shaders don't define the texture type in the shader.
       // We always use spec constants for those.
-      m_textureSlotTracking.dirty |= stageCorrectedShaderSamplerMask & m_textureSlotTracking.mismatchingTextureTypes;
+      m_textureSlotTracking.textureDirty |= stageCorrectedShaderSamplerMask & m_textureSlotTracking.mismatchingTextureTypes;
       m_textureSlotTracking.mismatchingTextureTypes &= ~stageCorrectedShaderSamplerMask;
       return;
     }
@@ -6402,7 +6402,7 @@ namespace dxvk {
       const D3D9CommonTexture* texture = GetCommonTexture(m_state.textures[i]);
       if (unlikely(texture == nullptr)) {
         // Unbound textures are not mismatching texture types
-        m_textureSlotTracking.dirty |= m_textureSlotTracking.mismatchingTextureTypes & (1 << i);
+        m_textureSlotTracking.textureDirty |= m_textureSlotTracking.mismatchingTextureTypes & (1 << i);
         m_textureSlotTracking.mismatchingTextureTypes &= ~(1 << i);
         continue;
       }
@@ -6410,11 +6410,11 @@ namespace dxvk {
       VkImageViewType boundViewType  = D3D9CommonTexture::GetImageViewTypeFromResourceType(texture->GetType(), D3D9CommonTexture::AllLayers);
       VkImageViewType shaderViewType = shader->GetImageViewType(i - shaderSamplerOffset);
       if (unlikely(boundViewType != shaderViewType)) {
-        m_textureSlotTracking.dirty |= 1 << i;
+        m_textureSlotTracking.textureDirty |= 1 << i;
         m_textureSlotTracking.mismatchingTextureTypes |= 1 << i;
       } else {
         // The texture type is no longer mismatching, make sure we bind the texture now.
-        m_textureSlotTracking.dirty |= m_textureSlotTracking.mismatchingTextureTypes & (1 << i);
+        m_textureSlotTracking.textureDirty |= m_textureSlotTracking.mismatchingTextureTypes & (1 << i);
         m_textureSlotTracking.mismatchingTextureTypes &= ~(1 << i);
       }
     }
@@ -7211,7 +7211,7 @@ namespace dxvk {
     if (inactiveMask)
       UnbindTextures(inactiveMask);
 
-    m_textureSlotTracking.dirty &= ~usedMask;
+    m_textureSlotTracking.textureDirty &= ~usedMask;
   }
 
   void D3D9DeviceEx::MarkTextureBindingDirty(IDirect3DBaseTexture9* texture) {
@@ -7219,7 +7219,7 @@ namespace dxvk {
 
     for (uint32_t i : bit::BitMask(m_textureSlotTracking.bound)) {
       if (m_state.textures[i] == texture)
-        m_textureSlotTracking.dirty |= 1u << i;
+        m_textureSlotTracking.textureDirty |= 1u << i;
     }
   }
 
@@ -7291,7 +7291,7 @@ namespace dxvk {
     if (unlikely(activeDirtySamplers))
       UndirtySamplers(activeDirtySamplers);
 
-    const uint32_t usedDirtyTextures = m_textureSlotTracking.dirty & usedSamplerMask;
+    const uint32_t usedDirtyTextures = m_textureSlotTracking.textureDirty & usedSamplerMask;
     if (likely(usedDirtyTextures))
       UndirtyTextures(usedDirtyTextures);
 
@@ -8428,7 +8428,7 @@ namespace dxvk {
       }
     });
 
-    m_textureSlotTracking.dirty = 0;
+    m_textureSlotTracking.textureDirty = 0;
     m_textureSlotTracking.depth = 0;
 
     auto& ss = m_state.samplerStates.get();
