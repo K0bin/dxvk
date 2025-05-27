@@ -48,6 +48,8 @@ namespace dxvk {
     // Tracking
     uint32_t firstChangedConst[static_cast<uint32_t>(D3D9ConstantType::Bool) + 1] = {};
     uint32_t onePastLastChangedConst[static_cast<uint32_t>(D3D9ConstantType::Bool) + 1] = {};
+
+    std::array<std::array<uint64_t, 4>, static_cast<uint32_t>(D3D9ConstantType::Bool) + 1> dirtyMask = {};
   };
 
   template<typename ShaderConstantsStorage>

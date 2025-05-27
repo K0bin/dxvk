@@ -4210,7 +4210,7 @@ namespace dxvk {
       const Com<D3D9Surface> surface = new D3D9Surface(this, &desc, IsExtended(), nullptr, pSharedHandle);
       m_initializer->InitTexture(surface->GetCommonTexture());
       *ppSurface = surface.ref();
-      
+
       if (desc.Pool == D3DPOOL_DEFAULT)
         m_losableResourceCounter++;
 
@@ -4455,7 +4455,7 @@ namespace dxvk {
           DWORD                      Stage,
           D3D9TextureStageStateTypes Type,
           DWORD                      Value) {
-    
+
     // Clamp values instead of checking and returning INVALID_CALL
     // Matches tests + Dawn of Magic 2 relies on it.
     Stage = std::min(Stage, DWORD(caps::TextureStageCount - 1));
@@ -7778,6 +7778,17 @@ namespace dxvk {
 
     D3D9ShaderConstants& constsTracking = m_consts[ProgramType];
     const uint32_t trackingIdx = static_cast<uint32_t>(ConstantType);
+
+    const uint32_t lastMasked = std::min(StartRegister + Count - 1u, 255u);
+    const uint32_t lastMask = lastMasked / 64;
+    const uint32_t firstMask = StartRegister / 64;
+    for (uint32_t i = firstMask; i <= lastMask; i++) {
+      const uint32_t offset = i == firstMask ? StartRegister % 64 : 0;
+      const uint32_t count = i == lastMask ? lastMasked % 64 - offset + 1 : 64;
+      const uint64_t bits = (~0ull >> (64u - count)) << offset;
+      constsTracking.dirtyMask[trackingIdx][i] |= bits;
+    }
+
     constsTracking.firstChangedConst[trackingIdx] = std::min(constsTracking.firstChangedConst[trackingIdx], StartRegister);
     constsTracking.onePastLastChangedConst[trackingIdx] = std::max(constsTracking.onePastLastChangedConst[trackingIdx], StartRegister + Count);
 
@@ -7815,103 +7826,123 @@ namespace dxvk {
     if (unlikely(constsTracking.firstChangedConst[changedIdx] >= constsTracking.onePastLastChangedConst[changedIdx])) {
       return;
     }
-    uint32_t changedCount = constsTracking.onePastLastChangedConst[changedIdx] - constsTracking.firstChangedConst[changedIdx];
 
-    const uint32_t vectorElementsCount = ConstantType != D3D9ConstantType::Bool ? 4 : 1;
+    const auto upload = [&] (uint32_t start, uint32_t count) {
+      const uint32_t vectorElementsCount = ConstantType != D3D9ConstantType::Bool ? 4 : 1;
 
-    if constexpr (ProgramType == DxsoProgramType::VertexShader) {
-      const void* src;
-      if constexpr (ConstantType == D3D9ConstantType::Float) {
-        src = m_state.vsConsts->fConsts[constsTracking.firstChangedConst[changedIdx]].data;
-      } else if constexpr (ConstantType == D3D9ConstantType::Int) {
-        src = m_state.vsConsts->fConsts[constsTracking.firstChangedConst[changedIdx]].data;
-      } else /* if constexpr (ConstantType == D3D9ConstantType::Bool) */ {
-        src = &m_state.vsConsts->bConsts[constsTracking.firstChangedConst[changedIdx]];
-      }
-      const T* data = m_constRingBuffer.Push(this, reinterpret_cast<const T*>(src), changedCount * vectorElementsCount);
+      if constexpr (ProgramType == DxsoProgramType::VertexShader) {
+        const void* src;
+        if constexpr (ConstantType == D3D9ConstantType::Float) {
+          src = m_state.vsConsts->fConsts[start].data;
+        } else if constexpr (ConstantType == D3D9ConstantType::Int) {
+          src = m_state.vsConsts->fConsts[start].data;
+        } else /* if constexpr (ConstantType == D3D9ConstantType::Bool) */ {
+          src = &m_state.vsConsts->bConsts[start];
+        }
+        const T* data = m_constRingBuffer.Push(this, reinterpret_cast<const T*>(src), count * vectorElementsCount);
 
-      EmitCs([
-        &cShaderConsts  = m_csVSConsts,
-        cFirstConstant  = constsTracking.firstChangedConst[changedIdx],
-        cFloatEmulation = m_d3d9Options.d3d9FloatEmulation == D3D9FloatEmulation::Enabled,
-        cData           = data,
-        cCount          = changedCount
-      ](DxvkContext* ctx) {
-        if constexpr (ConstantType == D3D9ConstantType::Float)
-          cShaderConsts.floatConstsCount = std::max(cShaderConsts.floatConstsCount, cFirstConstant + uint32_t(cCount));
-        else if constexpr (ConstantType == D3D9ConstantType::Int)
-          cShaderConsts.intConstsCount = std::max(cShaderConsts.intConstsCount, cFirstConstant + uint32_t(cCount));
-        else /* if constexpr (ConstantType == D3D9ConstantType::Bool) */
-          cShaderConsts.boolConstsCount = std::max(cShaderConsts.boolConstsCount, cFirstConstant + uint32_t(cCount));
+        EmitCs([
+          &cShaderConsts  = m_csVSConsts,
+          cFirstConstant  = start,
+          cFloatEmulation = m_d3d9Options.d3d9FloatEmulation == D3D9FloatEmulation::Enabled,
+          cData           = data,
+          cCount          = count
+        ](DxvkContext* ctx) {
+          if constexpr (ConstantType == D3D9ConstantType::Float)
+            cShaderConsts.floatConstsCount = std::max(cShaderConsts.floatConstsCount, cFirstConstant + uint32_t(cCount));
+          else if constexpr (ConstantType == D3D9ConstantType::Int)
+            cShaderConsts.intConstsCount = std::max(cShaderConsts.intConstsCount, cFirstConstant + uint32_t(cCount));
+          else /* if constexpr (ConstantType == D3D9ConstantType::Bool) */
+            cShaderConsts.boolConstsCount = std::max(cShaderConsts.boolConstsCount, cFirstConstant + uint32_t(cCount));
 
-        if constexpr (ConstantType != D3D9ConstantType::Bool) {
+          if constexpr (ConstantType != D3D9ConstantType::Bool) {
+            uint32_t maxCount = ConstantType == D3D9ConstantType::Float
+              ? cShaderConsts.meta.maxConstIndexF
+              : cShaderConsts.meta.maxConstIndexI;
+
+            cShaderConsts.dirty |= cFirstConstant < maxCount;
+          } else /* if (CanSWVP()) */ {
+            cShaderConsts.dirty |= cFirstConstant < cShaderConsts.meta.maxConstIndexB;
+          }
+
+          UpdateStateConstants<
+            D3D9ShaderConstantsVSSoftware*,
+            ConstantType,
+            T>(
+              &cShaderConsts.constants,
+              cFirstConstant,
+              cData,
+              cCount,
+              cFloatEmulation);
+        });
+
+        m_constRingBuffer.SetPreviousEntrySeqNum(GetCurrentSequenceNumber()); // In case the EmitCs caused a flush of the chunk.
+
+      } else {
+        const void* src;
+        if constexpr (ConstantType == D3D9ConstantType::Float) {
+          src = m_state.psConsts->fConsts[start].data;
+        } else if constexpr (ConstantType == D3D9ConstantType::Int) {
+          src = m_state.psConsts->fConsts[start].data;
+        } else /* if constexpr (ConstantType == D3D9ConstantType::Bool) */ {
+          src = &m_state.psConsts->bConsts[start];
+        }
+        const T* data = m_constRingBuffer.Push(this, reinterpret_cast<const T*>(src), count * vectorElementsCount);
+
+        EmitCs([
+          &cShaderConsts  = m_csPSConsts,
+          cFirstConstant  = start,
+          cFloatEmulation = m_d3d9Options.d3d9FloatEmulation == D3D9FloatEmulation::Enabled,
+          cData           = data,
+          cCount          = count
+        ](DxvkContext* ctx) {
+          if constexpr (ConstantType == D3D9ConstantType::Float)
+            cShaderConsts.floatConstsCount = std::max(cShaderConsts.floatConstsCount, cFirstConstant + uint32_t(cCount));
+          else if constexpr (ConstantType == D3D9ConstantType::Int)
+            cShaderConsts.intConstsCount = std::max(cShaderConsts.intConstsCount, cFirstConstant + uint32_t(cCount));
+
           uint32_t maxCount = ConstantType == D3D9ConstantType::Float
             ? cShaderConsts.meta.maxConstIndexF
             : cShaderConsts.meta.maxConstIndexI;
 
           cShaderConsts.dirty |= cFirstConstant < maxCount;
-        } else /* if (CanSWVP()) */ {
-          cShaderConsts.dirty |= cFirstConstant < cShaderConsts.meta.maxConstIndexB;
-        }
 
-        UpdateStateConstants<
-          D3D9ShaderConstantsVSSoftware*,
-          ConstantType,
-          T>(
-            &cShaderConsts.constants,
-            cFirstConstant,
-            cData,
-            cCount,
-            cFloatEmulation);
-      });
+          UpdateStateConstants<
+            D3D9ShaderConstantsPS*,
+            ConstantType,
+            T>(
+              &cShaderConsts.constants,
+              cFirstConstant,
+              cData,
+              cCount,
+              cFloatEmulation);
+        });
 
-      m_constRingBuffer.SetPreviousEntrySeqNum(GetCurrentSequenceNumber()); // In case the EmitCs caused a flush of the chunk.
-
-    } else {
-      const void* src;
-      if constexpr (ConstantType == D3D9ConstantType::Float) {
-        src = m_state.psConsts->fConsts[constsTracking.firstChangedConst[changedIdx]].data;
-      } else if constexpr (ConstantType == D3D9ConstantType::Int) {
-        src = m_state.psConsts->fConsts[constsTracking.firstChangedConst[changedIdx]].data;
-      } else /* if constexpr (ConstantType == D3D9ConstantType::Bool) */ {
-        src = &m_state.psConsts->bConsts[constsTracking.firstChangedConst[changedIdx]];
+        m_constRingBuffer.SetPreviousEntrySeqNum(GetCurrentSequenceNumber()); // In case the EmitCs caused a flush of the chunk.
       }
-      const T* data = m_constRingBuffer.Push(this, reinterpret_cast<const T*>(src), changedCount * vectorElementsCount);
+    };
 
-      EmitCs([
-        &cShaderConsts  = m_csPSConsts,
-        cFirstConstant  = constsTracking.firstChangedConst[changedIdx],
-        cFloatEmulation = m_d3d9Options.d3d9FloatEmulation == D3D9FloatEmulation::Enabled,
-        cData           = data,
-        cCount          = changedCount
-      ](DxvkContext* ctx) {
-        if constexpr (ConstantType == D3D9ConstantType::Float)
-          cShaderConsts.floatConstsCount = std::max(cShaderConsts.floatConstsCount, cFirstConstant + uint32_t(cCount));
-        else if constexpr (ConstantType == D3D9ConstantType::Int)
-          cShaderConsts.intConstsCount = std::max(cShaderConsts.intConstsCount, cFirstConstant + uint32_t(cCount));
+    bool usesExtraSwvpConstants = constsTracking.onePastLastChangedConst[changedIdx] > 256;
+    if (unlikely(usesExtraSwvpConstants)) {
+      upload(constsTracking.firstChangedConst[changedIdx], constsTracking.onePastLastChangedConst[changedIdx] - constsTracking.firstChangedConst[changedIdx]);
+    } else {
+      for (uint32_t i = 0; i < constsTracking.dirtyMask[changedIdx].size(); i++) {
+        const uint64_t mask = constsTracking.dirtyMask[changedIdx][i];
+        if (mask == 0)
+          continue;
 
-        uint32_t maxCount = ConstantType == D3D9ConstantType::Float
-          ? cShaderConsts.meta.maxConstIndexF
-          : cShaderConsts.meta.maxConstIndexI;
-
-        cShaderConsts.dirty |= cFirstConstant < maxCount;
-
-        UpdateStateConstants<
-          D3D9ShaderConstantsPS*,
-          ConstantType,
-          T>(
-            &cShaderConsts.constants,
-            cFirstConstant,
-            cData,
-            cCount,
-            cFloatEmulation);
-      });
-
-      m_constRingBuffer.SetPreviousEntrySeqNum(GetCurrentSequenceNumber()); // In case the EmitCs caused a flush of the chunk.
+        uint32_t firstInMaskFromEnd = bit::tzcnt(mask);
+        uint32_t lastInMaskFromEnd = 63 - bit::lzcnt(mask);
+        uint32_t count = (lastInMaskFromEnd + 1) - firstInMaskFromEnd;
+        upload(i * 64 + firstInMaskFromEnd, count);
+      }
     }
 
     constsTracking.firstChangedConst[changedIdx] = std::numeric_limits<uint32_t>::max();
     constsTracking.onePastLastChangedConst[changedIdx] = 0;
+    for (auto& mask : constsTracking.dirtyMask[changedIdx]) {
+      mask = 0;
+    }
   }
 
 
