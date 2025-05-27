@@ -902,35 +902,57 @@ namespace dxvk {
 
     void BindViewportAndScissor();
 
-    bool IsAlphaToCoverageEnabled() const;
-
-    inline bool IsNVDepthBoundsTestEnabled () {
+    inline static bool IsNVDepthBoundsTestEnabled(bool isD3D8Compatible, uint32_t vendorId, uint32_t rsAdaptiveTessX) {
       // NVDB is not supported by D3D8
-      if (m_isD3D8Compatible)
+      if (isD3D8Compatible)
         return false;
 
-      return m_state.renderStates[D3DRS_ADAPTIVETESS_X] == uint32_t(D3D9Format::NVDB);
+      return vendorId == uint32_t(DxvkGpuVendor::Nvidia) && rsAdaptiveTessX == uint32_t(D3D9Format::NVDB);
     }
 
-    inline bool IsDepthBiasEnabled() {
-      const auto& rs = m_state.renderStates;
+    inline bool IsNVDepthBoundsTestEnabled() const {
+      return IsNVDepthBoundsTestEnabled(
+        m_isD3D8Compatible,
+        m_adapter->GetVendorId(),
+        m_state.renderStates[D3DRS_ADAPTIVETESS_X]
+      );
+    }
 
-      float depthBias            = bit::cast<float>(rs[D3DRS_DEPTHBIAS]);
-      float slopeScaledDepthBias = bit::cast<float>(rs[D3DRS_SLOPESCALEDEPTHBIAS]);
-
+    inline static bool IsDepthBiasEnabled(uint32_t rsDepthBias, uint32_t rsSlopeScaledDepthBias) {
+      float depthBias            = bit::cast<float>(rsDepthBias);
+      float slopeScaledDepthBias = bit::cast<float>(rsSlopeScaledDepthBias);
       return depthBias != 0.0f || slopeScaledDepthBias != 0.0f;
     }
 
-    inline bool IsAlphaTestEnabled() {
-      return m_state.renderStates[D3DRS_ALPHATESTENABLE] && !IsAlphaToCoverageEnabled();
+    inline bool IsDepthBiasEnabled() const {
+      const auto& rs = m_state.renderStates;
+      return IsDepthBiasEnabled(rs[D3DRS_DEPTHBIAS], rs[D3DRS_SLOPESCALEDEPTHBIAS]);
     }
 
-    inline bool IsZTestEnabled() {
-      return m_state.renderStates[D3DRS_ZENABLE] && m_state.depthStencil != nullptr;
+    static std::pair<bool, bool> IsAlphaTestAndAlphaToCoverageEnabled(
+      bool isD3D8Compatible,
+      uint32_t vendorId,
+      uint32_t rsAlphaTestEnable,
+      uint32_t rsPointSize,
+      uint32_t rsAdaptiveTessY,
+      const D3D9CommonTexture* rt0);
+
+    std::pair<bool, bool> IsAlphaTestAndAlphaToCoverageEnabled() const;
+
+    inline static bool IsZTestEnabled(uint32_t rsZEnable, const D3D9Surface* depthStencil) {
+      return rsZEnable && depthStencil != nullptr;
     }
 
-    inline bool IsClipPlaneEnabled() {
-      return m_state.renderStates[D3DRS_CLIPPLANEENABLE] != 0;
+    inline bool IsZTestEnabled() const {
+      return IsZTestEnabled(m_state.renderStates[D3DRS_ZENABLE], m_state.depthStencil.ptr());
+    }
+
+    inline static bool IsClipPlaneEnabled(uint32_t rsClipPlaneEnable) {
+      return rsClipPlaneEnable != 0;
+    }
+
+    inline bool IsClipPlaneEnabled() const {
+      return IsClipPlaneEnabled(m_state.renderStates[D3DRS_CLIPPLANEENABLE]);
     }
 
     void BindMultiSampleState();
@@ -1572,16 +1594,8 @@ namespace dxvk {
 
     bool                            m_isSWVP;
     bool                            m_isD3D8Compatible;
-    bool                            m_amdATOC          = false;
-    bool                            m_nvATOC           = false;
-    bool                            m_ffZTest          = false;
 
-    bool                            m_clipPlaneEnabled = false;
-    bool                            m_depthBiasEnabled = false;
-    bool                            m_alphaTestEnabled = false;
-    // vendor hack state tracking
-    bool                            m_atocEnabled      = false;
-    bool                            m_nvdbEnabled      = false;
+    bool                            m_ffZTest          = false;
 
     VkImageLayout                   m_hazardLayout = VK_IMAGE_LAYOUT_GENERAL;
 

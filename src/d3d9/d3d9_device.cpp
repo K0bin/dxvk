@@ -1686,10 +1686,8 @@ namespace dxvk {
     if (RenderTargetIndex == 0) {
       // Changing RT0 can disable ATOC, so we
       // need to keep track of the state.
-      m_atocEnabled = IsAlphaToCoverageEnabled();
-
       if (likely(texInfo != nullptr)) {
-        if (IsAlphaTestEnabled()) {
+        if (IsAlphaTestAndAlphaToCoverageEnabled().first) {
           // Need to recalculate the precision.
           m_flags.set(D3D9DeviceFlag::DirtyAlphaTestState);
         }
@@ -2266,20 +2264,24 @@ namespace dxvk {
         constexpr uint32_t AlphaToCoverageDisable = uint32_t(D3D9Format::A2M0);
 
         if ((Value == AlphaToCoverageEnable
-          || Value == AlphaToCoverageDisable) && isAmd) {
-          m_amdATOC = Value == AlphaToCoverageEnable;
+        || Value == AlphaToCoverageDisable) && isAmd) {
+          const auto wasAlphaTestAndAtoc = IsAlphaTestAndAlphaToCoverageEnabled(
+            m_isD3D8Compatible,
+            vendorId,
+            m_state.renderStates[D3DRS_ALPHATESTENABLE],
+            oldValue,
+            m_state.renderStates[D3DRS_ADAPTIVETESS_Y],
+            GetCommonTexture(m_state.renderTargets[0].ptr())
+            );
 
-          const bool atocEnabled      = IsAlphaToCoverageEnabled();
-          const bool alphaTestEnabled = IsAlphaTestEnabled();
+          const auto alphaTestAndAtoc = IsAlphaTestAndAlphaToCoverageEnabled();
 
-          if (atocEnabled != m_atocEnabled) {
+          if (alphaTestAndAtoc.second != wasAlphaTestAndAtoc.second) {
             m_flags.set(D3D9DeviceFlag::DirtyMultiSampleState);
-            m_atocEnabled = atocEnabled;
           }
 
-          if (alphaTestEnabled != m_alphaTestEnabled) {
+          if (alphaTestAndAtoc.first != wasAlphaTestAndAtoc.first) {
             m_flags.set(D3D9DeviceFlag::DirtyAlphaTestState);
-            m_alphaTestEnabled = alphaTestEnabled;
           }
 
           return D3D_OK;
@@ -2318,20 +2320,24 @@ namespace dxvk {
         constexpr uint32_t AlphaToCoverageDisable = 0;
 
         if (Value == AlphaToCoverageEnable
-         || Value == AlphaToCoverageDisable) {
-          m_nvATOC = Value == AlphaToCoverageEnable;
+        || Value == AlphaToCoverageDisable) {
+          const auto wasAlphaTestAndAtoc = IsAlphaTestAndAlphaToCoverageEnabled(
+            m_isD3D8Compatible,
+            vendorId,
+            m_state.renderStates[D3DRS_ALPHATESTENABLE],
+            m_state.renderStates[D3DRS_POINTSIZE],
+            oldValue,
+            GetCommonTexture(m_state.renderTargets[0].ptr())
+            );
 
-          const bool atocEnabled      = IsAlphaToCoverageEnabled();
-          const bool alphaTestEnabled = IsAlphaTestEnabled();
+          const auto alphaTestAndAtoc = IsAlphaTestAndAlphaToCoverageEnabled();
 
-          if (atocEnabled != m_atocEnabled) {
+          if (alphaTestAndAtoc.second != wasAlphaTestAndAtoc.second) {
             m_flags.set(D3D9DeviceFlag::DirtyMultiSampleState);
-            m_atocEnabled = atocEnabled;
           }
 
-          if (alphaTestEnabled != m_alphaTestEnabled) {
+          if (alphaTestAndAtoc.first != wasAlphaTestAndAtoc.first) {
             m_flags.set(D3D9DeviceFlag::DirtyAlphaTestState);
-            m_alphaTestEnabled = alphaTestEnabled;
           }
 
           return D3D_OK;
@@ -2385,17 +2391,23 @@ namespace dxvk {
           break;
 
         case D3DRS_ALPHATESTENABLE: {
-          const bool atocEnabled      = IsAlphaToCoverageEnabled();
-          const bool alphaTestEnabled = IsAlphaTestEnabled();
+          const auto wasAlphaTestAndAtoc = IsAlphaTestAndAlphaToCoverageEnabled(
+            m_isD3D8Compatible,
+            vendorId,
+            oldValue,
+            m_state.renderStates[D3DRS_POINTSIZE],
+            m_state.renderStates[D3DRS_ADAPTIVETESS_Y],
+            GetCommonTexture(m_state.renderTargets[0].ptr())
+            );
 
-          if (atocEnabled != m_atocEnabled) {
+          const auto alphaTestAndAtoc = IsAlphaTestAndAlphaToCoverageEnabled();
+
+          if (alphaTestAndAtoc.second != wasAlphaTestAndAtoc.second) {
             m_flags.set(D3D9DeviceFlag::DirtyMultiSampleState);
-            m_atocEnabled = atocEnabled;
           }
 
-          if (alphaTestEnabled != m_alphaTestEnabled) {
+          if (alphaTestAndAtoc.first != wasAlphaTestAndAtoc.first) {
             m_flags.set(D3D9DeviceFlag::DirtyAlphaTestState);
-            m_alphaTestEnabled = alphaTestEnabled;
           }
 
           break;
@@ -2455,11 +2467,14 @@ namespace dxvk {
 
         case D3DRS_DEPTHBIAS:
         case D3DRS_SLOPESCALEDEPTHBIAS: {
+          const bool wasDepthBiasEnabled = IsDepthBiasEnabled(
+            State == D3DRS_DEPTHBIAS ? oldValue : m_state.renderStates[D3DRS_DEPTHBIAS],
+            State == D3DRS_SLOPESCALEDEPTHBIAS ? oldValue : m_state.renderStates[D3DRS_SLOPESCALEDEPTHBIAS]
+          );
           const bool depthBiasEnabled = IsDepthBiasEnabled();
 
-          if (depthBiasEnabled != m_depthBiasEnabled) {
+          if (depthBiasEnabled != wasDepthBiasEnabled) {
             m_flags.set(D3D9DeviceFlag::DirtyRasterizerState);
-            m_depthBiasEnabled = depthBiasEnabled;
           }
 
           if (depthBiasEnabled)
@@ -2473,11 +2488,11 @@ namespace dxvk {
           break;
 
         case D3DRS_CLIPPLANEENABLE: {
+          const bool wasClipPlaneEnabled = IsClipPlaneEnabled(oldValue);
           const bool clipPlaneEnabled = IsClipPlaneEnabled();
 
-          if (clipPlaneEnabled != m_clipPlaneEnabled) {
+          if (clipPlaneEnabled != wasClipPlaneEnabled) {
             m_flags.set(D3D9DeviceFlag::DirtyFFVertexShader);
-            m_clipPlaneEnabled = clipPlaneEnabled;
           }
 
           m_flags.set(D3D9DeviceFlag::DirtyClipPlanes);
@@ -2582,22 +2597,20 @@ namespace dxvk {
           break;
 
         case D3DRS_ADAPTIVETESS_Y:
+        case D3DRS_ADAPTIVETESS_Z:
+        case D3DRS_ADAPTIVETESS_W:
           break;
 
-        case D3DRS_ADAPTIVETESS_X:
-        case D3DRS_ADAPTIVETESS_Z:
-        case D3DRS_ADAPTIVETESS_W: {
+        case D3DRS_ADAPTIVETESS_X: {
           // Nvidia specific depth bounds test hack
-          const bool nvdbEnabled = isNvidia && IsNVDepthBoundsTestEnabled();
+          const bool wasNvdbEnabled = IsNVDepthBoundsTestEnabled(m_isD3D8Compatible, vendorId, oldValue);
+          const bool nvdbEnabled = IsNVDepthBoundsTestEnabled();
           
-          if (nvdbEnabled || m_nvdbEnabled) {
+          if (nvdbEnabled || wasNvdbEnabled) {
             m_flags.set(D3D9DeviceFlag::DirtyDepthBounds);
 
             if (likely(IsZTestEnabled()))
               m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
-
-            if (nvdbEnabled != m_nvdbEnabled)
-              m_nvdbEnabled = nvdbEnabled;
           }
           break;
         }
@@ -6869,20 +6882,50 @@ namespace dxvk {
   }
 
 
-  bool D3D9DeviceEx::IsAlphaToCoverageEnabled() const {
+  std::pair<bool, bool> D3D9DeviceEx::IsAlphaTestAndAlphaToCoverageEnabled(
+    bool isD3D8Compatible,
+    uint32_t vendorId,
+    uint32_t rsAlphaTestEnable,
+    uint32_t rsPointSize,
+    uint32_t rsAdaptiveTessY,
+    const D3D9CommonTexture* rt0) {
+
     // ATOC is not supported by D3D8
-    if (m_isD3D8Compatible)
-      return false;
+    if (unlikely(isD3D8Compatible)) {
+      return std::make_pair(rsAlphaTestEnable, false);
+    }
 
-    const bool alphaTest = m_state.renderStates[D3DRS_ALPHATESTENABLE] != 0;
+    const bool isNvidia = vendorId == uint32_t(DxvkGpuVendor::Nvidia);
+    const bool isAmd    = vendorId == uint32_t(DxvkGpuVendor::Amd);
+    const bool isIntel  = vendorId == uint32_t(DxvkGpuVendor::Intel);
 
-    const D3D9CommonTexture* rt0 = GetCommonTexture(m_state.renderTargets[0].ptr());
     const bool isMultisampled = rt0 != nullptr && (
       rt0->Desc()->MultiSample >= D3DMULTISAMPLE_2_SAMPLES
       || (rt0->Desc()->MultiSample == D3DMULTISAMPLE_NONMASKABLE && rt0->Desc()->MultisampleQuality > 0)
     );
 
-    return (m_amdATOC || (m_nvATOC && alphaTest)) && rt0 != nullptr && isMultisampled;
+    // ATOC (AMD specific)
+    constexpr uint32_t AMDAlphaToCoverageEnable = uint32_t(D3D9Format::A2M1);
+    const bool amdAtoc = isAmd && rsPointSize == AMDAlphaToCoverageEnable;
+
+    // ATOC (Nvidia & Intel)
+    constexpr uint32_t NVAlphaToCoverageEnable = uint32_t(D3D9Format::ATOC);
+    const bool nvAtoc = (isNvidia || isIntel) && rsAdaptiveTessY == NVAlphaToCoverageEnable;
+
+    bool atoc = (amdAtoc || (nvAtoc && rsAlphaTestEnable)) && rt0 != nullptr && isMultisampled;
+    return std::make_pair(rsAlphaTestEnable && !atoc, atoc);
+  }
+
+
+  std::pair<bool, bool> D3D9DeviceEx::IsAlphaTestAndAlphaToCoverageEnabled() const  {
+    return IsAlphaTestAndAlphaToCoverageEnabled(
+      m_isD3D8Compatible,
+      m_adapter->GetVendorId(),
+     m_state.renderStates[D3DRS_ALPHATESTENABLE],
+     m_state.renderStates[D3DRS_POINTSIZE],
+     m_state.renderStates[D3DRS_ADAPTIVETESS_Y],
+     GetCommonTexture(m_state.renderTargets[0].ptr())
+    );
   }
 
 
@@ -6893,7 +6936,7 @@ namespace dxvk {
     msState.setSampleMask(m_flags.test(D3D9DeviceFlag::ValidSampleMask)
       ? uint16_t(m_state.renderStates[D3DRS_MULTISAMPLEMASK])
       : uint16_t(0xffffu));
-    msState.setAlphaToCoverage(IsAlphaToCoverageEnabled());
+    msState.setAlphaToCoverage(IsAlphaTestAndAlphaToCoverageEnabled().second);
 
     EmitCs([
       cState = msState
@@ -7121,7 +7164,7 @@ namespace dxvk {
 
     auto& rs = m_state.renderStates;
 
-    VkCompareOp alphaOp = IsAlphaTestEnabled()
+    VkCompareOp alphaOp = IsAlphaTestAndAlphaToCoverageEnabled().first
       ? DecodeCompareOp(D3DCMPFUNC(rs[D3DRS_ALPHAFUNC]))
       : VK_COMPARE_OP_ALWAYS;
 
@@ -8541,16 +8584,6 @@ namespace dxvk {
     for (uint32_t i = 0; i < caps::MaxStreams; i++) {
       SetStreamSource(i, nullptr, 0, 0);
     }
-
-    m_amdATOC          = false;
-    m_nvATOC           = false;
-    m_ffZTest          = false;
-
-    m_clipPlaneEnabled = false;
-    m_depthBiasEnabled = false;
-    m_alphaTestEnabled = false;
-    m_atocEnabled      = false;
-    m_nvdbEnabled      = false;
   }
 
 
