@@ -213,6 +213,28 @@ namespace dxvk {
     uint16_t instanced = 0;
   };
 
+  /**
+   * \brief D3D9 command type
+   *
+   * Used to identify the type of command
+   * data most recently added to a CS chunk.
+   */
+  enum class D3D9CmdType : uint32_t {
+    None,
+    StretchRect,
+  };
+
+
+  /**
+   * \brief StretchRect command data
+   */
+  struct D3D9CmdStretchRectData {
+    Rc<DxvkImage> srcImage;
+    Rc<DxvkImage> dstImage;
+    VkImageBlit   blitInfo;
+    VkFilter      filter;
+  };
+
   class D3D9DeviceEx final : public ComObjectClamp<IDirect3DDevice9Ex> {
     constexpr static uint32_t DefaultFrameLatency = 3;
     constexpr static uint32_t MaxFrameLatency     = 20;
@@ -1280,6 +1302,11 @@ namespace dxvk {
 
     template<bool AllowFlush = true, typename Cmd>
     void EmitCs(Cmd&& command) {
+      if (unlikely(m_csDataType != D3D9CmdType::None)) {
+        m_csData = nullptr;
+        m_csDataType = D3D9CmdType::None;
+      }
+
       if (unlikely(!m_csChunk->push(command))) {
         EmitCsChunk(std::move(m_csChunk));
         m_csChunk = AllocCsChunk();
@@ -1291,10 +1318,31 @@ namespace dxvk {
       }
     }
 
+    template<typename M, bool AllowFlush = true, typename Cmd>
+    void EmitCsCmd(D3D9CmdType type, size_t count, Cmd&& command) {
+      m_csDataType = type;
+      m_csData = m_csChunk->pushCmd<M, Cmd>(command, count);
+
+      if (unlikely(!m_csData)) {
+        EmitCsChunk(std::move(m_csChunk));
+        m_csChunk = AllocCsChunk();
+
+        if constexpr (AllowFlush)
+          ConsiderFlush(GpuFlushType::ImplicitWeakHint);
+
+        // We must record this command after the potential
+        // flush since the caller may still access the data
+        m_csData = m_csChunk->pushCmd<M, Cmd>(command, count);
+      }
+    }
+
     void EmitCsChunk(DxvkCsChunkRef&& chunk);
 
     void FlushCsChunk() {
       if (likely(!m_csChunk->empty())) {
+        m_csData = nullptr;
+        m_csDataType = D3D9CmdType::None;
+
         EmitCsChunk(std::move(m_csChunk));
         m_csChunk = AllocCsChunk();
       }
@@ -1666,9 +1714,12 @@ namespace dxvk {
 
     D3D9ViewportInfo                m_viewportInfo;
 
+    D3D9CmdType                     m_csDataType = D3D9CmdType::None;
+
     DxvkCsChunkPool                 m_csChunkPool;
     DxvkCsThread                    m_csThread;
     DxvkCsChunkRef                  m_csChunk;
+    DxvkCsDataBlock*                m_csData = nullptr;
     uint64_t                        m_csSeqNum = 0ull;
 
     Rc<sync::Fence>                 m_submissionFence;

@@ -1344,12 +1344,24 @@ namespace dxvk {
     }
 
     fastPath &= !stretch;
+    VkFilter filter = stretch ? DecodeFilter(Filter) : VK_FILTER_NEAREST;
 
     if (!fastPath || needsResolve) {
       // Compressed destination formats are forbidden for blits.
       if (dstFormatInfo->flags.test(DxvkFormatFlag::BlockCompressed))
         return D3DERR_INVALIDCALL;
     }
+
+    if (unlikely(m_csDataType == D3D9CmdType::StretchRect)) {
+      auto cmdData = static_cast<D3D9CmdStretchRectData*>(m_csData->first());
+      if (unlikely(cmdData->srcImage == srcImage
+        && cmdData->dstImage == dstImage
+        && cmdData->filter == filter
+        && std::memcmp(&cmdData->blitInfo, &blitInfo, 1) == 0)) {
+        return D3D_OK;
+      }
+    }
+
 
     if (fastPath) {
       if (needsResolve) {
@@ -1360,17 +1372,17 @@ namespace dxvk {
         region.dstOffset      = blitInfo.dstOffsets[0];
         region.extent         = srcCopyExtent;
 
-        EmitCs([
+        EmitCsCmd<D3D9CmdStretchRectData>(D3D9CmdType::StretchRect, 1u, [
           cDstImage    = dstImage,
           cSrcImage    = srcImage,
           cRegion      = region
-        ] (DxvkContext* ctx) {
+        ] (DxvkContext* ctx, const D3D9CmdStretchRectData*, size_t) {
           // Deliberately use AVERAGE even for depth resolves here
           ctx->resolveImage(cDstImage, cSrcImage, cRegion, cSrcImage->info().format,
             VK_RESOLVE_MODE_AVERAGE_BIT, VK_RESOLVE_MODE_SAMPLE_ZERO_BIT);
         });
       } else {
-        EmitCs([
+        EmitCsCmd<D3D9CmdStretchRectData>(D3D9CmdType::StretchRect, 1u, [
           cDstImage  = dstImage,
           cSrcImage  = srcImage,
           cDstLayers = blitInfo.dstSubresource,
@@ -1378,7 +1390,7 @@ namespace dxvk {
           cDstOffset = blitInfo.dstOffsets[0],
           cSrcOffset = blitInfo.srcOffsets[0],
           cExtent    = srcCopyExtent
-        ] (DxvkContext* ctx) {
+        ] (DxvkContext* ctx, const D3D9CmdStretchRectData*, size_t) {
           ctx->copyImage(
             cDstImage, cDstLayers, cDstOffset,
             cSrcImage, cSrcLayers, cSrcOffset,
@@ -1409,18 +1421,24 @@ namespace dxvk {
       srcViewInfo.layerCount = blitInfo.srcSubresource.layerCount;
       srcViewInfo.packedSwizzle = DxvkImageViewKey::packSwizzle(srcTextureInfo->GetMapping().Swizzle);
 
-      EmitCs([
+      EmitCsCmd<D3D9CmdStretchRectData>(D3D9CmdType::StretchRect, 1u, [
         cDstView  = dstImage->createView(dstViewInfo),
         cSrcView  = srcImage->createView(srcViewInfo),
         cBlitInfo = blitInfo,
-        cFilter   = stretch ? DecodeFilter(Filter) : VK_FILTER_NEAREST
-      ] (DxvkContext* ctx) {
+        cFilter   = filter
+      ] (DxvkContext* ctx, const D3D9CmdStretchRectData*, size_t) {
         ctx->blitImageView(
           cDstView, cBlitInfo.dstOffsets,
           cSrcView, cBlitInfo.srcOffsets,
           cFilter);
       });
     }
+
+    auto cmdData = new (m_csData->first()) D3D9CmdStretchRectData();
+    cmdData->blitInfo = blitInfo;
+    cmdData->filter = filter;
+    cmdData->srcImage = srcImage;
+    cmdData->dstImage = dstImage;
 
     dstTextureInfo->SetNeedsReadback(dst->GetSubresource(), true);
 
