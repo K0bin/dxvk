@@ -99,6 +99,11 @@ namespace dxvk {
     }
 
     m_cmd->finalize();
+
+    if (m_frame == 95) {
+      Logger::warn("EndRecording");
+    }
+
     return std::exchange(m_cmd, nullptr);
   }
 
@@ -107,6 +112,8 @@ namespace dxvk {
     this->submitDescriptorPool(true);
 
     m_renderPassIndex = 0u;
+
+    m_frame++;
   }
 
 
@@ -173,7 +180,7 @@ namespace dxvk {
     return m_cmd;
   }
 
-  
+
   void DxvkContext::beginQuery(const Rc<DxvkQuery>& query) {
     m_queryManager.enableQuery(m_cmd, query);
   }
@@ -182,8 +189,8 @@ namespace dxvk {
   void DxvkContext::endQuery(const Rc<DxvkQuery>& query) {
     m_queryManager.disableQuery(m_cmd, query);
   }
-  
-  
+
+
   void DxvkContext::blitImageView(
     const Rc<DxvkImageView>&    dstView,
     const VkOffset3D*           dstOffsets,
@@ -191,6 +198,11 @@ namespace dxvk {
     const VkOffset3D*           srcOffsets,
           VkFilter              filter) {
     this->spillRenderPass(true);
+
+    if (m_frame == 95) {
+      Logger::warn("SpillRenderPass blitImageView");
+    }
+
     this->prepareImage(dstView->image(), dstView->imageSubresources());
     this->prepareImage(srcView->image(), srcView->imageSubresources());
 
@@ -236,6 +248,10 @@ namespace dxvk {
     if (image->info().layout != layout) {
       this->spillRenderPass(true);
 
+      if (m_frame == 95) {
+        Logger::warn("SpillRenderPass changeImageLayout");
+      }
+
       VkImageSubresourceRange subresources = image->getAvailableSubresources();
 
       this->prepareImage(image, subresources);
@@ -275,6 +291,10 @@ namespace dxvk {
     if (!prepareOutOfOrderTransfer(buffer, offset, length, DxvkAccess::Write)) {
       spillRenderPass(true);
 
+      if (m_frame == 95) {
+        Logger::warn("SpillRenderPass clearBuffer");
+      }
+
       flushPendingAccesses(*buffer, offset, length, DxvkAccess::Write);
 
       cmdBuffer = DxvkCmdBuffer::ExecBuffer;
@@ -302,8 +322,8 @@ namespace dxvk {
 
     m_cmd->track(buffer, DxvkAccess::Write);
   }
-  
-  
+
+
   void DxvkContext::clearBufferView(
     const Rc<DxvkBufferView>&   bufferView,
           VkDeviceSize          offset,
@@ -313,6 +333,10 @@ namespace dxvk {
 
     if (!prepareOutOfOrderTransfer(bufferView, offset, length, DxvkAccess::Write)) {
       spillRenderPass(true);
+
+      if (m_frame == 95) {
+        Logger::warn("SpillRenderPass clearBufferView");
+      }
       invalidateState();
 
       flushPendingAccesses(*bufferView, DxvkAccess::Write);
@@ -364,8 +388,8 @@ namespace dxvk {
 
     m_cmd->track(bufferView->buffer(), DxvkAccess::Write);
   }
-  
-  
+
+
   void DxvkContext::clearRenderTarget(
     const Rc<DxvkImageView>&    imageView,
           VkImageAspectFlags    clearAspects,
@@ -393,6 +417,10 @@ namespace dxvk {
       //    will indirectly emit barriers for the given render target.
       // If there is overlap, we need to explicitly transition affected attachments.
       this->spillRenderPass(true);
+
+      if (m_frame == 95) {
+        Logger::warn("SpillRenderPass clearRenderTarget");
+      }
       this->prepareImage(imageView->image(), imageView->imageSubresources(), false);
     } else if (!m_state.om.framebufferInfo.isWritable(attachmentIndex, clearAspects)) {
       // We cannot inline clears if the clear aspects are not writable. End the
@@ -419,8 +447,8 @@ namespace dxvk {
       m_implicitResolves.invalidate(*imageView->image(), subresources);
     }
   }
-  
-  
+
+
   void DxvkContext::clearImageView(
     const Rc<DxvkImageView>&    imageView,
           VkOffset3D            offset,
@@ -433,7 +461,7 @@ namespace dxvk {
       value.color = util::swizzleClearColor(value.color,
         util::invertComponentMapping(imageView->info().unpackSwizzle()));
     }
-    
+
     if (viewUsage & (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT))
       this->clearImageViewFb(imageView, offset, extent, aspect, value);
     else if (viewUsage & VK_IMAGE_USAGE_STORAGE_BIT)
@@ -446,8 +474,8 @@ namespace dxvk {
       m_implicitResolves.invalidate(*imageView->image(), subresources);
     }
   }
-  
-  
+
+
   void DxvkContext::copyBuffer(
     const Rc<DxvkBuffer>&       dstBuffer,
           VkDeviceSize          dstOffset,
@@ -459,6 +487,10 @@ namespace dxvk {
     if (!prepareOutOfOrderTransfer(srcBuffer, srcOffset, numBytes, DxvkAccess::Read)
      || !prepareOutOfOrderTransfer(dstBuffer, dstOffset, numBytes, DxvkAccess::Write)) {
       this->spillRenderPass(true);
+
+      if (m_frame == 95) {
+        Logger::warn("SpillRenderPass copyBuffer");
+      }
 
       flushPendingAccesses(*srcBuffer, srcOffset, numBytes, DxvkAccess::Read);
       flushPendingAccesses(*dstBuffer, dstOffset, numBytes, DxvkAccess::Write);
@@ -493,8 +525,8 @@ namespace dxvk {
     m_cmd->track(dstBuffer, DxvkAccess::Write);
     m_cmd->track(srcBuffer, DxvkAccess::Read);
   }
-  
-  
+
+
   void DxvkContext::copyBufferRegion(
     const Rc<DxvkBuffer>&       dstBuffer,
           VkDeviceSize          dstOffset,
@@ -515,9 +547,9 @@ namespace dxvk {
 
       auto tmpBuffer = m_device->createBuffer(
         bufInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-      
+
       VkDeviceSize tmpOffset = 0;
-      
+
       this->copyBuffer(tmpBuffer, tmpOffset, dstBuffer, srcOffset, numBytes);
       this->copyBuffer(dstBuffer, dstOffset, tmpBuffer, tmpOffset, numBytes);
     } else {
@@ -547,8 +579,8 @@ namespace dxvk {
         srcBuffer, srcOffset, rowAlignment, sliceAlignment);
     }
   }
-  
-  
+
+
   void DxvkContext::copyImage(
     const Rc<DxvkImage>&        dstImage,
           VkImageSubresourceLayers dstSubresource,
@@ -558,6 +590,10 @@ namespace dxvk {
           VkOffset3D            srcOffset,
           VkExtent3D            extent) {
     this->spillRenderPass(true);
+
+    if (m_frame == 95) {
+      Logger::warn("SpillRenderPass copyImage");
+    }
 
     if (this->copyImageClear(dstImage, dstSubresource, dstOffset, extent, srcImage, srcSubresource))
       return;
@@ -589,8 +625,8 @@ namespace dxvk {
     if (dstImage->info().sampleCount > VK_SAMPLE_COUNT_1_BIT)
       m_implicitResolves.invalidate(*dstImage, vk::makeSubresourceRange(dstSubresource));
   }
-  
-  
+
+
   void DxvkContext::copyImageRegion(
     const Rc<DxvkImage>&        dstImage,
           VkImageSubresourceLayers dstSubresource,
@@ -601,16 +637,16 @@ namespace dxvk {
       std::max(dstOffset.x, srcOffset.x),
       std::max(dstOffset.y, srcOffset.y),
       std::max(dstOffset.z, srcOffset.z) };
-    
+
     VkOffset3D hiOvl = {
       std::min(dstOffset.x, srcOffset.x) + int32_t(extent.width),
       std::min(dstOffset.y, srcOffset.y) + int32_t(extent.height),
       std::min(dstOffset.z, srcOffset.z) + int32_t(extent.depth) };
-    
+
     bool overlap = hiOvl.x > loOvl.x
                 && hiOvl.y > loOvl.y
                 && hiOvl.z > loOvl.z;
-    
+
     if (overlap) {
       DxvkImageCreateInfo imgInfo;
       imgInfo.type          = dstImage->info().type;
@@ -631,7 +667,7 @@ namespace dxvk {
 
       auto tmpImage = m_device->createImage(
         imgInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-      
+
       VkImageSubresourceLayers tmpSubresource;
       tmpSubresource.aspectMask     = dstSubresource.aspectMask;
       tmpSubresource.mipLevel       = 0;
@@ -644,7 +680,7 @@ namespace dxvk {
         tmpImage, tmpSubresource, tmpOffset,
         dstImage, dstSubresource, srcOffset,
         extent);
-      
+
       this->copyImage(
         dstImage, dstSubresource, dstOffset,
         tmpImage, tmpSubresource, tmpOffset,
@@ -693,6 +729,10 @@ namespace dxvk {
           VkExtent3D            extent,
           VkDeviceSize          elementSize) {
     this->spillRenderPass(true);
+
+    if (m_frame == 95) {
+      Logger::warn("SpillRenderPass copyPackedBufferImage");
+    }
     this->invalidateState();
 
     // We'll use texel buffer views with an appropriately
@@ -868,7 +908,7 @@ namespace dxvk {
     if (this->commitComputeState()) {
       m_queryManager.beginQueries(m_cmd,
         VK_QUERY_TYPE_PIPELINE_STATISTICS);
-      
+
       m_cmd->cmdDispatch(DxvkCmdBuffer::ExecBuffer, x, y, z);
       m_cmd->addStatCtr(DxvkStatCounter::CmdDispatchCalls, 1u);
 
@@ -876,8 +916,8 @@ namespace dxvk {
         VK_QUERY_TYPE_PIPELINE_STATISTICS);
     }
   }
-  
-  
+
+
   void DxvkContext::dispatchIndirect(
           VkDeviceSize      offset) {
     auto argInfo = m_state.id.argBuffer.getSliceInfo();
@@ -903,15 +943,15 @@ namespace dxvk {
       this->trackDrawBuffer();
     }
   }
-  
-  
+
+
   void DxvkContext::draw(
           uint32_t          count,
     const VkDrawIndirectCommand* draws) {
     drawGeneric<false>(count, draws);
   }
-  
-  
+
+
   void DxvkContext::drawIndirect(
           VkDeviceSize      offset,
           uint32_t          count,
@@ -919,8 +959,8 @@ namespace dxvk {
           bool              unroll) {
     drawIndirectGeneric<false>(offset, count, stride, unroll);
   }
-  
-  
+
+
   void DxvkContext::drawIndirectCount(
           VkDeviceSize      offset,
           VkDeviceSize      countOffset,
@@ -928,11 +968,11 @@ namespace dxvk {
           uint32_t          stride) {
     drawIndirectCountGeneric<false>(offset, countOffset, maxCount, stride);
   }
-  
-  
+
+
   void DxvkContext::drawIndexed(
           uint32_t          count,
-    const VkDrawIndexedIndirectCommand* draws) {
+          const VkDrawIndexedIndirectCommand* draws) {
     drawGeneric<true>(count, draws);
   }
 
@@ -944,8 +984,8 @@ namespace dxvk {
           bool              unroll) {
     drawIndirectGeneric<true>(offset, count, stride, unroll);
   }
-  
-  
+
+
   void DxvkContext::drawIndexedIndirectCount(
           VkDeviceSize      offset,
           VkDeviceSize      countOffset,
@@ -1144,8 +1184,8 @@ namespace dxvk {
       m_cmd->track(image, DxvkAccess::Write);
     }
   }
-  
-  
+
+
   void DxvkContext::initSparseImage(
     const Rc<DxvkImage>&            image) {
     auto vk = m_device->vkd();
@@ -1208,6 +1248,10 @@ namespace dxvk {
 
     this->spillRenderPass(true);
 
+    if (m_frame == 95) {
+      Logger::warn("SpillRenderPass emitGraphicsBarrier");
+    }
+
     // Flush barriers if there was no active render pass.
     // This is necessary because there are no resources
     // associated with the barrier to allow tracking.
@@ -1223,6 +1267,10 @@ namespace dxvk {
           VkPipelineStageFlags      dstStages,
           VkAccessFlags             dstAccess) {
     this->spillRenderPass(true);
+
+    if (m_frame == 95) {
+      Logger::warn("SpillRenderPass emitBufferBarrier");
+    }
 
     accessBuffer(DxvkCmdBuffer::ExecBuffer,
       *resource, 0, resource->info().size,
@@ -1242,6 +1290,10 @@ namespace dxvk {
           VkPipelineStageFlags      dstStages,
           VkAccessFlags             dstAccess) {
     this->spillRenderPass(true);
+
+    if (m_frame == 95) {
+      Logger::warn("SpillRenderPass emitImageBarrier");
+    }
     this->prepareImage(resource, resource->getAvailableSubresources());
 
     flushPendingAccesses(*resource, resource->getAvailableSubresources(), DxvkAccess::Write);
@@ -1261,8 +1313,12 @@ namespace dxvk {
           VkFilter                  filter) {
     if (imageView->info().mipCount <= 1)
       return;
-    
+
     this->spillRenderPass(true);
+
+    if (m_frame == 95) {
+      Logger::warn("SpillRenderPass generateMipmaps");
+    }
     this->invalidateState();
 
     this->prepareImage(imageView->image(), imageView->imageSubresources());
@@ -1293,7 +1349,7 @@ namespace dxvk {
 
     // Create image views, etc.
     DxvkMetaMipGenViews mipGenerator(imageView);
-    
+
     VkImageLayout dstLayout = mipGenerator.getDstView(0u)->getLayout();
     VkImageLayout srcLayout = mipGenerator.getSrcView(0u)->getLayout();
 
@@ -1309,7 +1365,7 @@ namespace dxvk {
       VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, true);
 
     flushImageLayoutTransitions(DxvkCmdBuffer::ExecBuffer);
-    
+
     // Common descriptor set properties that we use to
     // bind the source image view to the fragment shader
     Rc<DxvkSampler> sampler = createBlitSampler(filter);
@@ -1326,7 +1382,7 @@ namespace dxvk {
     VkRenderingInfo renderingInfo = { VK_STRUCTURE_TYPE_RENDERING_INFO };
     renderingInfo.colorAttachmentCount = 1;
     renderingInfo.pColorAttachments = &attachmentInfo;
-    
+
     // Retrieve a compatible pipeline to use for rendering
     DxvkMetaBlitPipeline pipeInfo = m_common->metaBlit().getPipeline(
       mipGenerator.getSrcViewType(), imageView->info().format,
@@ -1375,6 +1431,9 @@ namespace dxvk {
         flushImageLayoutTransitions(DxvkCmdBuffer::ExecBuffer);
       }
 
+      if (m_frame == 95) {
+        Logger::warn("BeginRecording generateMipmaps");
+      }
       m_cmd->cmdBeginRendering(&renderingInfo);
 
       m_cmd->cmdBindPipeline(DxvkCmdBuffer::ExecBuffer,
@@ -1423,8 +1482,8 @@ namespace dxvk {
     m_cmd->track(imageView->image(), DxvkAccess::Write);
     m_cmd->track(std::move(sampler));
   }
-  
-  
+
+
   void DxvkContext::invalidateBuffer(
     const Rc<DxvkBuffer>&           buffer,
           Rc<DxvkResourceAllocation>&& slice) {
@@ -1454,10 +1513,10 @@ namespace dxvk {
 
     if (usage & VK_BUFFER_USAGE_INDEX_BUFFER_BIT)
       m_flags.set(DxvkContextFlag::GpDirtyIndexBuffer);
-    
+
     if (usage & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)
       m_flags.set(DxvkContextFlag::GpDirtyVertexBuffers);
-    
+
     if (usage & VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT)
       m_flags.set(DxvkContextFlag::DirtyDrawBuffer);
 
@@ -1508,6 +1567,10 @@ namespace dxvk {
 
         spillRenderPass(true);
 
+        if (m_frame == 95) {
+          Logger::warn("SpillRenderPass invalidateImageWithUsage");
+        }
+
         prepareImage(image, image->getAvailableSubresources());
       }
     }
@@ -1516,6 +1579,10 @@ namespace dxvk {
     // There might be false positives here, but those do not affect correctness.
     if (resourceHasAccess(*image, image->getAvailableSubresources(), DxvkAccess::Write, DxvkAccessOp::None)) {
       spillRenderPass(true);
+
+      if (m_frame == 95) {
+        Logger::warn("SpillRenderPass invalidateImageWithUsage2");
+      }
 
       flushBarriers();
     }
@@ -1565,6 +1632,10 @@ namespace dxvk {
 
     // Ensure the image is accessible and in its default layout
     this->spillRenderPass(true);
+
+    if (m_frame == 95) {
+      Logger::warn("SpillRenderPass ensureImageCompatibility");
+    }
     this->prepareImage(image, image->getAvailableSubresources());
 
     flushPendingAccesses(*image, image->getAvailableSubresources(), DxvkAccess::Write);
@@ -1688,9 +1759,14 @@ namespace dxvk {
           uint32_t                  count,
     const T*                        draws) {
     if (this->commitGraphicsState<Indexed, false>()) {
+
+
       if (count == 1u) {
         // Most common case, just emit a single draw
         if constexpr (Indexed) {
+          if (m_frame == 95) {
+            Logger::warn(str::format("drawIndexed first: ", draws->firstIndex, " indexCount: ", draws->indexCount));
+          }
           m_cmd->cmdDrawIndexed(draws->indexCount, draws->instanceCount,
             draws->firstIndex, draws->vertexOffset, draws->firstInstance);
         } else {
@@ -1984,6 +2060,10 @@ namespace dxvk {
       return;
 
     this->spillRenderPass(true);
+
+    if (m_frame == 95) {
+      Logger::warn("SpillRenderPass resolveImage");
+    }
     this->prepareImage(dstImage, vk::makeSubresourceRange(region.dstSubresource));
     this->prepareImage(srcImage, vk::makeSubresourceRange(region.srcSubresource));
 
@@ -2010,6 +2090,10 @@ namespace dxvk {
           VkImageLayout             dstLayout) {
     this->spillRenderPass(false);
 
+    if (m_frame == 95) {
+      Logger::warn("SpillRenderPass transformImage");
+    }
+
     if (srcLayout != dstLayout) {
       prepareImage(dstImage, dstSubresources);
       flushPendingAccesses(*dstImage, dstSubresources, DxvkAccess::Write);
@@ -2019,12 +2103,12 @@ namespace dxvk {
         srcLayout, dstImage->info().stages, dstImage->info().access,
         dstLayout, dstImage->info().stages, dstImage->info().access,
         DxvkAccessOp::None);
-      
+
       m_cmd->track(dstImage, DxvkAccess::Write);
     }
   }
-  
-  
+
+
   void DxvkContext::performClear(
     const Rc<DxvkImageView>&        imageView,
           int32_t                   attachmentIndex,
@@ -2035,7 +2119,7 @@ namespace dxvk {
     colorOp.loadOp        = VK_ATTACHMENT_LOAD_OP_LOAD;
     colorOp.loadLayout    = imageView->image()->info().layout;
     colorOp.storeLayout   = imageView->image()->info().layout;
-    
+
     DxvkDepthAttachmentOps depthOp;
     depthOp.loadOpD       = VK_ATTACHMENT_LOAD_OP_LOAD;
     depthOp.loadOpS       = VK_ATTACHMENT_LOAD_OP_LOAD;
@@ -2046,12 +2130,12 @@ namespace dxvk {
       colorOp.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     else if (discardAspects & VK_IMAGE_ASPECT_COLOR_BIT)
       colorOp.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    
+
     if (clearAspects & VK_IMAGE_ASPECT_DEPTH_BIT)
       depthOp.loadOpD = VK_ATTACHMENT_LOAD_OP_CLEAR;
     else if (discardAspects & VK_IMAGE_ASPECT_DEPTH_BIT)
       depthOp.loadOpD = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    
+
     if (clearAspects & VK_IMAGE_ASPECT_STENCIL_BIT)
       depthOp.loadOpS = VK_ATTACHMENT_LOAD_OP_CLEAR;
     else if (discardAspects & VK_IMAGE_ASPECT_STENCIL_BIT)
@@ -2088,7 +2172,7 @@ namespace dxvk {
       colorOp.loadLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
       depthOp.loadLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
     }
-    
+
     if (attachmentIndex < 0) {
       bool useLateClear = m_device->perfHints().renderPassClearFormatBug
         && imageView->info().format != imageView->image()->info().format;
@@ -2123,7 +2207,7 @@ namespace dxvk {
 
       VkPipelineStageFlags clearStages = 0;
       VkAccessFlags        clearAccess = 0;
-      
+
       if ((clearAspects | discardAspects) & VK_IMAGE_ASPECT_COLOR_BIT) {
         clearStages |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         clearAccess |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
@@ -2161,6 +2245,9 @@ namespace dxvk {
         loadLayout, clearStages, 0, imageLayout, clearStages, clearAccess);
       flushImageLayoutTransitions(DxvkCmdBuffer::ExecBuffer);
 
+      if (m_frame == 95) {
+        Logger::warn("BeginRecording performClear");
+      }
       m_cmd->cmdBeginRendering(&renderingInfo);
 
       if (useLateClear) {
@@ -2199,12 +2286,12 @@ namespace dxvk {
 
         m_state.om.renderPassOps.colorOps[colorIndex].clearValue = clearValue.color;
       }
-      
+
       if ((clearAspects | discardAspects) & VK_IMAGE_ASPECT_DEPTH_BIT) {
         m_state.om.renderPassOps.depthOps.loadOpD = depthOp.loadOpD;
         m_state.om.renderPassOps.depthOps.clearValue.depth = clearValue.depthStencil.depth;
       }
-      
+
       if ((clearAspects | discardAspects) & VK_IMAGE_ASPECT_STENCIL_BIT) {
         m_state.om.renderPassOps.depthOps.loadOpS = depthOp.loadOpS;
         m_state.om.renderPassOps.depthOps.clearValue.stencil = clearValue.depthStencil.stencil;
@@ -2235,10 +2322,14 @@ namespace dxvk {
           entry.clearValue.depthStencil.depth = clearValue.depthStencil.depth;
         if (clearAspects & VK_IMAGE_ASPECT_STENCIL_BIT)
           entry.clearValue.depthStencil.stencil = clearValue.depthStencil.stencil;
-        
+
         return;
       } else if (entry.imageView->checkSubresourceOverlap(imageView)) {
         this->spillRenderPass(false);
+
+        if (m_frame == 95) {
+          Logger::warn("SpillRenderPass deferClear");
+        }
         break;
       }
     }
@@ -2258,6 +2349,10 @@ namespace dxvk {
         return;
       } else if (entry.imageView->checkSubresourceOverlap(imageView)) {
         this->spillRenderPass(false);
+
+        if (m_frame == 95) {
+          Logger::warn("SpillRenderPass deferDiscard");
+        }
         break;
       }
     }
@@ -2679,6 +2774,10 @@ namespace dxvk {
     if (!prepareOutOfOrderTransfer(buffer, offset, size, DxvkAccess::Write)) {
       spillRenderPass(true);
 
+      if (m_frame == 95) {
+        Logger::warn("SpillRenderPass updateBuffer");
+      }
+
       flushPendingAccesses(*buffer, offset, size, DxvkAccess::Write);
 
       cmdBuffer = DxvkCmdBuffer::ExecBuffer;
@@ -2698,8 +2797,8 @@ namespace dxvk {
 
     m_cmd->track(buffer, DxvkAccess::Write);
   }
-  
-  
+
+
   void DxvkContext::uploadBuffer(
     const Rc<DxvkBuffer>&           buffer,
     const Rc<DxvkBuffer>&           source,
@@ -2767,8 +2866,8 @@ namespace dxvk {
     m_state.vp.viewportCount = viewportCount;
     m_flags.set(DxvkContextFlag::GpDirtyViewport);
   }
-  
-  
+
+
   void DxvkContext::setBlendConstants(
           DxvkBlendConstants  blendConstants) {
     if (m_state.dyn.blendConstants != blendConstants) {
@@ -2776,8 +2875,8 @@ namespace dxvk {
       m_flags.set(DxvkContextFlag::GpDirtyBlendConstants);
     }
   }
-  
-  
+
+
   void DxvkContext::setDepthBias(
           DxvkDepthBias       depthBias) {
     if (m_state.dyn.depthBias != depthBias) {
@@ -2803,8 +2902,8 @@ namespace dxvk {
       m_flags.set(DxvkContextFlag::GpDirtyDepthBounds);
     }
   }
-  
-  
+
+
   void DxvkContext::setStencilReference(
           uint32_t            reference) {
     if (m_state.dyn.stencilReference != reference) {
@@ -2812,18 +2911,18 @@ namespace dxvk {
       m_flags.set(DxvkContextFlag::GpDirtyStencilRef);
     }
   }
-  
-  
+
+
   void DxvkContext::setInputAssemblyState(const DxvkInputAssemblyState& ia) {
     m_state.gp.state.ia = DxvkIaInfo(
       ia.primitiveTopology(),
       ia.primitiveRestart(),
       ia.patchVertexCount());
-    
+
     m_flags.set(DxvkContextFlag::GpDirtyPipelineState);
   }
-  
-  
+
+
   void DxvkContext::setInputLayout(
           uint32_t             attributeCount,
     const DxvkVertexInput*     attributes,
@@ -2898,8 +2997,8 @@ namespace dxvk {
       m_state.gp.state.rs = rsInfo;
     }
   }
-  
-  
+
+
   void DxvkContext::setMultisampleState(const DxvkMultisampleState& ms) {
     m_state.gp.state.ms = DxvkMsInfo(
       m_state.gp.state.ms.sampleCount(),
@@ -2910,8 +3009,8 @@ namespace dxvk {
       DxvkContextFlag::GpDirtyPipelineState,
       DxvkContextFlag::GpDirtyMultisampleState);
   }
-  
-  
+
+
   void DxvkContext::setDepthStencilState(const DxvkDepthStencilState& ds) {
     if (m_state.dyn.depthStencilState.depthTest() != ds.depthTest()
      || m_state.dyn.depthStencilState.depthWrite() != ds.depthWrite()
@@ -2925,18 +3024,18 @@ namespace dxvk {
 
     m_state.dyn.depthStencilState = ds;
   }
-  
-  
+
+
   void DxvkContext::setLogicOpState(const DxvkLogicOpState& lo) {
     m_state.gp.state.om = DxvkOmInfo(
       lo.logicOpEnable(),
       lo.logicOp(),
       m_state.gp.state.om.feedbackLoop());
-    
+
     m_flags.set(DxvkContextFlag::GpDirtyPipelineState);
   }
-  
-  
+
+
   void DxvkContext::setBlendMode(
           uint32_t            attachment,
     const DxvkBlendMode&      blendMode) {
@@ -3070,7 +3169,11 @@ namespace dxvk {
 
   void DxvkContext::signalGpuEvent(const Rc<DxvkEvent>& event) {
     this->spillRenderPass(true);
-    
+
+    if (m_frame == 95) {
+      Logger::warn("SpillRenderPass signalGpuEvent");
+    }
+
     Rc<DxvkGpuEvent> gpuEvent = m_common->eventPool().allocEvent();
     event->assignGpuEvent(gpuEvent);
 
@@ -3087,7 +3190,7 @@ namespace dxvk {
     m_cmd->cmdSetEvent(gpuEvent->handle(), &depInfo);
     m_cmd->track(std::move(gpuEvent));
   }
-  
+
 
   void DxvkContext::launchCuKernelNVX(
     const VkCuLaunchInfoNVX& nvxLaunchInfo,
@@ -3097,6 +3200,10 @@ namespace dxvk {
     // explicitly in the API for barrier and tracking purposes
     // since they're being used bindlessly.
     this->spillRenderPass(true);
+
+    if (m_frame == 95) {
+      Logger::warn("SpillRenderPass launchCuKernelNVX");
+    }
 
     VkPipelineStageFlags srcStages = 0;
     VkAccessFlags srcAccess = 0;
@@ -3142,8 +3249,8 @@ namespace dxvk {
       m_cmd->track(r.first, r.second.test(DxvkAccess::Write) ? DxvkAccess::Write : DxvkAccess::Read);
     }
   }
-  
-  
+
+
   void DxvkContext::writeTimestamp(const Rc<DxvkQuery>& query) {
     m_queryManager.writeTimestamp(m_cmd, query);
   }
@@ -3222,6 +3329,10 @@ namespace dxvk {
 
     uint32_t color = sampleCount > VK_SAMPLE_COUNT_1_BIT ? 0xf0dcf0 : 0xf0e6dc;
 
+    if (m_frame == 95) {
+      Logger::warn(str::format("Begin region ", label.str()));
+    }
+
     pushDebugRegion(vk::makeLabel(color, label.str().c_str()),
       util::DxvkDebugLabelType::InternalRenderPass);
   }
@@ -3273,8 +3384,8 @@ namespace dxvk {
     if (m_features.test(DxvkContextFeature::DebugUtils))
       resource->setDebugName(name);
   }
-  
-  
+
+
   void DxvkContext::blitImageFb(
           Rc<DxvkImageView>     dstView,
     const VkOffset3D*           dstOffsets,
@@ -3338,7 +3449,7 @@ namespace dxvk {
       std::swap(dstOffsetsAdjusted[0].z, dstOffsetsAdjusted[1].z);
       std::swap(srcOffsetsAdjusted[0].z, srcOffsetsAdjusted[1].z);
     }
-    
+
     VkExtent3D dstExtent = {
       uint32_t(dstOffsetsAdjusted[1].x - dstOffsetsAdjusted[0].x),
       uint32_t(dstOffsetsAdjusted[1].y - dstOffsetsAdjusted[0].y),
@@ -3361,6 +3472,9 @@ namespace dxvk {
     renderingInfo.colorAttachmentCount = 1;
     renderingInfo.pColorAttachments = &attachmentInfo;
 
+    if (m_frame == 95) {
+      Logger::warn("BeginRecording blitImageFb");
+    }
     m_cmd->cmdBeginRendering(&renderingInfo);
 
     // Bind pipeline
@@ -3391,7 +3505,7 @@ namespace dxvk {
     DxvkDescriptorWrite imageDescriptor = { };
     imageDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
     imageDescriptor.descriptor = srcView->getDescriptor();
-    
+
     // Compute shader parameters for the operation
     VkExtent3D srcExtent = srcView->mipLevelExtent(0);
 
@@ -3434,7 +3548,7 @@ namespace dxvk {
       *dstView->image(), dstView->imageSubresources(), dstLayout,
       VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
       VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, DxvkAccessOp::None);
-    
+
     accessImage(DxvkCmdBuffer::ExecBuffer,
       *srcView->image(), srcView->imageSubresources(), srcLayout,
       VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
@@ -3629,6 +3743,10 @@ namespace dxvk {
     if (!prepareOutOfOrderTransfer(buffer, bufferOffset, dataSize, DxvkAccess::Read)
      || !prepareOutOfOrderTransfer(image, DxvkAccess::Write)) {
       spillRenderPass(true);
+
+      if (m_frame == 95) {
+        Logger::warn("SpillRenderPass copyBufferToImageHw");
+      }
       prepareImage(image, vk::makeSubresourceRange(imageSubresource));
 
       flushPendingAccesses(*image, dstSubresource, imageOffset, imageExtent, DxvkAccess::Write);
@@ -3673,6 +3791,10 @@ namespace dxvk {
           VkDeviceSize          bufferSliceAlignment,
           VkFormat              bufferFormat) {
     this->spillRenderPass(true);
+
+    if (m_frame == 95) {
+      Logger::warn("SpillRenderPass copyBufferToImageFb");
+    }
     this->invalidateState();
 
     this->prepareImage(image, vk::makeSubresourceRange(imageSubresource));
@@ -3786,6 +3908,9 @@ namespace dxvk {
     if (image->formatInfo()->aspectMask & VK_IMAGE_ASPECT_STENCIL_BIT)
       renderingInfo.pStencilAttachment = &attachment;
 
+    if (m_frame == 95) {
+      Logger::warn("BeginRecording copyBufferToImageFb");
+    }
     m_cmd->cmdBeginRendering(&renderingInfo);
 
     // Set up viewport and scissor state
@@ -3898,6 +4023,10 @@ namespace dxvk {
           VkOffset3D            imageOffset,
           VkExtent3D            imageExtent) {
     this->spillRenderPass(true);
+
+    if (m_frame == 95) {
+      Logger::warn("SpillRenderPass copyImageToBufferHw");
+    }
     this->prepareImage(image, vk::makeSubresourceRange(imageSubresource));
 
     VkDeviceSize dataSize = imageSubresource.layerCount * util::computeImageDataSize(
@@ -3948,6 +4077,10 @@ namespace dxvk {
           VkOffset3D            imageOffset,
           VkExtent3D            imageExtent) {
     this->spillRenderPass(true);
+
+    if (m_frame == 95) {
+      Logger::warn("SpillRenderPass copyImageToBufferCs");
+    }
     this->invalidateState();
 
     this->prepareImage(image, vk::makeSubresourceRange(imageSubresource));
@@ -4108,7 +4241,7 @@ namespace dxvk {
     // Find out if the render target view is currently bound,
     // so that we can avoid spilling the render pass if it is.
     int32_t attachmentIndex = -1;
-    
+
     if (m_state.om.framebufferInfo.isFullSize(imageView))
       attachmentIndex = m_state.om.framebufferInfo.findAttachment(imageView);
 
@@ -4117,6 +4250,10 @@ namespace dxvk {
 
     if (attachmentIndex < 0) {
       this->spillRenderPass(true);
+
+      if (m_frame == 95) {
+        Logger::warn("SpillRenderPass clearImageViewFb");
+      }
 
       this->prepareImage(imageView->image(), imageView->imageSubresources());
       this->flushPendingAccesses(*imageView->image(), imageView->imageSubresources(), DxvkAccess::Write);
@@ -4168,10 +4305,16 @@ namespace dxvk {
 
       // We cannot leverage render pass clears
       // because we clear only part of the view
+      if (m_frame == 95) {
+        Logger::warn("BeginRecording clearImageViewFb");
+      }
       m_cmd->cmdBeginRendering(&renderingInfo);
     } else {
       // Make sure the render pass is active so
       // that we can actually perform the clear
+      if (m_frame == 95) {
+        Logger::warn("startRendering clearImageViewFb");
+      }
       this->startRenderPass();
 
       if (aspect & VK_IMAGE_ASPECT_COLOR_BIT) {
@@ -4220,7 +4363,7 @@ namespace dxvk {
     }
   }
 
-  
+
   void DxvkContext::clearImageViewCs(
     const Rc<DxvkImageView>&    imageView,
           VkOffset3D            offset,
@@ -4230,6 +4373,10 @@ namespace dxvk {
 
     if (!prepareOutOfOrderTransfer(imageView->image(), DxvkAccess::Write)) {
       spillRenderPass(true);
+
+      if (m_frame == 95) {
+        Logger::warn("SpillRenderPass clearImageViewCs");
+      }
       invalidateState();
 
       prepareImage(imageView->image(), imageView->imageSubresources());
@@ -4264,7 +4411,7 @@ namespace dxvk {
     DxvkDescriptorWrite imageDescriptor = { };
     imageDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
     imageDescriptor.descriptor = imageView->getDescriptor();
-    
+
     // Prepare shader arguments
     DxvkMetaClearArgs pushArgs = { };
     pushArgs.clearValue = value.color;
@@ -4301,7 +4448,7 @@ namespace dxvk {
     m_cmd->track(imageView->image(), DxvkAccess::Write);
   }
 
-  
+
   void DxvkContext::copyImageHw(
     const Rc<DxvkImage>&        dstImage,
           VkImageSubresourceLayers dstSubresource,
@@ -4396,7 +4543,7 @@ namespace dxvk {
     m_cmd->track(srcImage, DxvkAccess::Read);
   }
 
-  
+
   void DxvkContext::copyImageFb(
     const Rc<DxvkImage>&        dstImage,
           VkImageSubresourceLayers dstSubresource,
@@ -4408,7 +4555,7 @@ namespace dxvk {
     DxvkMetaCopyFormats viewFormats = m_common->metaCopy().getCopyImageFormats(
       dstImage->info().format, dstSubresource.aspectMask,
       srcImage->info().format, srcSubresource.aspectMask);
-    
+
     // Guarantee that we can render to or sample the images
     DxvkImageUsageInfo dstUsage = { };
     dstUsage.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
@@ -4507,7 +4654,7 @@ namespace dxvk {
     if (views.srcStencilView)
       imagePlane1Descriptor.descriptor = views.srcStencilView->getDescriptor();
 
-    // Set up render state    
+    // Set up render state
     VkViewport viewport;
     viewport.x = float(dstOffset.x);
     viewport.y = float(dstOffset.y);
@@ -4553,6 +4700,9 @@ namespace dxvk {
       srcOffset.y - dstOffset.y };
 
     // Perform the actual copy operation
+    if (m_frame == 95) {
+      Logger::warn("BeginRecording copyImageFb");
+    }
     m_cmd->cmdBeginRendering(&renderingInfo);
 
     m_cmd->cmdSetViewport(1, &viewport);
@@ -4840,7 +4990,7 @@ namespace dxvk {
     resolveInfo.pRegions = &resolveRegion;
 
     m_cmd->cmdResolveImage(&resolveInfo);
-  
+
     accessImage(DxvkCmdBuffer::ExecBuffer,
       *dstImage, dstSubresourceRange, dstLayout,
       VK_PIPELINE_STAGE_2_TRANSFER_BIT,
@@ -4944,6 +5094,9 @@ namespace dxvk {
       renderingInfo.pColorAttachments = &attachment;
     }
 
+    if (m_frame == 95) {
+      Logger::warn("BeginRecording resolveImageRp");
+    }
     m_cmd->cmdBeginRendering(&renderingInfo);
     m_cmd->cmdEndRendering();
 
@@ -5049,7 +5202,7 @@ namespace dxvk {
     if (views.srcStencilView)
       imagePlane1Descriptor.descriptor = views.srcStencilView->getDescriptor();
 
-    // Set up render state    
+    // Set up render state
     VkViewport viewport;
     viewport.x        = float(region.dstOffset.x);
     viewport.y        = float(region.dstOffset.y);
@@ -5075,7 +5228,7 @@ namespace dxvk {
     renderingInfo.renderArea.offset = VkOffset2D { 0, 0 };
     renderingInfo.renderArea.extent = VkExtent2D { passExtent.width, passExtent.height };
     renderingInfo.layerCount = region.dstSubresource.layerCount;
-    
+
     VkImageAspectFlags dstAspects = dstImage->formatInfo()->aspectMask;
 
     if (dstAspects & VK_IMAGE_ASPECT_COLOR_BIT) {
@@ -5092,7 +5245,10 @@ namespace dxvk {
     VkOffset2D srcOffset = {
       region.srcOffset.x - region.dstOffset.x,
       region.srcOffset.y - region.dstOffset.y };
-    
+
+    if (m_frame == 95) {
+      Logger::warn("BeginRecording resolveImageFb");
+    }
     m_cmd->cmdBeginRendering(&renderingInfo);
 
     m_cmd->cmdSetViewport(1, &viewport);
@@ -5163,6 +5319,10 @@ namespace dxvk {
 
     // End current render pass and prepare the destination image
     spillRenderPass(true);
+
+    if (m_frame == 95) {
+      Logger::warn("SpillRenderPass resolveImageClear");
+    }
     prepareImage(dstImage, vk::makeSubresourceRange(region.dstSubresource));
 
     // Create an image view that we can use to perform the clear
@@ -5449,14 +5609,14 @@ namespace dxvk {
       this->resetRenderPassOps(
         m_state.om.renderTargets,
         m_state.om.renderPassOps);
-      
+
       // Begin occlusion queries
       m_queryManager.beginQueries(m_cmd, VK_QUERY_TYPE_OCCLUSION);
       m_queryManager.beginQueries(m_cmd, VK_QUERY_TYPE_PIPELINE_STATISTICS);
     }
   }
-  
-  
+
+
   void DxvkContext::spillRenderPass(bool suspend) {
     if (m_flags.test(DxvkContextFlag::GpRenderPassBound)) {
       m_flags.clr(DxvkContextFlag::GpRenderPassBound,
@@ -5781,6 +5941,9 @@ namespace dxvk {
       m_cmd->beginSecondaryCommandBuffer(inheritance);
     } else {
       // Begin rendering right away on regular GPUs
+      if (m_frame == 95) {
+        Logger::warn("BeginRecording BindFramebuffer");
+      }
       m_cmd->cmdBeginRendering(&renderingInfo);
     }
 
@@ -5809,8 +5972,8 @@ namespace dxvk {
 
     m_cmd->addStatCtr(DxvkStatCounter::CmdRenderPassCount, 1u);
   }
-  
-  
+
+
   void DxvkContext::renderPassUnbindFramebuffer() {
     if (m_flags.test(DxvkContextFlag::GpRenderPassSecondaryCmd)) {
       m_flags.clr(DxvkContextFlag::GpRenderPassSecondaryCmd);
@@ -5826,11 +5989,17 @@ namespace dxvk {
       finalizeLoadStoreOps();
 
       auto& renderingInfo = m_state.om.renderingInfo.rendering;
+      if (m_frame == 95) {
+        Logger::warn("BeginRecording unbindFrambuffer");
+      }
       m_cmd->cmdBeginRendering(&renderingInfo);
       m_cmd->cmdExecuteCommands(1, &cmdBuffer);
     }
 
     // End actual rendering command
+    if (m_frame == 95)
+      Logger::warn("EndRendering");
+
     m_cmd->cmdEndRendering();
 
     // If there are pending layout transitions, execute them immediately
@@ -5839,8 +6008,8 @@ namespace dxvk {
     if (m_execBarriers.hasLayoutTransitions())
       flushBarriers();
   }
-  
-  
+
+
   void DxvkContext::resetRenderPassOps(
     const DxvkRenderTargets&    renderTargets,
           DxvkRenderPassOps&    renderPassOps) {
@@ -5852,7 +6021,7 @@ namespace dxvk {
     } else {
       renderPassOps.depthOps = DxvkDepthAttachmentOps { };
     }
-    
+
     for (uint32_t i = 0; i < MaxNumRenderTargets; i++) {
       if (renderTargets.color[i].view) {
         VkImageLayout layout = renderTargets.color[i].view->getLayout();
@@ -5864,8 +6033,8 @@ namespace dxvk {
       }
     }
   }
-  
-  
+
+
   void DxvkContext::startTransformFeedback() {
     if (!m_flags.test(DxvkContextFlag::GpXfbActive)) {
       m_flags.set(DxvkContextFlag::GpXfbActive);
@@ -5894,10 +6063,10 @@ namespace dxvk {
           m_cmd->track(m_state.xfb.activeCounters[i].buffer(), DxvkAccess::Write);
         }
       }
-      
+
       m_cmd->cmdBeginTransformFeedback(
         0, MaxNumXfbBuffers, ctrBuffers, ctrOffsets);
-      
+
       m_queryManager.beginQueries(m_cmd,
         VK_QUERY_TYPE_TRANSFORM_FEEDBACK_STREAM_EXT);
     }
@@ -5907,7 +6076,7 @@ namespace dxvk {
   void DxvkContext::pauseTransformFeedback() {
     if (m_flags.test(DxvkContextFlag::GpXfbActive)) {
       m_flags.clr(DxvkContextFlag::GpXfbActive);
-      
+
       VkBuffer     ctrBuffers[MaxNumXfbBuffers];
       VkDeviceSize ctrOffsets[MaxNumXfbBuffers];
 
@@ -5920,9 +6089,9 @@ namespace dxvk {
         m_state.xfb.activeCounters[i] = DxvkBufferSlice();
       }
 
-      m_queryManager.endQueries(m_cmd, 
+      m_queryManager.endQueries(m_cmd,
         VK_QUERY_TYPE_TRANSFORM_FEEDBACK_STREAM_EXT);
-      
+
       m_cmd->cmdEndTransformFeedback(
         0, MaxNumXfbBuffers, ctrBuffers, ctrOffsets);
     }
@@ -5935,8 +6104,8 @@ namespace dxvk {
 
     m_state.cp.pipeline = nullptr;
   }
-  
-  
+
+
   bool DxvkContext::updateComputePipelineState() {
     if (unlikely(m_state.gp.pipeline != nullptr))
       this->unbindGraphicsPipeline();
@@ -5960,7 +6129,7 @@ namespace dxvk {
 
     // Look up Vulkan pipeline handle for the given compute state
     auto pipelineHandle = newPipeline->getPipelineHandle(m_state.cp.state);
-    
+
     if (unlikely(!pipelineHandle))
       return false;
 
@@ -5989,8 +6158,8 @@ namespace dxvk {
     m_flags.clr(DxvkContextFlag::CpDirtyPipelineState);
     return true;
   }
-  
-  
+
+
   void DxvkContext::unbindGraphicsPipeline() {
     m_flags.set(DxvkContextFlag::GpDirtyPipeline,
                 DxvkContextFlag::GpDirtyPipelineState,
@@ -6012,8 +6181,8 @@ namespace dxvk {
 
     m_state.gp.pipeline = nullptr;
   }
-  
-  
+
+
   bool DxvkContext::updateGraphicsPipeline() {
     if (unlikely(m_state.cp.pipeline != nullptr))
       this->unbindComputePipeline();
@@ -6046,8 +6215,8 @@ namespace dxvk {
     m_flags.clr(DxvkContextFlag::GpDirtyPipeline);
     return true;
   }
-  
-  
+
+
   bool DxvkContext::updateGraphicsPipelineState() {
     auto oldPipelineLayoutType = getActivePipelineLayoutType(VK_PIPELINE_BIND_POINT_GRAPHICS);
 
@@ -6063,11 +6232,11 @@ namespace dxvk {
                 DxvkContextFlag::GpDynamicRasterizerState,
                 DxvkContextFlag::GpHasPushData,
                 DxvkContextFlag::GpIndependentSets);
-    
+
     m_flags.set(m_state.gp.state.useDynamicBlendConstants()
       ? DxvkContextFlag::GpDynamicBlendConstants
       : DxvkContextFlag::GpDirtyBlendConstants);
-    
+
     m_flags.set((!m_state.gp.flags.test(DxvkGraphicsPipelineFlag::HasRasterizerDiscard))
       ? DxvkContextFlags(DxvkContextFlag::GpDynamicRasterizerState,
                          DxvkContextFlag::GpDynamicDepthBias)
@@ -6697,8 +6866,8 @@ namespace dxvk {
 
     m_descriptorState.clearStages(VK_SHADER_STAGE_COMPUTE_BIT);
   }
-  
-  
+
+
   bool DxvkContext::updateGraphicsShaderResources() {
     if (!updateResourceBindings<VK_PIPELINE_BIND_POINT_GRAPHICS>(m_state.gp.pipeline->getLayout()))
       return false;
@@ -6706,8 +6875,8 @@ namespace dxvk {
     m_descriptorState.clearStages(VK_SHADER_STAGE_ALL_GRAPHICS);
     return true;
   }
-  
-  
+
+
   DxvkFramebufferInfo DxvkContext::makeFramebufferInfo(
     const DxvkRenderTargets&      renderTargets) {
     return DxvkFramebufferInfo(renderTargets, m_device->getDefaultFramebufferSize());
@@ -6730,6 +6899,10 @@ namespace dxvk {
       DxvkFramebufferInfo fbInfo = makeFramebufferInfo(m_state.om.renderTargets);
 
       this->spillRenderPass(true);
+
+      if (m_frame == 95) {
+        Logger::warn("SpillRenderPass updateRenderTargets");
+      }
 
       this->resetRenderPassOps(
         m_state.om.renderTargets,
@@ -6759,6 +6932,10 @@ namespace dxvk {
     } else if (m_flags.test(DxvkContextFlag::GpRenderPassNeedsFlush)) {
       // End render pass to flush pending resolves
       this->spillRenderPass(true);
+
+      if (m_frame == 95) {
+        Logger::warn("SpillRenderPass updateRenderTargets2");
+      }
     }
   }
 
@@ -6891,8 +7068,8 @@ namespace dxvk {
 
     m_rtLayouts = layouts;
   }
-  
-  
+
+
   void DxvkContext::prepareImage(
     const Rc<DxvkImage>&          image,
     const VkImageSubresourceRange& subresources,
@@ -6904,8 +7081,13 @@ namespace dxvk {
 
     // Flush clears if there are any that affect the image. We need
     // to check all subresources here, not just the ones to be used.
-    if (flushClears && findOverlappingDeferredClear(image, image->getAvailableSubresources()))
+    if (flushClears && findOverlappingDeferredClear(image, image->getAvailableSubresources())) {
       this->spillRenderPass(false);
+
+      if (m_frame == 95) {
+        Logger::warn("SpillRenderPass prepareImage");
+      }
+    }
 
     // All images are in their default layout for suspended passes
     if (!m_flags.test(DxvkContextFlag::GpRenderPassSuspended))
@@ -6998,29 +7180,29 @@ namespace dxvk {
         bufferInfo.offset, bufferInfo.size, m_state.vi.indexType);
     }
   }
-  
-  
+
+
   void DxvkContext::updateVertexBufferBindings() {
     m_flags.clr(DxvkContextFlag::GpDirtyVertexBuffers);
 
     if (unlikely(!m_state.gp.state.il.bindingCount()))
       return;
-    
+
     std::array<VkBuffer,     MaxNumVertexBindings> buffers;
     std::array<VkDeviceSize, MaxNumVertexBindings> offsets;
     std::array<VkDeviceSize, MaxNumVertexBindings> lengths;
     std::array<VkDeviceSize, MaxNumVertexBindings> strides;
-    
+
     bool oldDynamicStrides = m_flags.test(DxvkContextFlag::GpDynamicVertexStrides);
     bool newDynamicStrides = true;
 
     // Set buffer handles and offsets for active bindings
     for (uint32_t i = 0; i < m_state.gp.state.il.bindingCount(); i++) {
       uint32_t binding = m_state.gp.state.ilBindings[i].binding();
-      
+
       if (likely(m_state.vi.vertexBuffers[binding].length())) {
         auto vbo = m_state.vi.vertexBuffers[binding].getSliceInfo();
-        
+
         buffers[i] = vbo.buffer;
         offsets[i] = vbo.offset;
         lengths[i] = vbo.size;
@@ -7071,8 +7253,8 @@ namespace dxvk {
       buffers.data(), offsets.data(), lengths.data(),
       newDynamicStrides ? strides.data() : nullptr);
   }
-  
-  
+
+
   void DxvkContext::updateTransformFeedbackBuffers() {
     const auto& gsInfo = m_state.gp.shaders.gs->info();
 
@@ -7082,7 +7264,7 @@ namespace dxvk {
 
     for (size_t i = 0; i < MaxNumXfbBuffers; i++) {
       auto bufferSlice = m_state.xfb.buffers[i].getSliceInfo();
-      
+
       xfbBuffers[i] = bufferSlice.buffer;
       xfbOffsets[i] = bufferSlice.offset;
       xfbLengths[i] = bufferSlice.size;
@@ -7119,7 +7301,7 @@ namespace dxvk {
     this->startTransformFeedback();
   }
 
-  
+
   void DxvkContext::updateDynamicState() {
     if (unlikely(m_flags.test(DxvkContextFlag::GpDirtyViewport))) {
       m_flags.clr(DxvkContextFlag::GpDirtyViewport);
@@ -7260,7 +7442,7 @@ namespace dxvk {
       m_cmd->cmdSetStencilReference(VK_STENCIL_FRONT_AND_BACK,
         m_state.dyn.stencilReference);
     }
-    
+
     if (m_flags.all(DxvkContextFlag::GpDirtyDepthBias,
                     DxvkContextFlag::GpDynamicDepthBias)) {
       m_flags.clr(DxvkContextFlag::GpDirtyDepthBias);
@@ -7284,7 +7466,7 @@ namespace dxvk {
           m_state.dyn.depthBias.depthBiasSlope);
       }
     }
-    
+
     if (m_flags.all(DxvkContextFlag::GpDirtyDepthBounds,
                     DxvkContextFlag::GpDynamicDepthBounds)) {
       m_flags.clr(DxvkContextFlag::GpDirtyDepthBounds);
@@ -7378,11 +7560,15 @@ namespace dxvk {
         &data[pushData.getOffset()]);
     }
   }
-  
+
 
   template<bool Resolve>
   bool DxvkContext::commitComputeState() {
     this->spillRenderPass(false);
+
+    if (m_frame == 95) {
+      Logger::warn("SpillRenderPass commitComputeState");
+    }
 
     if (m_flags.any(DxvkContextFlag::CpDirtyPipelineState,
                     DxvkContextFlag::CpDirtySpecConstants)) {
@@ -7416,8 +7602,8 @@ namespace dxvk {
 
     return true;
   }
-  
-  
+
+
   template<bool Indexed, bool Indirect, bool Resolve>
   bool DxvkContext::commitGraphicsState() {
     if (m_flags.test(DxvkContextFlag::GpDirtyPipeline)) {
@@ -7438,8 +7624,13 @@ namespace dxvk {
       // edge case that it's likely irrelevant in practice.
       if (m_flags.any(DxvkContextFlag::GpDirtyPipelineState,
                       DxvkContextFlag::GpDirtySpecConstants,
-                      DxvkContextFlag::GpDirtyXfbBuffers))
+                      DxvkContextFlag::GpDirtyXfbBuffers)) {
         this->spillRenderPass(true);
+
+        if (m_frame == 95) {
+          Logger::warn("SpillRenderPass commitGraphicsState");
+        }
+      }
     }
 
     if (m_flags.test(DxvkContextFlag::GpRenderPassSideEffects)
@@ -7450,8 +7641,13 @@ namespace dxvk {
       // resources written for the first time, but does not emit any barriers
       // on its own so calling this outside a render pass is safe. This also
       // implicitly dirties all state for which we need to track resource access.
-      if (this->checkGraphicsHazards<Indexed, Indirect>())
+      if (this->checkGraphicsHazards<Indexed, Indirect>()) {
         this->spillRenderPass(true);
+
+        if (m_frame == 95) {
+          Logger::warn("SpillRenderPass commitGraphicsState2");
+        }
+      }
 
       // The render pass flag gets reset when the render pass ends, so set it late
       m_flags.set(DxvkContextFlag::GpRenderPassSideEffects);
@@ -7459,8 +7655,12 @@ namespace dxvk {
 
     // Start the render pass. This must happen before any render state
     // is set up so that we can safely use secondary command buffers.
-    if (!m_flags.test(DxvkContextFlag::GpRenderPassBound))
+    if (!m_flags.test(DxvkContextFlag::GpRenderPassBound)) {
+      if (m_frame == 95) {
+        Logger::warn("startRendering commitGraphics");
+      }
       this->startRenderPass();
+    }
 
     // If there are any pending clears, record them now
     if (unlikely(!m_deferredClears.empty()))
@@ -7475,10 +7675,10 @@ namespace dxvk {
 
     if (m_flags.test(DxvkContextFlag::GpDirtyIndexBuffer) && Indexed)
       this->updateIndexBufferBinding();
-    
+
     if (m_flags.test(DxvkContextFlag::GpDirtyVertexBuffers))
       this->updateVertexBufferBindings();
-    
+
     if (m_flags.test(DxvkContextFlag::GpDirtySpecConstants))
       this->updateSpecConstants<VK_PIPELINE_BIND_POINT_GRAPHICS>();
 
@@ -7486,7 +7686,7 @@ namespace dxvk {
       if (unlikely(!this->updateGraphicsPipelineState()))
         return false;
     }
-    
+
     if (m_descriptorState.hasDirtyResources(VK_SHADER_STAGE_ALL_GRAPHICS)) {
       if (unlikely(!this->updateGraphicsShaderResources())) {
         // This can only happen if we were inside a secondary command buffer.
@@ -7494,6 +7694,10 @@ namespace dxvk {
         // command buffer, but this should almost never happen in practice
         // anyway so avoid the complexity and just suspend the render pass.
         this->spillRenderPass(true);
+
+        if (m_frame == 95) {
+          Logger::warn("SpillRenderPass commitGraphicsState3");
+        }
 
         m_cmd->createDescriptorRange();
 
@@ -7504,17 +7708,21 @@ namespace dxvk {
         // If implicit resolves are required for any of the shader bindings, we need
         // to discard all the state setup that we've done so far and try again
         this->spillRenderPass(true);
+
+        if (m_frame == 95) {
+          Logger::warn("SpillRenderPass commitGraphicsState4");
+        }
         this->flushImplicitResolves();
 
         return this->commitGraphicsState<Indexed, Indirect, false>();
       }
     }
-    
+
     if (m_state.gp.flags.test(DxvkGraphicsPipelineFlag::HasTransformFeedback))
       this->updateTransformFeedbackState();
-    
+
     this->updateDynamicState();
-    
+
     if (m_flags.all(DxvkContextFlag::GpHasPushData, DxvkContextFlag::DirtyPushData))
       this->updatePushData<VK_PIPELINE_BIND_POINT_GRAPHICS>();
 
@@ -7523,8 +7731,8 @@ namespace dxvk {
 
     return true;
   }
-  
-  
+
+
   template<VkPipelineBindPoint BindPoint>
   bool DxvkContext::checkResourceHazards(
     const DxvkPipelineBindings*     layout) {
@@ -7643,7 +7851,7 @@ namespace dxvk {
 
     return false;
   }
-  
+
 
   bool DxvkContext::checkComputeHazards() {
     // Exit early if we know that there cannot be any hazards to avoid
@@ -7823,8 +8031,13 @@ namespace dxvk {
     // Suspend the current render pass if transform feedback is active prior to
     // invalidating the buffer, since otherwise we may invalidate a bound buffer.
     if ((buffer->info().usage & VK_BUFFER_USAGE_TRANSFORM_FEEDBACK_COUNTER_BUFFER_BIT_EXT)
-     && (m_flags.test(DxvkContextFlag::GpXfbActive)))
+     && (m_flags.test(DxvkContextFlag::GpXfbActive))) {
       this->spillRenderPass(true);
+
+      if (m_frame == 95) {
+        Logger::warn("SpillRenderPass tryInvalidateDeviceLocalBuffer");
+      }
+    }
 
     this->invalidateBuffer(buffer, buffer->allocateStorage());
     return true;
@@ -8193,7 +8406,7 @@ namespace dxvk {
   DxvkGraphicsPipeline* DxvkContext::lookupGraphicsPipeline(
     const DxvkGraphicsPipelineShaders&  shaders) {
     auto idx = shaders.hash() % m_gpLookupCache.size();
-    
+
     if (unlikely(!m_gpLookupCache[idx] || !shaders.eq(m_gpLookupCache[idx]->shaders())))
       m_gpLookupCache[idx] = m_common->pipelineManager().createGraphicsPipeline(shaders);
 
@@ -8204,7 +8417,7 @@ namespace dxvk {
   DxvkComputePipeline* DxvkContext::lookupComputePipeline(
     const DxvkComputePipelineShaders&   shaders) {
     auto idx = shaders.hash() % m_cpLookupCache.size();
-    
+
     if (unlikely(!m_cpLookupCache[idx] || !shaders.eq(m_cpLookupCache[idx]->shaders())))
       m_cpLookupCache[idx] = m_common->pipelineManager().createComputePipeline(shaders);
 
@@ -8289,6 +8502,10 @@ namespace dxvk {
   void DxvkContext::flushImplicitResolves() {
     spillRenderPass(true);
 
+    if (m_frame == 95) {
+      Logger::warn("SpillRenderPass flushImplicitResolves");
+    }
+
     DxvkImplicitResolveOp op;
 
     while (m_implicitResolves.extractResolve(op)) {
@@ -8367,6 +8584,10 @@ namespace dxvk {
 
   void DxvkContext::endCurrentCommands() {
     this->spillRenderPass(true);
+
+    if (m_frame == 95) {
+      Logger::warn("SpillRenderPass endCurrentCommands");
+    }
     this->flushSharedImages();
 
     m_sdmaAcquires.finalize(m_cmd);
@@ -9203,8 +9424,13 @@ namespace dxvk {
       VkBufferUsageFlags xfbUsage = VK_BUFFER_USAGE_TRANSFORM_FEEDBACK_COUNTER_BUFFER_BIT_EXT
                                   | VK_BUFFER_USAGE_TRANSFORM_FEEDBACK_BUFFER_BIT_EXT;
 
-      if (buffer->info().usage & xfbUsage)
+      if (buffer->info().usage & xfbUsage) {
         this->spillRenderPass(true);
+
+        if (m_frame == 95) {
+          Logger::warn("SpillRenderPass prepareOutOfOrderTransfer");
+        }
+      }
     }
 
     // Actually allocate and assign new backing storage

@@ -145,12 +145,36 @@ namespace dxvk {
             DxvkRenderTargets&&   targets,
             VkImageAspectFlags    feedbackLoop) {
       if (likely(m_state.om.renderTargets != targets)) {
+
+        if (m_frame == 95) {
+          Logger::warn("dirty rts");
+
+          bool eq = m_state.om.renderTargets.depth == targets.depth;
+
+          if (!eq) {
+            Logger::warn(str::format("depth doesnt match, current: ", m_state.om.renderTargets.depth.view.ptr(), " new: ", targets.depth.view.ptr()));
+          }
+
+          for (uint32_t i = 0; i < MaxNumRenderTargets && eq; i++) {
+            eq = m_state.om.renderTargets.color[i] == targets.color[i];
+            if (!eq) {
+              Logger::warn(str::format("Color ", i, " doesnt match"));
+            }
+          }
+
+        }
+
         m_state.om.renderTargets = std::move(targets);
         m_flags.set(DxvkContextFlag::GpDirtyRenderTargets);
       }
 
       if (unlikely(m_state.gp.state.om.feedbackLoop() != feedbackLoop)) {
         m_state.gp.state.om.setFeedbackLoop(feedbackLoop);
+
+
+        if (m_frame == 95) {
+          Logger::warn("dirty rts feedback loop");
+        }
 
         m_flags.set(DxvkContextFlag::GpDirtyRenderTargets,
                     DxvkContextFlag::GpDirtyPipelineState);
@@ -1419,6 +1443,8 @@ namespace dxvk {
     bool                    m_endLatencyTracking = false;
 
     DxvkImplicitResolveTracker  m_implicitResolves;
+
+    uint64_t m_frame = 0;
 
     void blitImageFb(
             Rc<DxvkImageView>     dstView,
