@@ -483,6 +483,24 @@ namespace dxvk {
 
     ID3D9VkInteropTexture* GetVkInterop() { return &m_d3d9Interop; }
 
+    /** There might be a pending copy
+     * writing the entirety of one of
+     * the subresources of this texture.
+     * This copy might need to be marked
+     * as used.
+     */
+    bool HasPendingFullCopy() const {
+      return m_hasDirtyCopy;
+    }
+
+    /** Sets whether there's a pending copy
+     * writing the entirety of one of the
+     * subresources of this texture.
+     */
+    void SetHasPendingFullCopy(bool Value) {
+      m_hasDirtyCopy = Value;
+    }
+
   private:
 
     D3D9DeviceEx*                 m_device;
@@ -530,6 +548,8 @@ namespace dxvk {
     std::array<D3DBOX, 6>         m_dirtyBoxes;
 
     D3D9VkInteropTexture          m_d3d9Interop;
+
+    bool                         m_hasDirtyCopy = false;
 
     Rc<DxvkImage> CreatePrimaryImage(D3DRESOURCETYPE ResourceType, bool TryOffscreenRT, HANDLE* pSharedHandle) const;
 
