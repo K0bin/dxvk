@@ -1352,17 +1352,6 @@ namespace dxvk {
         return D3DERR_INVALIDCALL;
     }
 
-    if (unlikely(m_csDataType == D3D9CmdType::StretchRect)) {
-      auto cmdData = static_cast<D3D9CmdStretchRectData*>(m_csData->first());
-      if (unlikely(cmdData->srcImage == srcImage
-        && cmdData->dstImage == dstImage
-        && cmdData->filter == filter
-        && std::memcmp(&cmdData->blitInfo, &blitInfo, 1) == 0)) {
-        return D3D_OK;
-      }
-    }
-
-
     if (fastPath) {
       if (needsResolve) {
         VkImageResolve region;
@@ -1372,17 +1361,22 @@ namespace dxvk {
         region.dstOffset      = blitInfo.dstOffsets[0];
         region.extent         = srcCopyExtent;
 
-        EmitCsCmd<D3D9CmdStretchRectData>(D3D9CmdType::StretchRect, 1u, [
+        EmitCsCmd<D3D9CmdCopyData>(D3D9CmdType::StretchRect, 1u, [
           cDstImage    = dstImage,
           cSrcImage    = srcImage,
           cRegion      = region
-        ] (DxvkContext* ctx, const D3D9CmdStretchRectData*, size_t) {
+        ] (DxvkContext* ctx, const D3D9CmdCopyData* copy, size_t) {
+          if (copy->used == D3D9ImageCopyUsed::Redundant) {
+            Logger::warn("Skip StretchRect Resolve");
+            return;
+          }
+
           // Deliberately use AVERAGE even for depth resolves here
           ctx->resolveImage(cDstImage, cSrcImage, cRegion, cSrcImage->info().format,
             VK_RESOLVE_MODE_AVERAGE_BIT, VK_RESOLVE_MODE_SAMPLE_ZERO_BIT);
         });
       } else {
-        EmitCsCmd<D3D9CmdStretchRectData>(D3D9CmdType::StretchRect, 1u, [
+        EmitCsCmd<D3D9CmdCopyData>(D3D9CmdType::StretchRect, 1u, [
           cDstImage  = dstImage,
           cSrcImage  = srcImage,
           cDstLayers = blitInfo.dstSubresource,
@@ -1390,7 +1384,12 @@ namespace dxvk {
           cDstOffset = blitInfo.dstOffsets[0],
           cSrcOffset = blitInfo.srcOffsets[0],
           cExtent    = srcCopyExtent
-        ] (DxvkContext* ctx, const D3D9CmdStretchRectData*, size_t) {
+          ] (DxvkContext* ctx, const D3D9CmdCopyData* copy, size_t) {
+          if (copy->used == D3D9ImageCopyUsed::Redundant) {
+            Logger::warn("Skip StretchRect Copy");
+            return;
+          }
+
           ctx->copyImage(
             cDstImage, cDstLayers, cDstOffset,
             cSrcImage, cSrcLayers, cSrcOffset,
@@ -1421,12 +1420,17 @@ namespace dxvk {
       srcViewInfo.layerCount = blitInfo.srcSubresource.layerCount;
       srcViewInfo.packedSwizzle = DxvkImageViewKey::packSwizzle(srcTextureInfo->GetMapping().Swizzle);
 
-      EmitCsCmd<D3D9CmdStretchRectData>(D3D9CmdType::StretchRect, 1u, [
+      EmitCsCmd<D3D9CmdCopyData>(D3D9CmdType::StretchRect, 1u, [
         cDstView  = dstImage->createView(dstViewInfo),
         cSrcView  = srcImage->createView(srcViewInfo),
         cBlitInfo = blitInfo,
         cFilter   = filter
-      ] (DxvkContext* ctx, const D3D9CmdStretchRectData*, size_t) {
+        ] (DxvkContext* ctx, const D3D9CmdCopyData* copy, size_t) {
+        if (copy->used == D3D9ImageCopyUsed::Redundant) {
+          Logger::warn("Skip StretchRect Blit");
+          return;
+        }
+
         ctx->blitImageView(
           cDstView, cBlitInfo.dstOffsets,
           cSrcView, cBlitInfo.srcOffsets,
@@ -1434,11 +1438,18 @@ namespace dxvk {
       });
     }
 
-    auto cmdData = new (m_csData->first()) D3D9CmdStretchRectData();
-    cmdData->blitInfo = blitInfo;
-    cmdData->filter = filter;
-    cmdData->srcImage = srcImage;
+    MarkTextureCopyAsUsed(srcTextureInfo);
+
+    auto cmdData = new (m_csData->first()) D3D9CmdCopyData();
+    cmdData->used = D3D9ImageCopyUsed::Unknown;
+    cmdData->next = nullptr;
     cmdData->dstImage = dstImage;
+    cmdData->subresourceIndex = dst->GetSubresource();
+
+    const bool coversEntireImage = dstCopyExtent == dstImage->info().extent;
+    if (coversEntireImage) {
+      AddTextureCopy(dstTextureInfo, dst->GetSubresource(), cmdData);
+    }
 
     dstTextureInfo->SetNeedsReadback(dst->GetSubresource(), true);
 
@@ -1580,6 +1591,8 @@ namespace dxvk {
 
     if (dstTextureInfo->IsAutomaticMip())
       MarkTextureMipsDirty(dstTextureInfo);
+
+    MarkUnusedTextureCopyAsRedundant(dstTextureInfo, dst->GetSubresource());
 
     return D3D_OK;
   }
@@ -1915,7 +1928,9 @@ namespace dxvk {
       VkExtent3D               extent,
       const Rc<DxvkImageView>& imageView,
       VkImageAspectFlags       aspectMask,
-      VkClearValue             clearValue) {
+      VkClearValue             clearValue,
+      D3D9CommonTexture*       texture,
+      uint32_t                 subresource) {
 
       VkExtent3D imageExtent = imageView->mipLevelExtent(0);
       extent.width = std::min(imageExtent.width, extent.width);
@@ -1930,6 +1945,8 @@ namespace dxvk {
         && offset.y == 0;
 
       if (fullClear) {
+        MarkUnusedTextureCopyAsRedundant(texture, subresource);
+
         EmitCs([
           cClearValue = clearValue,
           cAspectMask = aspectMask,
@@ -1962,7 +1979,8 @@ namespace dxvk {
       VkExtent3D         extent) {
       // Clear depth if we need to.
       if (depthAspectMask != 0)
-        ClearImageView(alignment, offset, extent, m_state.depthStencil->GetDepthStencilView(true), depthAspectMask, clearValueDepth);
+        ClearImageView(alignment, offset, extent, m_state.depthStencil->GetDepthStencilView(true), depthAspectMask, clearValueDepth,
+          m_state.depthStencil->GetCommonTexture(), m_state.depthStencil->GetSubresource());
 
       // Clear render targets if we need to.
       if (Flags & D3DCLEAR_TARGET) {
@@ -1973,9 +1991,10 @@ namespace dxvk {
           const auto& rtv = rts->GetRenderTargetView(srgb);
 
           if (likely(rtv != nullptr)) {
-            ClearImageView(alignment, offset, extent, rtv, VK_IMAGE_ASPECT_COLOR_BIT, clearValueColor);
-
             D3D9CommonTexture* dstTexture = rts->GetCommonTexture();
+
+            ClearImageView(alignment, offset, extent, rtv, VK_IMAGE_ASPECT_COLOR_BIT, clearValueColor,
+              dstTexture, rts->GetSubresource());
 
             if (dstTexture->IsAutomaticMip())
               MarkTextureMipsDirty(dstTexture);
@@ -4136,6 +4155,8 @@ namespace dxvk {
     const RGNDATA* pDirtyRegion,
           DWORD dwFlags) {
 
+    Logger::warn("Present");
+
     if (m_cursor.IsSoftwareCursor()) {
       D3D9_SOFTWARE_CURSOR* pSoftwareCursor = m_cursor.GetSoftwareCursor();
 
@@ -4901,6 +4922,10 @@ namespace dxvk {
 
       if (unlikely(pResource->GetFormatMapping().ConversionFormatInfo.FormatType != D3D9ConversionFormat_None)) {
         Logger::err(str::format("Reading back format", pResource->Desc()->Format, " is not supported. It is uploaded using the fomrat converter."));
+      }
+
+      if (unlikely(pResource->HasPendingFullCopy())) {
+        MarkTextureCopyAsUsed(pResource);
       }
 
       if (pResource->GetImage() != nullptr) {
@@ -5691,6 +5716,8 @@ namespace dxvk {
     // Flush init commands so that the CS thread
     // can processe them before the first use.
     m_initializer->FlushCsChunk();
+
+    m_lastCopy = nullptr;
 
     m_csSeqNum = m_csThread.dispatchChunk(std::move(chunk));
   }
@@ -7236,6 +7263,59 @@ namespace dxvk {
     });
   }
 
+  void D3D9DeviceEx::AddTextureCopy(D3D9CommonTexture* pTexture, uint32_t Subresource, D3D9CmdCopyData* const copy) {
+    for (uint32_t texIdx : bit::BitMask(m_textureSlotTracking.bound)) {
+      D3D9CommonTexture* tex = GetCommonTexture(m_state.textures[texIdx]);
+      if (unlikely(tex == pTexture)) {
+        copy->used = D3D9ImageCopyUsed::Used;
+        return;
+      }
+    }
+
+    MarkUnusedTextureCopyAsRedundant(pTexture, Subresource);
+    if (m_lastCopy != nullptr) {
+      m_lastCopy->next = copy;
+    } else {
+      m_lastCopy = copy;
+    }
+    pTexture->SetHasPendingFullCopy(true);
+  }
+
+  void D3D9DeviceEx::MarkTextureCopyAsUsed(D3D9CommonTexture* pTexture) {
+    D3D9CmdCopyData* copy = m_lastCopy;
+    D3D9CmdCopyData** ptr = &m_lastCopy;
+    pTexture->SetHasPendingFullCopy(false);
+    const Rc<DxvkImage>& image = pTexture->GetImage();
+    while (copy != nullptr) {
+      if (copy->dstImage == image) {
+        copy->used = D3D9ImageCopyUsed::Used;
+        // Remove copy from the chain now that it's used
+        *ptr = copy->next;
+        break;
+      }
+      copy = copy->next;
+      ptr = &copy->next;
+    }
+  }
+
+  void D3D9DeviceEx::MarkUnusedTextureCopyAsRedundant(D3D9CommonTexture* pTexture, uint32_t Subresource) {
+    D3D9CmdCopyData* copy = m_lastCopy;
+    D3D9CmdCopyData** ptr = &m_lastCopy;
+    const Rc<DxvkImage>& image = pTexture->GetImage();
+    while (copy != nullptr) {
+      if (copy->dstImage == image
+        && copy->subresourceIndex == Subresource
+        && copy->used == D3D9ImageCopyUsed::Unknown) {
+        copy->used = D3D9ImageCopyUsed::Redundant;
+        // Remove copy from the chain now that it's redundant
+        *ptr = copy->next;
+        break;
+      }
+      copy = copy->next;
+      ptr = &copy->next;
+    }
+  }
+
 
   void D3D9DeviceEx::BindTexture(DWORD StateSampler) {
     auto shaderSampler = RemapStateSamplerShader(StateSampler);
@@ -7250,6 +7330,10 @@ namespace dxvk {
       GetCommonTexture(m_state.textures[StateSampler]);
 
     Rc<DxvkImageView> imageView;
+
+    if (unlikely(commonTex->HasPendingFullCopy())) {
+      MarkTextureCopyAsUsed(commonTex);
+    }
 
     if (unlikely(m_textureSlotTracking.hazardDS & (1u << slot))) {
       const bool usesDepthBuffer = m_state.renderStates[D3DRS_ZENABLE]

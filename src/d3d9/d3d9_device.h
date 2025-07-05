@@ -235,6 +235,20 @@ namespace dxvk {
     VkFilter      filter;
   };
 
+
+  enum class D3D9ImageCopyUsed {
+    Used,
+    Unknown,
+    Redundant
+  };
+
+  struct D3D9CmdCopyData {
+    D3D9CmdCopyData*  next;
+    Rc<DxvkImage>     dstImage;
+    uint32_t          subresourceIndex;
+    D3D9ImageCopyUsed used;
+  };
+
   class D3D9DeviceEx final : public ComObjectClamp<IDirect3DDevice9Ex> {
     constexpr static uint32_t DefaultFrameLatency = 3;
     constexpr static uint32_t MaxFrameLatency     = 20;
@@ -1613,6 +1627,12 @@ namespace dxvk {
         : FixedFunctionMask;
     }
 
+    void AddTextureCopy(D3D9CommonTexture* pTexture, uint32_t Subresource, D3D9CmdCopyData* copy);
+
+    void MarkTextureCopyAsUsed(D3D9CommonTexture* pTexture);
+
+    void MarkUnusedTextureCopyAsRedundant(D3D9CommonTexture* pTexture, uint32_t Subresource);
+
     GpuFlushType GetMaxFlushType() const;
 
     Com<D3D9InterfaceEx>            m_parent;
@@ -1736,6 +1756,8 @@ namespace dxvk {
     std::atomic<uint32_t>           m_losableResourceCounter   = { 0 };
 
     D3D9SwapChainEx*                m_mostRecentlyUsedSwapchain = nullptr;
+
+    D3D9CmdCopyData*                m_lastCopy = nullptr;
 
 #ifdef D3D9_ALLOW_UNMAPPING
     lru_list<D3D9CommonTexture*>    m_mappedTextures;
