@@ -225,6 +225,23 @@ struct D3D9RenderStateInfo {
   float pointScaleC;
 };
 
+
+
+struct D3D9FixedFunctionPS {
+  Vector4 textureFactor;
+};
+
+
+struct D3D9SharedPS {
+  struct Stage {
+    float Constant[4];
+    float BumpEnvMat[2][2];
+    float BumpEnvLScale;
+    float BumpEnvLOffset;
+    float Padding[2];
+  } Stages[8];
+};
+
 #ifndef GLSL
 }
 #endif

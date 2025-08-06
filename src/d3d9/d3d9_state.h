@@ -57,11 +57,6 @@ namespace dxvk {
     Count
   };
 
-
-  struct D3D9FixedFunctionPS {
-    Vector4 textureFactor;
-  };
-
   enum D3D9SharedPSStages {
     D3D9SharedPSStages_Constant,
     D3D9SharedPSStages_BumpEnvMat0,
@@ -69,16 +64,6 @@ namespace dxvk {
     D3D9SharedPSStages_BumpEnvLScale,
     D3D9SharedPSStages_BumpEnvLOffset,
     D3D9SharedPSStages_Count,
-  };
-
-  struct D3D9SharedPS {
-    struct Stage {
-      float Constant[4];
-      float BumpEnvMat[2][2];
-      float BumpEnvLScale;
-      float BumpEnvLOffset;
-      float Padding[2];
-    } Stages[8];
   };
   
   struct D3D9VBO {
