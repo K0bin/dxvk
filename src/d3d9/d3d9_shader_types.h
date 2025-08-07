@@ -59,6 +59,54 @@ struct D3DMATERIAL9 {
 #define D3DFOG_EXP2 2
 #define D3DFOG_LINEAR 3
 
+#define D3DTOP_DISABLE 1
+#define D3DTOP_SELECTARG1 2
+#define D3DTOP_SELECTARG2 3
+#define D3DTOP_MODULATE 4
+#define D3DTOP_MODULATE2X 5
+#define D3DTOP_MODULATE4X 6
+#define D3DTOP_ADD 7
+#define D3DTOP_ADDSIGNED 8
+#define D3DTOP_ADDSIGNED2X 9
+#define D3DTOP_SUBTRACT 10
+#define D3DTOP_ADDSMOOTH 11
+#define D3DTOP_BLENDDIFFUSEALPHA 12
+#define D3DTOP_BLENDTEXTUREALPHA 13
+#define D3DTOP_BLENDFACTORALPHA 14
+#define D3DTOP_BLENDTEXTUREALPHAPM 15
+#define D3DTOP_BLENDCURRENTALPHA 16
+#define D3DTOP_PREMODULATE 17
+#define D3DTOP_MODULATEALPHA_ADDCOLOR 18
+#define D3DTOP_MODULATECOLOR_ADDALPHA 19
+#define D3DTOP_MODULATEINVALPHA_ADDCOLOR 20
+#define D3DTOP_MODULATEINVCOLOR_ADDALPHA 21
+#define D3DTOP_BUMPENVMAP 22
+#define D3DTOP_BUMPENVMAPLUMINANCE 23
+#define D3DTOP_DOTPRODUCT3 24
+#define D3DTOP_MULTIPLYADD 25
+#define D3DTOP_LERP 26
+
+
+#define D3DTA_SELECTMASK        0x0000000f
+#define D3DTA_DIFFUSE           0x00000000
+#define D3DTA_CURRENT           0x00000001
+#define D3DTA_TEXTURE           0x00000002
+#define D3DTA_TFACTOR           0x00000003
+#define D3DTA_SPECULAR          0x00000004
+#define D3DTA_TEMP              0x00000005
+#define D3DTA_CONSTANT          0x00000006
+#define D3DTA_COMPLEMENT        0x00000010
+#define D3DTA_ALPHAREPLICATE    0x00000020
+
+
+#define D3DRTYPE_SURFACE 1
+#define D3DRTYPE_VOLUME 2
+#define D3DRTYPE_TEXTURE 3
+#define D3DRTYPE_VOLUMETEXTURE 4
+#define D3DRTYPE_CUBETEXTURE 5
+#define D3DRTYPE_VERTEXBUFFER 6
+#define D3DRTYPE_INDEXBUFFER 7
+
 #else
 
 #include "../util/util_matrix.h"
@@ -179,6 +227,43 @@ struct D3D9FFShaderKeyVSData {
 };
 
 
+
+struct D3D9FFShaderStage {
+#ifndef GLSL
+  union {
+    struct {
+      uint32_t     ColorOp   : 5;
+      uint32_t     ColorArg0 : 6;
+      uint32_t     ColorArg1 : 6;
+      uint32_t     ColorArg2 : 6;
+
+      uint32_t     AlphaOp   : 5;
+      uint32_t     AlphaArg0 : 6;
+      uint32_t     AlphaArg1 : 6;
+      uint32_t     AlphaArg2 : 6;
+
+      uint32_t     Type         : 2;
+      uint32_t     ResultIsTemp : 1;
+      uint32_t     Projected    : 1;
+
+      uint32_t     ProjectedCount : 3;
+      uint32_t     SampleDref     : 1;
+
+      uint32_t     TextureBound : 1;
+
+      // Included in here, read from Stage 0 for packing reasons
+      // Affects all stages.
+      uint32_t     GlobalSpecularEnable : 1;
+    } Contents;
+#endif
+
+    uint32_t Primitive[3]; //THIS WAS uint32_t Primitive[2]; BUT THE ARRAY IS TOO SMALL?
+#ifndef GLSL
+  };
+#endif
+};
+
+
 struct D3D9FixedFunctionVS {
   Matrix4 WorldView;
   Matrix4 NormalMatrix;
@@ -229,17 +314,23 @@ struct D3D9RenderStateInfo {
 
 struct D3D9FixedFunctionPS {
   Vector4 textureFactor;
+
+  // TODO: Refactor once this works and we figure out what to
+  //       do with the existing generated fixed function shaders
+  D3D9FFShaderStage Stages[8];
 };
 
 
+struct D3D9SharedPSStage {
+  float Constant[4];
+  float BumpEnvMat[2][2];
+  float BumpEnvLScale;
+  float BumpEnvLOffset;
+  float Padding[2];
+};
+
 struct D3D9SharedPS {
-  struct Stage {
-    float Constant[4];
-    float BumpEnvMat[2][2];
-    float BumpEnvLScale;
-    float BumpEnvLOffset;
-    float Padding[2];
-  } Stages[8];
+  D3D9SharedPSStage Stages[8];
 };
 
 #ifndef GLSL

@@ -5,6 +5,8 @@
 #extension GL_EXT_demote_to_helper_invocation : require
 #extension GL_ARB_derivative_control : require
 
+#extension GL_EXT_nonuniform_qualifier : require // TODO: Get rid of this
+
 #define GLSL
 #include "../d3d9_shader_types.h"
 
@@ -13,23 +15,16 @@
 
 
 const uint MaxClipPlaneCount = 6;
-const uint TextureStageCount = 8;
 */
+const uint TextureStageCount = 8;
+const uint TextureArgCount = 3;
 
 
-
-
+layout(constant_id = 0) const int drefScaling = 0;
 
 // The locations need to match with RegisterLinkerSlot in dxso_util.cpp
 layout(location = 0) in vec4 in_Normal;
-layout(location = 1) in vec4 in_Texcoord0;
-layout(location = 2) in vec4 in_Texcoord1;
-layout(location = 3) in vec4 in_Texcoord2;
-layout(location = 4) in vec4 in_Texcoord3;
-layout(location = 5) in vec4 in_Texcoord4;
-layout(location = 6) in vec4 in_Texcoord5;
-layout(location = 7) in vec4 in_Texcoord6;
-layout(location = 8) in vec4 in_Texcoord7;
+layout(location = 1) in vec4 in_Texcoords[8]; // TODO: Is the array compatible with separate out values on the other side
 layout(location = 9) in vec4 in_Color0;
 layout(location = 10) in vec4 in_Color1;
 layout(location = 11) in float in_Fog;
@@ -54,7 +49,7 @@ layout(set = 0, binding = 11, scalar, row_major) uniform ShaderData {
 //     DxsoConstantBuffers::PSShared
 // ) = 12
 layout(set = 0, binding = 12, scalar, row_major) uniform SharedData {
-    D3D9SharedPS data;
+    D3D9SharedPS sharedData;
 };
 
 layout(push_constant, scalar, row_major) uniform RenderStates {
@@ -71,37 +66,17 @@ layout(set = 0, binding = 31, scalar) uniform SpecConsts {
 };
 
 
-layout(set = 0, binding = 13) uniform image2D t0_2d;
-layout(set = 0, binding = 13) uniform imageCube t0_cube;
-layout(set = 0, binding = 13) uniform image3D t0_3d;
+// TODO: Are the arrays compatible with how DXVK binds textures
+layout(set = 0, binding = 13) uniform texture2D t2d[8];
+layout(set = 0, binding = 13) uniform textureCube tcube[8];
+layout(set = 0, binding = 13) uniform texture3D t3d[8];
 
-layout(set = 0, binding = 14) uniform image2D t1_2d;
-layout(set = 0, binding = 14) uniform imageCube t1_cube;
-layout(set = 0, binding = 14) uniform image3D t1_3d;
 
-layout(set = 0, binding = 15) uniform image2D t2_2d;
-layout(set = 0, binding = 15) uniform imageCube t2_cube;
-layout(set = 0, binding = 15) uniform image3D t2_3d;
+layout(origin_upper_left) in vec4 gl_FragCoord;
 
-layout(set = 0, binding = 16) uniform image2D t3_2d;
-layout(set = 0, binding = 16) uniform imageCube t3_cube;
-layout(set = 0, binding = 16) uniform image3D t3_3d;
 
-layout(set = 0, binding = 17) uniform image2D t4_2d;
-layout(set = 0, binding = 17) uniform imageCube t4_cube;
-layout(set = 0, binding = 17) uniform image3D t4_3d;
+layout(set = 15, binding = 0) uniform sampler sampler_heap[];
 
-layout(set = 0, binding = 18) uniform image2D t5_2d;
-layout(set = 0, binding = 18) uniform imageCube t5_cube;
-layout(set = 0, binding = 18) uniform image3D t5_3d;
-
-layout(set = 0, binding = 19) uniform image2D t6_2d;
-layout(set = 0, binding = 19) uniform imageCube t6_cube;
-layout(set = 0, binding = 19) uniform image3D t6_3d;
-
-layout(set = 0, binding = 20) uniform image2D t7_2d;
-layout(set = 0, binding = 20) uniform imageCube t7_cube;
-layout(set = 0, binding = 20) uniform image3D t7_3d;
 
 
 // Thanks SPIRV-Cross
@@ -115,81 +90,55 @@ spirv_instruction(set = "GLSL.std.450", id = 81) vec3 spvNClamp(vec3, vec3, vec3
 spirv_instruction(set = "GLSL.std.450", id = 81) vec4 spvNClamp(vec4, vec4, vec4);
 
 
-// Functions to extract information from the packed VS key
-// See D3D9FFShaderKeyVSData in d3d9_shader_types.h
+// Functions to extract information from the packed texture stages
+// See D3D9FFShaderStage in d3d9_shader_types.h
 // Please, dearest compiler, inline all of this.
-uint TexcoordIndices() {
-    return bitfieldExtract(data.Key.Primitive[0], 0, 24);
+uint ColorOp(uint stageIndex) {
+    return bitfieldExtract(data.Stages[stageIndex].Primitive[0], 0, 5);
 }
-bool HasPositionT() {
-    return bitfieldExtract(data.Key.Primitive[0], 24, 1) != 0;
+uint ColorArg0(uint stageIndex) {
+    return bitfieldExtract(data.Stages[stageIndex].Primitive[0], 5, 6);
 }
-bool HasColor0() {
-    return bitfieldExtract(data.Key.Primitive[0], 25, 1) != 0;
+uint ColorArg1(uint stageIndex) {
+    return bitfieldExtract(data.Stages[stageIndex].Primitive[0], 11, 6);
 }
-bool HasColor1() {
-    return bitfieldExtract(data.Key.Primitive[0], 26, 1) != 0;
-}
-bool HasPointSize() {
-    return bitfieldExtract(data.Key.Primitive[0], 27, 1) != 0;
-}
-bool UseLighting() {
-    return bitfieldExtract(data.Key.Primitive[0], 28, 1) != 0;
-}
-bool NormalizeNormals() {
-    return bitfieldExtract(data.Key.Primitive[0], 29, 1) != 0;
-}
-bool LocalViewer() {
-    return bitfieldExtract(data.Key.Primitive[0], 30, 1) != 0;
-}
-bool RangeFog() {
-    return bitfieldExtract(data.Key.Primitive[0], 31, 1) != 0;
+uint ColorArg2(uint stageIndex) {
+    return bitfieldExtract(data.Stages[stageIndex].Primitive[0], 17, 6);
 }
 
-uint TexcoordFlags() {
-    return bitfieldExtract(data.Key.Primitive[1], 0, 24);
+uint AlphaOp(uint stageIndex) {
+    return bitfieldExtract(data.Stages[stageIndex].Primitive[1], 0, 5);
 }
-uint DiffuseSource() {
-    return bitfieldExtract(data.Key.Primitive[1], 24, 2);
+uint AlphaArg0(uint stageIndex) {
+    return bitfieldExtract(data.Stages[stageIndex].Primitive[1], 5, 6);
 }
-uint AmbientSource() {
-    return bitfieldExtract(data.Key.Primitive[1], 26, 2);
+uint AlphaArg1(uint stageIndex) {
+    return bitfieldExtract(data.Stages[stageIndex].Primitive[1], 11, 6);
 }
-uint SpecularSource() {
-    return bitfieldExtract(data.Key.Primitive[1], 28, 2);
-}
-uint EmissiveSource() {
-    return bitfieldExtract(data.Key.Primitive[1], 30, 2);
+uint AlphaArg2(uint stageIndex) {
+    return bitfieldExtract(data.Stages[stageIndex].Primitive[1], 17, 6);
 }
 
-uint TransformFlags() {
-    return bitfieldExtract(data.Key.Primitive[2], 0, 24);
+uint TextureType(uint stageIndex) {
+    return bitfieldExtract(data.Stages[stageIndex].Primitive[2], 0, 2);
 }
-uint LightCount() {
-    return bitfieldExtract(data.Key.Primitive[2], 24, 4);
+bool ResultIsTemp(uint stageIndex) {
+    return bitfieldExtract(data.Stages[stageIndex].Primitive[2], 2, 1) != 0;
 }
-
-uint TexcoordDeclMask() {
-    return bitfieldExtract(data.Key.Primitive[3], 0, 24);
+bool Projected(uint stageIndex) {
+    return bitfieldExtract(data.Stages[stageIndex].Primitive[2], 3, 1) != 0;
 }
-bool HasFog() {
-    return bitfieldExtract(data.Key.Primitive[3], 24, 1) != 0;
+uint ProjectedCount(uint stageIndex) {
+    return bitfieldExtract(data.Stages[stageIndex].Primitive[2], 4, 3);
 }
-D3D9FF_VertexBlendMode BlendMode() {
-    return bitfieldExtract(data.Key.Primitive[3], 25, 2);
+bool SampleDref(uint stageIndex) {
+    return bitfieldExtract(data.Stages[stageIndex].Primitive[2], 7, 1) != 0;
 }
-bool VertexBlendIndexed() {
-    return bitfieldExtract(data.Key.Primitive[3], 27, 1) != 0;
+bool TextureBound(uint stageIndex) {
+    return bitfieldExtract(data.Stages[stageIndex].Primitive[2], 8, 1) != 0;
 }
-uint VertexBlendCount() {
-    return bitfieldExtract(data.Key.Primitive[3], 28, 3);
-}
-bool VertexClipping() {
-    return bitfieldExtract(data.Key.Primitive[3], 31, 1) != 0;
-}
-
-uint Projected() {
-    return bitfieldExtract(data.Key.Primitive[4], 0, 8);
+bool GlobalSpecularEnable(uint stageIndex) {
+    return bitfieldExtract(data.Stages[stageIndex].Primitive[2], 9, 1) != 0;
 }
 
 
@@ -243,7 +192,7 @@ uint SpecClipPlaneCount() {
 }
 
 
-#define isPixel false
+/*#define isPixel true
 vec4 DoFixedFunctionFog(vec4 vPos, vec4 oColor) {
     vec4 color1 = HasColor1() ? in_Color1 : vec4(0.0);
 
@@ -372,351 +321,187 @@ vec4 PickSource(uint Source, vec4 Material) {
         return HasColor0() ? in_Color0 : vec4(0.0);
     else
         return HasColor1() ? in_Color1 : vec4(0.0);
+}*/
+
+// [D3D8] Scale Dref to [0..(2^N - 1)] for D24S8 and D16 if Dref scaling is enabled
+vec4 scaleDref(vec4 texCoord, int referenceIdx) {
+    float reference = texCoord[referenceIdx];
+    if (drefScaling == 0) {
+        return texCoord;
+    }
+    float maxDref = 1.0 / (float(1 << drefScaling) - 1.0);
+    reference *= maxDref;
+    texCoord[referenceIdx] = reference;
+    return texCoord;
+}
+
+
+vec4 DoBumpmapCoords(uint stage, vec4 baseCoords) {
+    stage = stage - 1;
+
+    vec4 coords = baseCoords;
+    for (uint i = 0; i < 2; i++) {
+        float tc_m_n = coords[i];
+        vec2 bm = vec2(sharedData.Stages[stage].BumpEnvMat[0][0], sharedData.Stages[stage].BumpEnvMat[0][1]);
+        //vec2 t =
+    }
+    return coords;
+}
+
+
+// TODO: Passing the index here makes non-uniform necessary, solve that
+vec4 GetTexture(uint stage) {
+    uint textureType = D3DRTYPE_TEXTURE + TextureType(stage);
+
+    vec4 texcoord = in_Texcoords[stage];
+
+    bool shouldProject = Projected(stage);
+    float projValue = 1.0;
+    if (shouldProject) {
+        // Always use w, the vertex shader puts the correct value there.
+        projValue = texcoord.w;
+        if (textureType == D3DRTYPE_TEXTURE) {
+            // For 2D textures we divide by the z component, so move the w component up by one.
+            texcoord.z = projValue;
+        }
+    }
+
+    if (stage != 0 && (
+        ColorOp(stage - 1) == D3DTOP_BUMPENVMAP
+        || ColorOp(stage - 1) == D3DTOP_BUMPENVMAPLUMINANCE)) {
+        if (shouldProject) {
+            float projRcp = 1.0 / projValue;
+            texcoord *= projRcp;
+        }
+
+        texcoord = DoBumpmapCoords(stage, texcoord);
+
+        shouldProject = false;
+    }
+
+    vec4 texVal;
+    switch (textureType) {
+        case D3DRTYPE_TEXTURE:
+            if (SampleDref(stage))
+                texVal = texture(sampler2DShadow(t2d[stage], sampler_heap[stage]), scaleDref(texcoord, 2).xyz).xxxx;
+            else if (shouldProject)
+                texVal = textureProj(sampler2D(t2d[stage], sampler_heap[stage]), texcoord.xyz);
+            else
+                texVal = texture(sampler2D(t2d[stage], sampler_heap[stage]), texcoord.xy);
+            break;
+        case D3DRTYPE_CUBETEXTURE:
+            if (SampleDref(stage))
+                texVal = texture(samplerCubeShadow(tcube[stage], sampler_heap[stage]), scaleDref(texcoord, 3)).xxxx;
+            else if (shouldProject) {
+                texVal = texture(samplerCube(tcube[stage], sampler_heap[stage]), texcoord.xyz / texcoord.w); // TODO: ?
+                //texVal = textureProj(samplerCube(tcube[stage], sampler_heap[stage]), texcoord.xyzw);
+            } else
+                texVal = texture(samplerCube(tcube[stage], sampler_heap[stage]), texcoord.xyz);
+            break;
+        case D3DRTYPE_VOLUMETEXTURE:
+            if (SampleDref(stage))
+                texVal = vec4(0.0); // TODO: ?
+            else if (shouldProject)
+                texVal = textureProj(sampler3D(t3d[stage], sampler_heap[stage]), texcoord);
+            else
+                texVal = texture(sampler3D(t3d[stage], sampler_heap[stage]), texcoord.xyz);
+            break;
+    }
+
+    if (stage != 0 && ColorOp(stage - 1) == D3DTOP_BUMPENVMAPLUMINANCE) {
+        float lScale = sharedData.Stages[stage - 1].BumpEnvLScale;
+        float lOffset = sharedData.Stages[stage - 1].BumpEnvLOffset;
+        float scale = texVal.z;
+        scale *= lScale;
+        scale += lOffset;
+        scale = clamp(scale, 0.0, 1.0);
+        texVal *= scale;
+    }
+
+    return texVal;
+}
+
+
+vec4 GetArg(uint stage, uint arg, vec4 current, vec4 diffuse, vec4 specular, vec4 temp) {
+    vec4 reg = vec4(1.0);
+    switch (arg & D3DTA_SELECTMASK) {
+        case D3DTA_CONSTANT: {
+            return vec4(
+                sharedData.Stages[stage].Constant[0],
+                sharedData.Stages[stage].Constant[1],
+                sharedData.Stages[stage].Constant[2],
+                sharedData.Stages[stage].Constant[3]
+            );
+        }
+        case D3DTA_CURRENT:
+            return current;
+        case D3DTA_DIFFUSE:
+            return diffuse;
+        case D3DTA_SPECULAR:
+            return specular;
+        case D3DTA_TEMP:
+            return temp;
+        case D3DTA_TEXTURE:
+            return vec4(0.0); // TODO
+    }
+}
+
+
+vec4 DoOp(uint op, vec4 arg[TextureArgCount]) {
+    switch (op) {
+        case D3DTOP_SELECTARG1:
+            return arg[1];
+
+        case D3DTOP_SELECTARG2:
+            return arg[2];
+
+        case D3DTOP_MODULATE4X:
+            return arg[1] * arg[2];
+    }
+
+    return vec4(0.0);
 }
 
 
 void main() {
-    vec4 vtx = in_Position0;
-    gl_Position = in_Position0;
-    vec3 normal = in_Normal0.xyz;
+    vec4 diffuse = in_Color0;
+    vec4 specular = in_Color1;
 
-    if (BlendMode() == D3D9FF_VertexBlendMode_Tween) {
-        vec4 vtx1 = in_Position1;
-        vec3 normal1 = in_Normal1.xyz;
-        vtx = mix(vtx, vtx1, data.TweenFactor);
-        normal = mix(normal, normal1, data.TweenFactor);
-    }
+    // Current starts of as equal to diffuse.
+    vec4 current = diffuse;
+    // Temp starts off as equal to vec4(0)
+    vec4 temp = vec4(0.0);
 
-    if (!HasPositionT()) {
-        if (BlendMode() == D3D9FF_VertexBlendMode_Normal) {
-            float blendWeightRemaining = 1.0;
-            vec4 vtxSum = vec4(0.0);
-            vec3 nrmSum = vec3(0.0);
+    vec4 textureVar = vec4(0.0, 0.0, 0.0, 1.0);
 
-            for (uint i = 0; i <= VertexBlendCount(); i++) {
-                uint arrayIndex;
-                if (VertexBlendIndexed()) {
-                    arrayIndex = uint(round(in_BlendIndices[i]));
-                } else {
-                    arrayIndex = i;
-                }
-                mat4 worldView = WorldViewArray[arrayIndex];
-
-                mat3 nrmMtx;
-                for (uint i = 0; i < 3; i++) {
-                    nrmMtx[i] = worldView[i].xyz;
-                }
-
-                vec4 vtxResult = vtx * worldView;
-                vec3 nrmResult = normal * nrmMtx;
-
-                float weight;
-                if (i != VertexBlendCount()) {
-                    weight = in_BlendWeight[i];
-                    blendWeightRemaining -= weight;
-                } else {
-                    weight = blendWeightRemaining;
-                }
-
-                vec4 weightVec4 = vec4(weight, weight, weight, weight);
-
-                vtxSum = fma(vtxResult, weightVec4, vtxSum);
-                nrmSum = fma(nrmResult, weightVec4.xyz, nrmSum);
-            }
-        } else {
-            vtx = vtx * data.WorldView;
-
-            mat3 nrmMtx = mat3(data.NormalMatrix);
-
-            normal = nrmMtx * normal;
-        }
-
-        // Some games rely no normals not being normal.
-        if (NormalizeNormals()) {
-            bool isZeroNormal = all(equal(normal, vec3(0.0, 0.0, 0.0)));
-            normal = isZeroNormal ? normal : normalize(normal);
-        }
-
-        gl_Position = vtx * data.Projection;
-    } else {
-        gl_Position *= data.ViewportInfo.inverseExtent;
-        gl_Position += data.ViewportInfo.inverseOffset;
-
-        // We still need to account for perspective correction here...
-
-        float w = gl_Position.w;
-        float rhw = w == 0.0 ? 1.0 : 1.0 / w;
-        gl_Position.xyz *= rhw;
-        gl_Position.w = rhw;
-    }
-
-    vec4 outNrm = vec4(normal, 1.0);
-    out_Normal = outNrm;
-
-    vec4 texCoords[TextureStageCount];
-    texCoords[0] = in_Texcoord0;
-    texCoords[1] = in_Texcoord1;
-    texCoords[2] = in_Texcoord2;
-    texCoords[3] = in_Texcoord3;
-    texCoords[4] = in_Texcoord4;
-    texCoords[5] = in_Texcoord5;
-    texCoords[6] = in_Texcoord6;
-    texCoords[7] = in_Texcoord7;
-
-    vec4 transformedTexCoords[TextureStageCount];
+    vec4 unboundTextureConst = vec4(0.0, 0.0, 0.0, 1.0);
 
     for (uint i = 0; i < TextureStageCount; i++) {
-        // 0b111 = 7
-        uint inputIndex = (TexcoordIndices() >> (i * 3)) & 7;
-        uint inputFlags = (TexcoordFlags() >> (i * 3)) & 7;
-        uint texcoordCount = (TexcoordDeclMask() >> (inputIndex * 3)) & 7;
+        uint colorOp = ColorOp(i);
+        uint colorArgs[TextureArgCount] = {
+            ColorArg0(i),
+            ColorArg1(i),
+            ColorArg2(i)
+        };
+        uint alphaOp = AlphaOp(i);
+        uint alphaArgs[TextureArgCount] = {
+            AlphaArg0(i),
+            AlphaArg1(i),
+            AlphaArg2(i)
+        };
 
-        vec4 transformed;
+        // This cancels all subsequent stages.
+        if (colorOp == D3DTOP_DISABLE)
+            break;
 
-        uint flags = (TransformFlags() >> (i * 3)) & 7;
+        // Fast path if alpha/color path is identical.
+        // D3DTOP_DOTPRODUCT3 also has special quirky behaviour here.
+        bool fastPath = colorOp == alphaOp && colorArgs == alphaArgs;
+        if (fastPath || colorOp == D3DTOP_DOTPRODUCT3) {
 
-        // Passing 0xffffffff results in it getting clamped to the dimensions of the texture coords and getting treated as PROJECTED
-        // but D3D9 does not apply the transformation matrix.
-        bool applyTransform = flags > D3DTTFF_COUNT1 && flags <= D3DTTFF_COUNT4;
+        } else {
 
-        uint count = min(flags, 4u);
-
-        // A projection component index of 4 means we won't do projection
-        uint projIndex = count != 0 ? count - 1 : 4;
-
-        switch (inputFlags) {
-            default:
-            case (DXVK_TSS_TCI_PASSTHRU >> TCIOffset):
-                transformed = texCoords[inputIndex & 0xFF];
-
-                if (texcoordCount < 4) {
-                    // Vulkan sets the w component to 1.0 if that's not provided by the vertex buffer, D3D9 expects 0 here
-                    transformed.w = 0.0;
-                }
-
-                if (applyTransform) {
-                    /*This doesn't happen every time and I cannot figure out the difference between when it does and doesn't.
-                    Keep it disabled for now, it's more likely that games rely on the zero texcoord than the weird 1 here.
-                    if (texcoordCount <= 1) {
-                      // y gets padded to 1 for some reason
-                      transformed.y = 1.0;
-                    }*/
-
-                    if (texcoordCount >= 1 && texcoordCount < 4) {
-                        // The first component after the last one thats backed by a vertex buffer gets padded to 1 for some reason.
-                        uint idx = texcoordCount;
-                        transformed[idx] = 1.0;
-                    }
-                } else if (texcoordCount != 0 && !applyTransform) {
-                    // COUNT0, COUNT1, COUNT > 4 => take count from vertex decl if that's not zero
-                    count = texcoordCount;
-                }
-
-                projIndex = count != 0 ? count - 1 : 4;
-                break;
-
-            case (DXVK_TSS_TCI_CAMERASPACENORMAL >> TCIOffset):
-                transformed = outNrm;
-                if (!applyTransform) {
-                    count = 3;
-                    projIndex = 4;
-                }
-                break;
-
-            case (DXVK_TSS_TCI_CAMERASPACEPOSITION >> TCIOffset):
-                transformed = vtx;
-                if (!applyTransform) {
-                    count = 3;
-                    projIndex = 4;
-                }
-                break;
-
-            case (DXVK_TSS_TCI_CAMERASPACEREFLECTIONVECTOR >> TCIOffset): {
-                vec3 vtx3 = vtx.xyz;
-                vtx3 = normalize(vtx3);
-
-                vec3 reflection = reflect(vtx3, normal);
-                transformed = vec4(reflection, 1.0);
-                if (!applyTransform) {
-                    count = 3;
-                    projIndex = 4;
-                }
-                break;
-            }
-
-            case (DXVK_TSS_TCI_SPHEREMAP >> TCIOffset): {
-                vec3 vtx3 = vtx.xyz;
-                vtx3 = normalize(vtx3);
-
-                vec3 reflection = reflect(vtx3, normal);
-                float m = length(reflection + vec3(0.0, 0.0, 1.0)) * 2.0;
-
-                transformed = vec4(
-                    reflection.x / m + 0.5,
-                    reflection.y / m + 0.5,
-                    0.0,
-                    1.0
-                );
-                break;
-            }
         }
-
-        if (applyTransform && !HasPositionT()) {
-            transformed = transformed * data.TexcoordMatrices[i];
-        }
-
-        // TODO: Shouldn't projected be checked per texture stage?
-        if (Projected() != 0 && projIndex < 4) {
-            // The projection idx is always based on the flags, even when the input mode is not DXVK_TSS_TCI_PASSTHRU.
-            float projValue = transformed[projIndex];
-
-            // The w component is only used for projection or unused, so always insert the component that's supposed to be divided by there.
-            // The fragment shader will then decide whether to project or not.
-            transformed.w = projValue;
-        }
-
-        // TODO: Shouldn't projected be checked per texture stage?
-        uint totalComponents = (Projected() != 0 && projIndex < 4) ? 3 : 4;
-        for (uint i = count; i < totalComponents; i++) {
-            // Discard the components that exceed the specified D3DTTFF_COUNT
-            transformed[i] = 0.0;
-        }
-
-        transformedTexCoords[i] = transformed;
     }
 
-    out_Texcoord0 = transformedTexCoords[0];
-    out_Texcoord1 = transformedTexCoords[1];
-    out_Texcoord2 = transformedTexCoords[2];
-    out_Texcoord3 = transformedTexCoords[3];
-    out_Texcoord4 = transformedTexCoords[4];
-    out_Texcoord5 = transformedTexCoords[5];
-    out_Texcoord6 = transformedTexCoords[6];
-    out_Texcoord7 = transformedTexCoords[7];
-
-    if (UseLighting()) {
-        vec4 diffuseValue = vec4(0.0);
-        vec4 specularValue = vec4(0.0);
-        vec4 ambientValue = vec4(0.0);
-
-        for (uint i = 0; i < LightCount(); i++) {
-            D3D9Light light = data.Lights[i];
-
-            vec4 diffuse = light.Diffuse;
-            vec4 specular = light.Specular;
-            vec4 ambient = light.Ambient;
-            vec3 position = light.Position.xyz;
-            vec3 direction = light.Direction.xyz;
-            uint type = light.Type;
-            float range = light.Range;
-            float falloff = light.Falloff;
-            float atten0 = light.Attenuation0;
-            float atten1 = light.Attenuation1;
-            float atten2 = light.Attenuation2;
-            float theta = light.Theta;
-            float phi = light.Phi;
-
-            bool isSpot = type == D3DLIGHT_SPOT;
-            bool isDirectional = type == D3DLIGHT_DIRECTIONAL;
-
-            bvec3 isDirectional3 = bvec3(isDirectional);
-
-            vec3 vtx3 = vtx.xyz;
-
-            vec3 delta = position - vtx3;
-            float d = length(delta);
-            vec3 hitDir = -direction;
-                 hitDir = mix(delta, hitDir, isDirectional3);
-                 hitDir = normalize(hitDir);
-
-            float atten = fma(d, atten2, atten1);
-                  atten = fma(d, atten, atten0);
-                  atten = 1.0 / atten;
-                  atten = spvNMin(atten, FLOAT_MAX_VALUE);
-
-                  atten = d > range ? 0.0 : atten;
-                  atten = isDirectional ? 1.0 : atten;
-
-            // Spot Lighting
-            {
-                float rho = dot(-hitDir, direction);
-                float spotAtten = rho - phi;
-                      spotAtten = spotAtten / (theta - phi);
-                      spotAtten = pow(spotAtten, falloff);
-
-                bool insideThetaAndPhi = rho <= theta;
-                bool insidePhi = rho > phi;
-                     spotAtten = insidePhi ? spotAtten : 0.0;
-                     spotAtten = insideThetaAndPhi ? spotAtten : 1.0;
-                     spotAtten = clamp(spotAtten, 0.0, 1.0);
-
-                     spotAtten = atten * spotAtten;
-                     atten     = isSpot ? spotAtten : atten;
-            }
-
-            float hitDot = dot(normal, hitDir);
-                  hitDot = clamp(hitDot, 0.0, 1.0);
-
-            float diffuseness = hitDot * atten;
-
-            vec3 mid;
-            if (LocalViewer()) {
-                mid = normalize(vtx3);
-                mid = hitDir - mid;
-            } else {
-                hitDir - vec3(0.0, 0.0, 1.0);
-            }
-
-            mid = normalize(mid);
-
-            float midDot = dot(normal, mid);
-                  midDot = clamp(midDot, 0.0, 1.0);
-            bool doSpec = midDot > 0.0;
-                 doSpec = doSpec && hitDot > 0.0;
-
-            float specularness = pow(midDot, data.Material.Power);
-                  specularness *= atten;
-                  specularness = doSpec ? specularness : 0.0;
-
-            vec4 lightAmbient  = ambient * atten;
-            vec4 lightDiffuse  = diffuse * diffuseness;
-            vec4 lightSpecular = specular * specularness;
-
-            ambientValue  += lightAmbient;
-            diffuseValue  += lightDiffuse;
-            specularValue += lightSpecular;
-        }
-
-        vec4 mat_diffuse  = PickSource(DiffuseSource(), data.Material.Diffuse);
-        vec4 mat_ambient  = PickSource(AmbientSource(), data.Material.Ambient);
-        vec4 mat_emissive = PickSource(EmissiveSource(), data.Material.Emissive);
-        vec4 mat_specular = PickSource(SpecularSource(), data.Material.Specular);
-
-        vec4 finalColor0 = fma(mat_ambient, data.GlobalAmbient, mat_emissive);
-             finalColor0 = fma(mat_ambient, ambientValue, finalColor0);
-             finalColor0 = fma(mat_diffuse, diffuseValue, finalColor0);
-             finalColor0.w = mat_diffuse.w;
-
-        vec4 finalColor1 = mat_specular * specularValue;
-
-        // Saturate
-        finalColor0 = clamp(finalColor0, vec4(0.0), vec4(1.0));
-
-        finalColor1 = clamp(finalColor1, vec4(0.0), vec4(1.0));
-
-        out_Color0 = finalColor0;
-        out_Color1 = finalColor1;
-    } else {
-        out_Color0 = in_Color0;
-        out_Color1 = in_Color1;
-    }
-
-    out_Fog = DoFixedFunctionFog(vtx, vec4(0.0)).x;
-
-    gl_PointSize = DoPointSize(vtx);
-
-    //if (VertexClipping()) {
-    // We statically declare 6 clip planes, so we always need to write values.
-        emitVsClipping(vtx);
-    //}
 }
