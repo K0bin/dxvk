@@ -160,7 +160,7 @@ namespace dxvk {
     bool reproducibleCommandStream;
 
     /// Enable depth texcoord Z (Dref) scaling (D3D8 quirk)
-    int32_t drefScaling;
+    uint32_t drefScaling;
 
     /// Enable slow sincos emulation
     bool sincosEmulation;
