@@ -206,7 +206,7 @@ struct D3D9FFShaderKeyVSData {
     struct {
       uint32_t TexcoordIndices : 24;
 
-      uint32_t HasPositionT : 1;
+      uint32_t VertexHasPositionT : 1;
 
       uint32_t VertexHasColor0 : 1; // Diffuse
       uint32_t VertexHasColor1 : 1; // Specular
@@ -263,7 +263,6 @@ struct D3D9FFTextureStage {
       uint32_t     AlphaArg1 : 6;
       uint32_t     AlphaArg2 : 6;
 
-      uint32_t     Type         : 2;
       uint32_t     ResultIsTemp : 1;
 
       // Included in here, read from Stage 0 for packing reasons
@@ -330,8 +329,6 @@ struct D3D9RenderStateInfo {
 struct D3D9FixedFunctionPS {
   Vector4 textureFactor;
 
-  // TODO: Refactor once this works and we figure out what to
-  //       do with the existing generated fixed function shaders
   D3D9FFTextureStage Stages[8];
 };
 

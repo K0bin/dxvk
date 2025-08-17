@@ -1067,7 +1067,7 @@ namespace dxvk {
 
     const uint32_t wIndex = 3;
 
-    if (!m_vsKey.Data.Contents.HasPositionT) {
+    if (!m_vsKey.Data.Contents.VertexHasPositionT) {
       if (m_vsKey.Data.Contents.VertexBlendMode == D3D9FF_VertexBlendMode_Normal) {
         uint32_t blendWeightRemaining = m_module.constf32(1);
         uint32_t vtxSum               = 0;
@@ -1214,7 +1214,7 @@ namespace dxvk {
             transformed = m_module.opCompositeInsert(m_vec4Type, m_module.constf32(0), transformed, 1, &wIndex);
           }
 
-          if (applyTransform && !m_vsKey.Data.Contents.HasPositionT) {
+          if (applyTransform && !m_vsKey.Data.Contents.VertexHasPositionT) {
             /*This doesn't happen every time and I cannot figure out the difference between when it does and doesn't.
             Keep it disabled for now, it's more likely that games rely on the zero texcoord than the weird 1 here.
             if (texcoordCount <= 1) {
@@ -1295,7 +1295,7 @@ namespace dxvk {
         }
       }
 
-      if (applyTransform && !m_vsKey.Data.Contents.HasPositionT) {
+      if (applyTransform && !m_vsKey.Data.Contents.VertexHasPositionT) {
         transformed = m_module.opVectorTimesMatrix(m_vec4Type, transformed, m_vs.constants.texcoord[i]);
       }
 
@@ -1488,7 +1488,7 @@ namespace dxvk {
     fogCtx.vFog        = m_vs.in.FOG;
     fogCtx.oColor      = 0;
     fogCtx.IsFixedFunction = true;
-    fogCtx.IsPositionT = m_vsKey.Data.Contents.HasPositionT;
+    fogCtx.IsPositionT = m_vsKey.Data.Contents.VertexHasPositionT;
     fogCtx.HasSpecular = m_vsKey.Data.Contents.VertexHasColor1;
     fogCtx.Specular    = m_vs.in.COLOR[1];
     fogCtx.SpecUBO     = m_specUbo;
