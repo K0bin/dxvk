@@ -3819,14 +3819,6 @@ namespace dxvk {
       BindShader<DxsoProgramTypes::PixelShader>(newShader);
 
       UpdateTextureTypeMismatchesForShader(newShader, newShaderMasks.samplerMask, 0);
-
-      for (uint32_t i = 0; i < caps::TextureStageCount; i++) {
-        const uint32_t enumStageDiff = SpecFFTextureStage1ColorOp - SpecFFTextureStage0ColorOp;
-        m_specInfo.setDwordDynamic(static_cast<D3D9SpecConstantId>(SpecFFTextureStage0ColorOp + enumStageDiff * i), 0u);
-        m_specInfo.setDwordDynamic(static_cast<D3D9SpecConstantId>(SpecFFTextureStage0AlphaOp + enumStageDiff * i), 0u);
-        m_specInfo.setDwordDynamic(static_cast<D3D9SpecConstantId>(SpecFFTextureStage0ResultIsTemp + enumStageDiff * i), 0u);
-      }
-      m_flags.set(D3D9DeviceFlag::DirtySpecializationEntries);
     }
     else {
       // TODO: What fixed function textures are in use?
@@ -8111,111 +8103,80 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::UpdateFixedFunctionPS() {
+    if (!m_flags.test(D3D9DeviceFlag::DirtyFFPixelShader) && !m_flags.test(D3D9DeviceFlag::DirtyFFPixelData))
+      return;
+
     // Shader...
     D3D9FFShaderKeyFS key;
-    if (m_flags.test(D3D9DeviceFlag::DirtyFFPixelShader) || m_flags.test(D3D9DeviceFlag::DirtyFFPixelData)) {
 
-      // Used args for a given operation.
-      auto ArgsMask = [](DWORD Op) {
-        switch (Op) {
-          case D3DTOP_DISABLE:
-            return 0b000u; // No Args
-          case D3DTOP_SELECTARG1:
-          case D3DTOP_PREMODULATE:
-            return 0b010u; // Arg 1
-          case D3DTOP_SELECTARG2:
-            return 0b100u; // Arg 2
-          case D3DTOP_MULTIPLYADD:
-          case D3DTOP_LERP:
-            return 0b111u; // Arg 0, 1, 2
-          default:
-            return 0b110u; // Arg 1, 2
-        }
-      };
+    // Used args for a given operation.
+    auto ArgsMask = [](DWORD Op) {
+      switch (Op) {
+        case D3DTOP_DISABLE:
+          return 0b000u; // No Args
+        case D3DTOP_SELECTARG1:
+        case D3DTOP_PREMODULATE:
+          return 0b010u; // Arg 1
+        case D3DTOP_SELECTARG2:
+          return 0b100u; // Arg 2
+        case D3DTOP_MULTIPLYADD:
+        case D3DTOP_LERP:
+          return 0b111u; // Arg 0, 1, 2
+        default:
+          return 0b110u; // Arg 1, 2
+      }
+    };
 
-      bool invalid = false;
-      bool specDirty = false;
-      uint32_t idx;
-      for (idx = 0; idx < caps::TextureStageCount; idx++) {
-        auto& stage = key.Stages[idx].Contents;
-        auto& data  = m_state.textureStages[idx];
+    uint32_t idx;
+    for (idx = 0; idx < caps::TextureStageCount; idx++) {
+      auto& stage = key.Stages[idx].Contents;
+      auto& data  = m_state.textureStages[idx];
 
-        // Subsequent stages do not occur if this is true.
-        if (data[DXVK_TSS_COLOROP] == D3DTOP_DISABLE) {
-          // break;
-          invalid = true;
-        }
+      // Subsequent stages do not occur if this is true.
+      if (data[DXVK_TSS_COLOROP] == D3DTOP_DISABLE)
+        break;
 
-        // If the stage is invalid (ie. no texture bound),
-        // this and all subsequent stages get disabled.
-        if (m_state.textures[idx] == nullptr) {
-          if (((data[DXVK_TSS_COLORARG0] & D3DTA_SELECTMASK) == D3DTA_TEXTURE && (ArgsMask(data[DXVK_TSS_COLOROP]) & (1 << 0u)))
-           || ((data[DXVK_TSS_COLORARG1] & D3DTA_SELECTMASK) == D3DTA_TEXTURE && (ArgsMask(data[DXVK_TSS_COLOROP]) & (1 << 1u)))
-           || ((data[DXVK_TSS_COLORARG2] & D3DTA_SELECTMASK) == D3DTA_TEXTURE && (ArgsMask(data[DXVK_TSS_COLOROP]) & (1 << 2u))))
-            //break;
-            invalid = true;
-        }
-
-        if (invalid) {
-          const uint32_t enumStageDiff = SpecFFTextureStage1ColorOp - SpecFFTextureStage0ColorOp;
-          specDirty |= m_specInfo.setDynamic(static_cast<D3D9SpecConstantId>(SpecFFTextureStage0ColorOp + enumStageDiff * idx), D3DTOP_DISABLE);
-          specDirty |= m_specInfo.setDynamic(static_cast<D3D9SpecConstantId>(SpecFFTextureStage0AlphaOp + enumStageDiff * idx), D3DTOP_DISABLE);
-          specDirty |= m_specInfo.setDynamic(static_cast<D3D9SpecConstantId>(SpecFFTextureStage0ColorArg0 + enumStageDiff * idx), 0);
-          specDirty |= m_specInfo.setDynamic(static_cast<D3D9SpecConstantId>(SpecFFTextureStage0ColorArg1 + enumStageDiff * idx), 0);
-          specDirty |= m_specInfo.setDynamic(static_cast<D3D9SpecConstantId>(SpecFFTextureStage0ColorArg2 + enumStageDiff * idx), 0);
-          specDirty |= m_specInfo.setDynamic(static_cast<D3D9SpecConstantId>(SpecFFTextureStage0AlphaArg0 + enumStageDiff * idx), 0);
-          specDirty |= m_specInfo.setDynamic(static_cast<D3D9SpecConstantId>(SpecFFTextureStage0AlphaArg1 + enumStageDiff * idx), 0);
-          specDirty |= m_specInfo.setDynamic(static_cast<D3D9SpecConstantId>(SpecFFTextureStage0AlphaArg2 + enumStageDiff * idx), 0);
-          specDirty |= m_specInfo.setDynamic(static_cast<D3D9SpecConstantId>(SpecFFTextureStage0ResultIsTemp + enumStageDiff * idx), 0);
-          continue;
-        }
-
-        stage.ColorOp = data[DXVK_TSS_COLOROP];
-        stage.AlphaOp = data[DXVK_TSS_ALPHAOP];
-
-        stage.ColorArg0 = data[DXVK_TSS_COLORARG0];
-        stage.ColorArg1 = data[DXVK_TSS_COLORARG1];
-        stage.ColorArg2 = data[DXVK_TSS_COLORARG2];
-
-        stage.AlphaArg0 = data[DXVK_TSS_ALPHAARG0];
-        stage.AlphaArg1 = data[DXVK_TSS_ALPHAARG1];
-        stage.AlphaArg2 = data[DXVK_TSS_ALPHAARG2];
-
-        // The last stage *always* writes to current.
-        stage.ResultIsTemp = data[DXVK_TSS_RESULTARG] == D3DTA_TEMP && idx != caps::TextureStageCount - 1;
-
-        const uint32_t enumStageDiff = SpecFFTextureStage1ColorOp - SpecFFTextureStage0ColorOp;
-        specDirty |= m_specInfo.setDynamic(static_cast<D3D9SpecConstantId>(SpecFFTextureStage0ColorOp + enumStageDiff * idx), data[DXVK_TSS_COLOROP]);
-        specDirty |= m_specInfo.setDynamic(static_cast<D3D9SpecConstantId>(SpecFFTextureStage0AlphaOp + enumStageDiff * idx), data[DXVK_TSS_ALPHAOP]);
-        specDirty |= m_specInfo.setDynamic(static_cast<D3D9SpecConstantId>(SpecFFTextureStage0ColorArg0 + enumStageDiff * idx), data[DXVK_TSS_COLORARG0]);
-        specDirty |= m_specInfo.setDynamic(static_cast<D3D9SpecConstantId>(SpecFFTextureStage0ColorArg1 + enumStageDiff * idx), data[DXVK_TSS_COLORARG1]);
-        specDirty |= m_specInfo.setDynamic(static_cast<D3D9SpecConstantId>(SpecFFTextureStage0ColorArg2 + enumStageDiff * idx), data[DXVK_TSS_COLORARG2]);
-        specDirty |= m_specInfo.setDynamic(static_cast<D3D9SpecConstantId>(SpecFFTextureStage0AlphaArg0 + enumStageDiff * idx), data[DXVK_TSS_ALPHAARG0]);
-        specDirty |= m_specInfo.setDynamic(static_cast<D3D9SpecConstantId>(SpecFFTextureStage0AlphaArg1 + enumStageDiff * idx), data[DXVK_TSS_ALPHAARG1]);
-        specDirty |= m_specInfo.setDynamic(static_cast<D3D9SpecConstantId>(SpecFFTextureStage0AlphaArg2 + enumStageDiff * idx), data[DXVK_TSS_ALPHAARG2]);
-        specDirty |= m_specInfo.setDynamic(static_cast<D3D9SpecConstantId>(SpecFFTextureStage0ResultIsTemp + enumStageDiff * idx), data[DXVK_TSS_RESULTARG] == D3DTA_TEMP && idx != caps::TextureStageCount - 1);
+      // If the stage is invalid (ie. no texture bound),
+      // this and all subsequent stages get disabled.
+      if (m_state.textures[idx] == nullptr) {
+        if (((data[DXVK_TSS_COLORARG0] & D3DTA_SELECTMASK) == D3DTA_TEXTURE && (ArgsMask(data[DXVK_TSS_COLOROP]) & (1 << 0u)))
+         || ((data[DXVK_TSS_COLORARG1] & D3DTA_SELECTMASK) == D3DTA_TEXTURE && (ArgsMask(data[DXVK_TSS_COLOROP]) & (1 << 1u)))
+         || ((data[DXVK_TSS_COLORARG2] & D3DTA_SELECTMASK) == D3DTA_TEXTURE && (ArgsMask(data[DXVK_TSS_COLOROP]) & (1 << 2u))))
+          break;
       }
 
-      auto& stage0 = key.Stages[0].Contents;
+      stage.ColorOp = data[DXVK_TSS_COLOROP];
+      stage.AlphaOp = data[DXVK_TSS_ALPHAOP];
 
-      if (stage0.ResultIsTemp &&
-          stage0.ColorOp != D3DTOP_DISABLE &&
-          stage0.AlphaOp == D3DTOP_DISABLE) {
-        stage0.AlphaOp   = D3DTOP_SELECTARG1;
-        stage0.AlphaArg1 = D3DTA_DIFFUSE;
+      stage.ColorArg0 = data[DXVK_TSS_COLORARG0];
+      stage.ColorArg1 = data[DXVK_TSS_COLORARG1];
+      stage.ColorArg2 = data[DXVK_TSS_COLORARG2];
 
-        specDirty |= m_specInfo.setDynamic(static_cast<D3D9SpecConstantId>(SpecFFTextureStage0AlphaOp), D3DTOP_SELECTARG1);
-        specDirty |= m_specInfo.setDynamic(static_cast<D3D9SpecConstantId>(SpecFFTextureStage0AlphaArg1), D3DTA_DIFFUSE);
-      }
+      stage.AlphaArg0 = data[DXVK_TSS_ALPHAARG0];
+      stage.AlphaArg1 = data[DXVK_TSS_ALPHAARG1];
+      stage.AlphaArg2 = data[DXVK_TSS_ALPHAARG2];
 
-      stage0.GlobalSpecularEnable = m_state.renderStates[D3DRS_SPECULARENABLE];
-      specDirty |= m_specInfo.setDynamic(SpecFFGlobalSpecularEnable, m_state.renderStates[D3DRS_SPECULARENABLE]);
+      stage.ResultIsTemp = data[DXVK_TSS_RESULTARG] == D3DTA_TEMP ;
+    }
 
-      if (specDirty)
-        m_flags.set(D3D9DeviceFlag::DirtySpecializationEntries);
+    auto& stage0 = key.Stages[0].Contents;
 
-      m_flags.clr(D3D9DeviceFlag::DirtyFFPixelShader);
+    if (stage0.ResultIsTemp &&
+        stage0.ColorOp != D3DTOP_DISABLE &&
+        stage0.AlphaOp == D3DTOP_DISABLE) {
+      stage0.AlphaOp   = D3DTOP_SELECTARG1;
+      stage0.AlphaArg1 = D3DTA_DIFFUSE;
+    }
+
+    stage0.GlobalSpecularEnable = m_state.renderStates[D3DRS_SPECULARENABLE];
+
+    // The last stage *always* writes to current.
+    if (idx >= 1)
+      key.Stages[idx - 1].Contents.ResultIsTemp = false;
+
+    if (m_flags.test(D3D9DeviceFlag::DirtyFFPixelShader)) {
       m_flags.set(D3D9DeviceFlag::DirtyFFPixelData);
+      m_flags.clr(D3D9DeviceFlag::DirtyFFPixelShader);
 
       EmitCs([
         this,

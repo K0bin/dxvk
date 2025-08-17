@@ -88,6 +88,45 @@ spirv_instruction(set = "GLSL.std.450", id = 81) vec3 spvNClamp(vec3, vec3, vec3
 spirv_instruction(set = "GLSL.std.450", id = 81) vec4 spvNClamp(vec4, vec4, vec4);
 
 
+// Functions to extract information from the packed texture stages
+// See D3D9FFTextureStage in d3d9_shader_types.h
+// Please, dearest compiler, inline all of this.
+
+uint ColorOp(uint stageIndex) {
+    return bitfieldExtract(data.Stages[stageIndex].Primitive[0], 0, 5);
+}
+uint ColorArg0(uint stageIndex) {
+    return bitfieldExtract(data.Stages[stageIndex].Primitive[0], 5, 6);
+}
+uint ColorArg1(uint stageIndex) {
+    return bitfieldExtract(data.Stages[stageIndex].Primitive[0], 11, 6);
+}
+uint ColorArg2(uint stageIndex) {
+    return bitfieldExtract(data.Stages[stageIndex].Primitive[0], 17, 6);
+}
+
+uint AlphaOp(uint stageIndex) {
+    return bitfieldExtract(data.Stages[stageIndex].Primitive[0], 23, 5);
+}
+uint AlphaArg0(uint stageIndex) {
+    return bitfieldExtract(data.Stages[stageIndex].Primitive[1], 0, 6);
+}
+uint AlphaArg1(uint stageIndex) {
+    return bitfieldExtract(data.Stages[stageIndex].Primitive[1], 6, 6);
+}
+uint AlphaArg2(uint stageIndex) {
+    return bitfieldExtract(data.Stages[stageIndex].Primitive[1], 12, 6);
+}
+
+bool ResultIsTemp(uint stageIndex) {
+    return bitfieldExtract(data.Stages[stageIndex].Primitive[1], 18, 1) != 0;
+}
+bool GlobalSpecularEnable(uint stageIndex) {
+    return bitfieldExtract(data.Stages[stageIndex].Primitive[1], 19, 1) != 0;
+}
+
+
+
 // Functions to extract information from the packed dynamic spec consts
 // See d3d9_spec_constants.h for packing
 // Please, dearest compiler, inline all of this.
@@ -105,300 +144,9 @@ layout (constant_id = 9) const uint SpecConstDword9 = 0;
 layout (constant_id = 10) const uint SpecConstDword10 = 0;
 layout (constant_id = 11) const uint SpecConstDword11 = 0;
 layout (constant_id = 12) const uint SpecConstDword12 = 0;
-layout (constant_id = 13) const uint SpecConstDword13 = 0;
-layout (constant_id = 14) const uint SpecConstDword14 = 0;
-layout (constant_id = 15) const uint SpecConstDword15 = 0;
-layout (constant_id = 16) const uint SpecConstDword16 = 0;
-layout (constant_id = 17) const uint SpecConstDword17 = 0;
-layout (constant_id = 18) const uint SpecConstDword18 = 0;
-layout (constant_id = 19) const uint SpecConstDword19 = 0;
-layout (constant_id = 20) const uint SpecConstDword20 = 0;
-layout (constant_id = 21) const uint SpecConstDword21 = 0;
-layout (constant_id = 22) const uint SpecConstDword22 = 0;
-layout (constant_id = 23) const uint SpecConstDword23 = 0;
-
-
-const uint SpecIdSamplerType = 0;
-const uint SpecIdSamplerIsDepth = 1;
-const uint SpecIdAlphaCompareOp = 2;
-const uint SpecIdProjected = 3;
-const uint SpecIdSamplerIsNull = 4;
-const uint SpecIdAlphaPrecisionBits = 5;
-const uint SpecIdFogEnabled = 6;
-const uint SpecIdVertexFogMode = 7;
-const uint SpecIdPixelFogMode = 8;
-const uint SpecIdVertexShaderBools = 9;
-const uint SpecIdPixelShaderBools = 10;
-const uint SpecIdFetch4 = 11;
-const uint SpecIdDrefClamp = 12;
-const uint SpecIdDrefScaling = 13;
-const uint SpecIdClipPlaneCount = 14;
-const uint SpecIdPointMode = 15;
-
-const uint SpecIdFFTexcoordIndices = 16;
-const uint SpecIdFFVertexHasPositionT = 17;
-const uint SpecIdFFVertexHasColor0 = 18;
-const uint SpecIdFFVertexHasColor1 = 19;
-const uint SpecIdFFVertexHasPointSize = 20;
-const uint SpecIdFFUseLighting = 21;
-const uint SpecIdFFNormalizeNormals = 22;
-const uint SpecIdFFLocalViewer = 23;
-const uint SpecIdFFRangeFog = 24;
-const uint SpecIdFFTexcoordFlags = 25;
-const uint SpecIdFFDiffuseSource = 26;
-const uint SpecIdFFAmbientSource = 27;
-const uint SpecIdFFSpecularSource = 28;
-const uint SpecIdFFEmissiveSource = 29;
-const uint SpecIdFFTransformFlags = 30;
-const uint SpecIdFFVertexBlendMode = 31;
-const uint SpecIdFFBlendVertexIndexed = 32;
-const uint SpecIdFFVertexBlendCount = 33;
-const uint SpecIdFFVertexClipping = 34;
-
-const uint SpecIdFFTextureStage0ColorOp = 35;
-const uint SpecIdFFTextureStage0ColorArg0 = 36;
-const uint SpecIdFFTextureStage0ColorArg1 = 37;
-const uint SpecIdFFTextureStage0ColorArg2 = 38;
-const uint SpecIdFFTextureStage0AlphaOp = 39;
-const uint SpecIdFFTextureStage0AlphaArg0 = 40;
-const uint SpecIdFFTextureStage0AlphaArg1 = 41;
-const uint SpecIdFFTextureStage0AlphaArg2 = 42;
-const uint SpecIdFFTextureStage0ResultIsTemp = 43;
-const uint SpecIdFFTextureStage1ColorOp = 44;
-const uint SpecIdFFTextureStage1ColorArg0 = 45;
-const uint SpecIdFFTextureStage1ColorArg1 = 46;
-const uint SpecIdFFTextureStage1ColorArg2 = 47;
-const uint SpecIdFFTextureStage1AlphaOp = 48;
-const uint SpecIdFFTextureStage1AlphaArg0 = 49;
-const uint SpecIdFFTextureStage1AlphaArg1 = 50;
-const uint SpecIdFFTextureStage1AlphaArg2 = 51;
-const uint SpecIdFFTextureStage1ResultIsTemp = 52;
-const uint SpecIdFFTextureStage2ColorOp = 53;
-const uint SpecIdFFTextureStage2ColorArg0 = 54;
-const uint SpecIdFFTextureStage2ColorArg1 = 55;
-const uint SpecIdFFTextureStage2ColorArg2 = 56;
-const uint SpecIdFFTextureStage2AlphaOp = 57;
-const uint SpecIdFFTextureStage2AlphaArg0 = 58;
-const uint SpecIdFFTextureStage2AlphaArg1 = 59;
-const uint SpecIdFFTextureStage2AlphaArg2 = 60;
-const uint SpecIdFFTextureStage2ResultIsTemp = 61;
-const uint SpecIdFFTextureStage3ColorOp = 62;
-const uint SpecIdFFTextureStage3ColorArg0 = 63;
-const uint SpecIdFFTextureStage3ColorArg1 = 64;
-const uint SpecIdFFTextureStage3ColorArg2 = 65;
-const uint SpecIdFFTextureStage3AlphaOp = 66;
-const uint SpecIdFFTextureStage3AlphaArg0 = 67;
-const uint SpecIdFFTextureStage3AlphaArg1 = 68;
-const uint SpecIdFFTextureStage3AlphaArg2 = 69;
-const uint SpecIdFFTextureStage3ResultIsTemp = 70;
-const uint SpecIdFFTextureStage4ColorOp = 71;
-const uint SpecIdFFTextureStage4ColorArg0 = 72;
-const uint SpecIdFFTextureStage4ColorArg1 = 73;
-const uint SpecIdFFTextureStage4ColorArg2 = 74;
-const uint SpecIdFFTextureStage4AlphaOp = 75;
-const uint SpecIdFFTextureStage4AlphaArg0 = 76;
-const uint SpecIdFFTextureStage4AlphaArg1 = 77;
-const uint SpecIdFFTextureStage4AlphaArg2 = 78;
-const uint SpecIdFFTextureStage4ResultIsTemp = 79;
-const uint SpecIdFFTextureStage5ColorOp = 80;
-const uint SpecIdFFTextureStage5ColorArg0 = 81;
-const uint SpecIdFFTextureStage5ColorArg1 = 82;
-const uint SpecIdFFTextureStage5ColorArg2 = 83;
-const uint SpecIdFFTextureStage5AlphaOp = 84;
-const uint SpecIdFFTextureStage5AlphaArg0 = 85;
-const uint SpecIdFFTextureStage5AlphaArg1 = 86;
-const uint SpecIdFFTextureStage5AlphaArg2 = 87;
-const uint SpecIdFFTextureStage5ResultIsTemp = 88;
-const uint SpecIdFFTextureStage6ColorOp = 89;
-const uint SpecIdFFTextureStage6ColorArg0 = 90;
-const uint SpecIdFFTextureStage6ColorArg1 = 91;
-const uint SpecIdFFTextureStage6ColorArg2 = 92;
-const uint SpecIdFFTextureStage6AlphaOp = 93;
-const uint SpecIdFFTextureStage6AlphaArg0 = 94;
-const uint SpecIdFFTextureStage6AlphaArg1 = 95;
-const uint SpecIdFFTextureStage6AlphaArg2 = 96;
-const uint SpecIdFFTextureStage6ResultIsTemp = 97;
-const uint SpecIdFFTextureStage7ColorOp = 98;
-const uint SpecIdFFTextureStage7ColorArg0 = 99;
-const uint SpecIdFFTextureStage7ColorArg1 = 100;
-const uint SpecIdFFTextureStage7ColorArg2 = 101;
-const uint SpecIdFFTextureStage7AlphaOp = 102;
-const uint SpecIdFFTextureStage7AlphaArg0 = 103;
-const uint SpecIdFFTextureStage7AlphaArg1 = 104;
-const uint SpecIdFFTextureStage7AlphaArg2 = 105;
-const uint SpecIdFFTextureStage7ResultIsTemp = 106;
-const uint SpecIdFFGlobalSpecularEnable = 107;
-
-
-struct BitfieldPosition {
-    uint dwordOffset;
-    uint bitOffset;
-    uint sizeInBits;
-};
-
-const BitfieldPosition specConstLayout[] = {
-    { 0, 0, 32 },  // SamplerType
-    
-    { 1, 0,  21 }, // SamplerIsDepth
-    { 1, 21, 3 },  // AlphaCompareOp
-    { 1, 24, 8 },  // Projected
-    
-    { 2, 0,  21 }, // SamplerIsNull
-    { 2, 21, 4 },  // AlphaPrecisionBits
-    { 1, 25, 1 },  // FogEnabled
-    { 2, 26, 2 },  // VertexFogMode
-    { 2, 28, 2 },  // PixelFogMode
-    
-    { 3, 0,  16 }, // VertexShaderBools
-    { 3, 16, 16 }, // PixelShaderBools
-    
-    { 4, 0,  16 }, // Fetch4
-    
-    { 5, 0, 21 },  // DrefClamp
-    { 5, 21, 5 },  // DrefScaling
-    { 5, 26, 3 },  // ClipPlaneCount
-    { 5, 29, 2 },  // PointMode
-    
-    { 6, 0, 24 },  // SpecFFTexcoordIndices
-    { 6, 24, 1 },  // SpecFFVertexHasPositionT
-    { 6, 25, 1 },  // SpecFFVertexHasColor0
-    { 6, 26, 1 },  // SpecFFVertexHasColor1
-    { 6, 27, 1 },  // SpecFFVertexHasPointSize
-    { 6, 28, 1 },  // SpecFFUseLighting
-    { 6, 29, 1 },  // SpecFFNormalizeNormals
-    { 6, 30, 1 },  // SpecFFLocalViewer
-    { 6, 31, 1 },  // SpecFFRangeFog
-    { 7, 0, 24 },  // SpecFFTexcoordFlags
-    { 7, 24, 2 },  // SpecFFDiffuseSource
-    { 7, 26, 2 },  // SpecFFAmbientSource
-    { 7, 28, 2 },  // SpecFFSpecularSource
-    { 7, 30, 2 },  // SpecFFEmissiveSource
-    { 8, 0, 24 },  // SpecFFTransformFlags
-    { 8, 24, 2 },  // SpecFFVertexBlendMode
-    { 8, 26, 1 },  // SpecFFBlendVertexIndexed
-    { 8, 27, 2 },  // SpecFFVertexBlendCount
-    { 8, 29, 1 },  // SpecFFVertexClipping
-    
-    { 9, 0, 5 },   // SpecFFTextureStage0ColorOp
-    { 9, 5, 6 },   // SpecFFTextureStage0ColorArg0
-    { 9, 11, 6 },  // SpecFFTextureStage0ColorArg1
-    { 9, 17, 6 },  // SpecFFTextureStage0ColorArg2
-    { 9, 23, 5 },  // SpecFFTextureStage0AlphaOp
-    { 10, 0, 6 },  // SpecFFTextureStage0AlphaArg0
-    { 10, 6, 6 },  // SpecFFTextureStage0AlphaArg1
-    { 10, 12, 6 }, // SpecFFTextureStage0AlphaArg2
-    { 10, 18, 1 }, // SpecFFTextureStage0ResultIsTemp
-    
-    { 10, 19, 5 }, // SpecFFTextureStage1ColorOp
-    { 10, 24, 6 }, // SpecFFTextureStage1ColorArg0
-    { 11, 0, 6 },  // SpecFFTextureStage1ColorArg1
-    { 11, 6, 6 },  // SpecFFTextureStage1ColorArg2
-    { 11, 12, 5 }, // SpecFFTextureStage1AlphaOp
-    { 11, 17, 6 }, // SpecFFTextureStage1AlphaArg0
-    { 11, 23, 6 }, // SpecFFTextureStage1AlphaArg1
-    { 12, 0, 6 },  // SpecFFTextureStage1AlphaArg2
-    { 12, 6, 1 },  // SpecFFTextureStage1ResultIsTemp
-    
-    { 12, 7, 5 },  // SpecFFTextureStage2ColorOp
-    { 12, 12, 6 }, // SpecFFTextureStage2ColorArg0
-    { 12, 18, 6 }, // SpecFFTextureStage2ColorArg1
-    { 12, 24, 6 }, // SpecFFTextureStage2ColorArg2
-    { 13, 0, 5 },  // SpecFFTextureStage2AlphaOp
-    { 13, 5, 6 },  // SpecFFTextureStage2AlphaArg0
-    { 13, 11, 6 }, // SpecFFTextureStage2AlphaArg1
-    { 13, 17, 6 }, // SpecFFTextureStage2AlphaArg2
-    { 13, 23, 1 }, // SpecFFTextureStage2ResultIsTemp
-    
-    { 13, 24, 5 }, // SpecFFTextureStage3ColorOp
-    { 14, 0, 6 },  // SpecFFTextureStage3ColorArg0
-    { 14, 6, 6 },  // SpecFFTextureStage3ColorArg1
-    { 14, 12, 6 }, // SpecFFTextureStage3ColorArg2
-    { 14, 18, 5 }, // SpecFFTextureStage3AlphaOp
-    { 14, 23, 6 }, // SpecFFTextureStage3AlphaArg0
-    { 15, 0, 6 },  // SpecFFTextureStage3AlphaArg1
-    { 15, 23, 6 }, // SpecFFTextureStage3AlphaArg2
-    { 15, 29, 1 }, // SpecFFTextureStage3ResultIsTemp
-    
-    { 16, 0, 5 },  // SpecFFTextureStage4ColorOp
-    { 16, 5, 6 },  // SpecFFTextureStage4ColorArg0
-    { 16, 11, 6 }, // SpecFFTextureStage4ColorArg1
-    { 16, 17, 6 }, // SpecFFTextureStage4ColorArg2
-    { 16, 23, 5 }, // SpecFFTextureStage4AlphaOp
-    { 17, 0, 6 },  // SpecFFTextureStage4AlphaArg0
-    { 17, 6, 6 },  // SpecFFTextureStage4AlphaArg1
-    { 17, 12, 6 }, // SpecFFTextureStage4AlphaArg2
-    { 17, 18, 1 }, // SpecFFTextureStage4ResultIsTemp
-    
-    { 17, 19, 5 }, // SpecFFTextureStage3ColorOp
-    { 17, 24, 6 }, // SpecFFTextureStage3ColorArg0
-    { 18, 0, 6 },  // SpecFFTextureStage3ColorArg1
-    { 18, 6, 6 },  // SpecFFTextureStage3ColorArg2
-    { 18, 12, 5 }, // SpecFFTextureStage3AlphaOp
-    { 18, 17, 6 }, // SpecFFTextureStage3AlphaArg0
-    { 18, 23, 6 }, // SpecFFTextureStage3AlphaArg1
-    { 19, 0, 6 },  // SpecFFTextureStage3AlphaArg2
-    { 19, 6, 1 },  // SpecFFTextureStage3ResultIsTemp
-    
-    { 19, 7, 5 },  // SpecFFTextureStage6ColorOp
-    { 19, 12, 6 }, // SpecFFTextureStage6ColorArg0
-    { 19, 18, 6 }, // SpecFFTextureStage6ColorArg1
-    { 19, 24, 6 }, // SpecFFTextureStage6ColorArg2
-    { 20, 0, 5 },  // SpecFFTextureStage6AlphaOp
-    { 20, 5, 6 },  // SpecFFTextureStage6AlphaArg0
-    { 20, 11, 6 }, // SpecFFTextureStage6AlphaArg1
-    { 20, 17, 6 }, // SpecFFTextureStage6AlphaArg2
-    { 20, 23, 1 }, // SpecFFTextureStage6ResultIsTemp
-    
-    { 20, 24, 5 }, // SpecFFTextureStage7ColorOp
-    { 21, 0, 6 },  // SpecFFTextureStage7ColorArg0
-    { 21, 6, 6 },  // SpecFFTextureStage7ColorArg1
-    { 21, 12, 6 }, // SpecFFTextureStage7ColorArg2
-    { 21, 18, 5 }, // SpecFFTextureStage7AlphaOp
-    { 21, 23, 6 }, // SpecFFTextureStage7AlphaArg0
-    { 22, 0, 6 }, // SpecFFTextureStage7AlphaArg1
-    { 22, 6, 6 }, // SpecFFTextureStage7AlphaArg2
-    { 22, 18, 1 }, // SpecFFTextureStage7ResultIsTemp
-    
-    { 22, 19, 1 }, // SpecFFGlobalSpecularEnable
-};
-
-uint GetSpecConstDword(uint index) {
-    switch (index) {
-        default:
-        case 0: return SpecConstDword0;
-        case 1: return SpecConstDword1;
-        case 2: return SpecConstDword2;
-        case 3: return SpecConstDword3;
-        case 4: return SpecConstDword4;
-        case 5: return SpecConstDword5;
-        case 6: return SpecConstDword6;
-        case 7: return SpecConstDword7;
-        case 8: return SpecConstDword8;
-        case 9: return SpecConstDword9;
-        case 10: return SpecConstDword10;
-        case 11: return SpecConstDword11;
-        case 12: return SpecConstDword12;
-        case 13: return SpecConstDword13;
-        case 14: return SpecConstDword14;
-        case 15: return SpecConstDword15;
-        case 16: return SpecConstDword16;
-        case 17: return SpecConstDword17;
-        case 18: return SpecConstDword18;
-        case 19: return SpecConstDword19;
-        case 20: return SpecConstDword20;
-        case 21: return SpecConstDword21;
-        case 22: return SpecConstDword22;
-    }
-}
 
 bool SpecIsOptimized() {
-    return SpecConstDword23 != 0;
-}
-
-uint GetSpecConst(uint specConstIndex) {
-    BitfieldPosition layoutEntry = specConstLayout[specConstIndex];
-    uint dword = SpecIsOptimized() ? GetSpecConstDword(layoutEntry.dwordOffset) : dynamicSpecConstDword[layoutEntry.dwordOffset];
-    return bitfieldExtract(dword, int(layoutEntry.bitOffset), int(layoutEntry.sizeInBits));
+    return SpecConstDword12 != 0;
 }
 
 uint SpecSamplerType(uint textureStage) {
@@ -456,95 +204,6 @@ uint SpecPointMode() {
     uint dword = SpecIsOptimized() ? SpecConstDword5 : dynamicSpecConstDword[5];
     return bitfieldExtract(dword, 29, 2);
 }
-
-
-
-
-// Functions to extract information from the packed texture stages
-// See D3D9FFTextureStage in d3d9_shader_types.h
-// Please, dearest compiler, inline all of this.
-uint ColorOp(uint stageIndex) {
-    uint enumStageDiff = SpecIdFFTextureStage1ColorOp - SpecIdFFTextureStage0ColorOp;
-    return GetSpecConst(SpecIdFFTextureStage0ColorOp + enumStageDiff * stageIndex);
-}
-uint ColorArg(uint stageIndex, uint argIndex) {
-    uint enumStageDiff = SpecIdFFTextureStage1ColorOp - SpecIdFFTextureStage0ColorOp;
-    return GetSpecConst(SpecIdFFTextureStage0ColorArg0 + argIndex + enumStageDiff * stageIndex);
-}
-
-uint AlphaOp(uint stageIndex) {
-    uint enumStageDiff = SpecIdFFTextureStage1ColorOp - SpecIdFFTextureStage0ColorOp;
-    return GetSpecConst(SpecIdFFTextureStage0AlphaOp + enumStageDiff * stageIndex);
-}
-uint AlphaArg(uint stageIndex, uint argIndex) {
-    uint enumStageDiff = SpecIdFFTextureStage1ColorOp - SpecIdFFTextureStage0ColorOp;
-    return GetSpecConst(SpecIdFFTextureStage0AlphaArg0 + argIndex + enumStageDiff * stageIndex);
-}
-
-bool ResultIsTemp(uint stageIndex) {
-    uint enumStageDiff = SpecIdFFTextureStage1ColorOp - SpecIdFFTextureStage0ColorOp;
-    return GetSpecConst(SpecIdFFTextureStage0ResultIsTemp + enumStageDiff * stageIndex) != 0;
-}
-
-bool GlobalSpecularEnable(uint stageIndex) {
-    return GetSpecConst(SpecIdFFGlobalSpecularEnable) != 0;
-}
-
-
-
-/*uint ColorOp(uint stageIndex) {
-    return bitfieldExtract(data.Stages[stageIndex].Primitive[0], 0, 5);
-}
-
-uint ColorArg(uint stageIndex, uint argIndex) {
-    switch(argIndex) {
-        case 0:
-            return bitfieldExtract(data.Stages[stageIndex].Primitive[0], 5, 6);
-            break;
-        case 1:
-            return bitfieldExtract(data.Stages[stageIndex].Primitive[0], 11, 6);
-        break;
-        case 2:
-            return bitfieldExtract(data.Stages[stageIndex].Primitive[0], 17, 6);
-        break;
-    }
-    return 0;
-}
-
-uint AlphaOp(uint stageIndex) {
-    return bitfieldExtract(data.Stages[stageIndex].Primitive[0], 23, 5);
-}
-
-uint AlphaArg(uint stageIndex, uint argIndex) {
-    switch (argIndex) {
-        case 0:
-            return bitfieldExtract(data.Stages[stageIndex].Primitive[1], 0, 6);
-        break;
-        case 1:
-            return bitfieldExtract(data.Stages[stageIndex].Primitive[1], 6, 6);
-        break;
-        case 2:
-            return bitfieldExtract(data.Stages[stageIndex].Primitive[1], 12, 6);
-        break;
-    }
-    return 0;
-}
-
-bool ResultIsTemp(uint stageIndex) {
-    return bitfieldExtract(data.Stages[stageIndex].Primitive[1], 18, 1) != 0;
-}
-bool GlobalSpecularEnable(uint stageIndex) {
-    return bitfieldExtract(data.Stages[stageIndex].Primitive[1], 19, 1) != 0;
-}*/
-
-
-
-
-
-
-
-
-
 
 
 vec4 DoFixedFunctionFog(vec4 vPos, vec4 oColor) {
@@ -915,15 +574,15 @@ void main() {
             break;
 
         uint colorArgs[TextureArgCount] = {
-            ColorArg(i, 0),
-            ColorArg(i, 1),
-            ColorArg(i, 2)
+            ColorArg0(i),
+            ColorArg1(i),
+            ColorArg2(i)
         };
         uint alphaOp = AlphaOp(i);
         uint alphaArgs[TextureArgCount] = {
-            AlphaArg(i, 0),
-            AlphaArg(i, 1),
-            AlphaArg(i, 2)
+            AlphaArg0(i),
+            AlphaArg1(i),
+            AlphaArg2(i)
         };
 
         vec4 textureVal = vec4(0.0);
