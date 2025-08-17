@@ -30,9 +30,45 @@ namespace dxvk {
     SpecFetch4,             // 1 bit for 16 PS samplers       | Bits: 16
 
     SpecDrefClamp,          // 1 bit for 21 VS + PS samplers  | Bits: 21
-    SpecDrefScaling,        // Range: 0-31                    | Bits: 5
-    SpecClipPlaneCount,     // Range: 0 - 6                   | Bits: 3
+    SpecDrefScaling,        // Range: 0 -> 31                 | Bits: 5
+    SpecClipPlaneCount,     // Range: 0 ->                    | Bits: 3
     SpecPointMode,          // Range: 0 -> 3                  | Bits: 2
+
+    // Fixed function state
+    // VS
+    SpecFFTexcoordIndices,    // 3 bits for 8 texture stages | Bits: 24
+    SpecFFHasPositionT,       // 1 bool                      | Bits: 1
+    SpecFFHasColor0,          // 1 bool                      | Bits: 1
+    SpecFFHasColor1,          // 1 bool                      | Bits: 1
+    SpecFFHasPointSize,       // 1 bool                      | Bits: 1
+    SpecFFUseLighting,        // 1 bool                      | Bits: 1
+    SpecFFNormalizeNormals,   // 1 bool                      | Bits: 1
+    SpecFFLocalViewer,        // 1 bool                      | Bits: 1
+    SpecFFRangeFog,           // 1 bool                      | Bits: 1
+    SpecFFTexcoordFlags,      // 3 bits for 8 texture stages | Bits: 24
+    SpecFFDiffuseSource,      // Range: 0 -> 2               | Bits: 2
+    SpecFFAmbientSource,      // Range: 0 -> 2               | Bits: 2
+    SpecFFSpecularSource,     // Range: 0 -> 2               | Bits: 2
+    SpecFFEmissiveSource,     // Range: 0 -> 2               | Bits: 2
+    SpecFFTransformFlags,     // 3 bits for 8 texture stages | Bits: 24
+    SpecFFVertexBlendMode,    // Range: 0 -> 2               | Bits: 2
+    SpecFFBlendVertexIndexed, // 1 bool                      | Bits: 1
+    SpecFFVertexBlendCount,   // Range: 0 -> 3               | Bits: 2
+    SpecFFVertexClipping,     // 1 bool                      | Bits: 1
+
+    // FS
+    SpecFFTextureStage0ColorOp,   // Range 1 -> 26           | Bits 5
+    SpecFFTextureStage0ColorArg0, // Range 0 -> 5            | Bits 6
+                                  // + 2 modifier bits
+    SpecFFTextureStage0ColorArg1, // Same as above           | Bits 6
+    SpecFFTextureStage0ColorArg2, // Same as above           | Bits 6
+    SpecFFTextureStage0AlphaOp,   // Range 1 -> 26           | Bits 5
+    SpecFFTextureStage0AlphaArg0, // Range 0 -> 5            | Bits 6
+                                  // + 2 modifier bits
+    SpecFFTextureStage0AlphaArg1, // Same as above           | Bits 6
+    SpecFFTextureStage0AlphaArg2, // Same as above           | Bits 6
+    SpecFFTextureStage0Type,      // Range 0 - 3             | Bits 2
+
 
     SpecConstantCount,
   };
