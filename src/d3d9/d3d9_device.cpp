@@ -8190,14 +8190,14 @@ namespace dxvk {
 
     // Spec constants
 
-    const auto writeBits = [](uint64_t& storage, uint32_t data, uint32_t bitCount, uint32_t& writePos) {
+    const auto writeBits = [](std::bitset<192>& storage, uint32_t data, uint32_t bitCount, uint32_t& writePos) {
       uint32_t insertPos = writePos;
       writePos += bitCount;
-      if (writePos >= 64) {
+      if (writePos >= 192) {
         return false;
       }
       uint32_t masked = data & ((1u << bitCount) - 1u);
-      storage |= masked << insertPos;
+      storage |= std::bitset<192>(masked) << insertPos;
       return true;
     };
 
@@ -8205,7 +8205,7 @@ namespace dxvk {
       return (arg & 0b111u) | ((arg & 0b110000u) >> 1u);
     };
 
-    uint64_t optimized = 0ull;
+    std::bitset<192> optimized;
 
     uint32_t optimizedTextureStages = 0u;
     uint32_t activeTextureStages = idx;
@@ -8220,7 +8220,7 @@ namespace dxvk {
     uint32_t activeAlphaIdenticalArgumentsMask = 0u;
 
     for (uint32_t i = 0u; i < activeTextureStages; i++) {
-      uint64_t optimizedBeforeStage = optimized;
+      std::bitset<192> optimizedBeforeStage = optimized;
       const auto& stage = key.Stages[i];
 
       if (!writeBits(optimized, stage.Contents.ResultIsTemp, 1u, bitPos)) {
@@ -8266,7 +8266,7 @@ namespace dxvk {
       identicalArguments &= (stage.Contents.ColorOp == D3DTOP_SELECTARG1 && stage.Contents.AlphaOp == D3DTOP_SELECTARG1) || stage.Contents.ColorArg2 == stage.Contents.AlphaArg2;
       identicalArguments &= (stage.Contents.ColorOp != D3DTOP_MULTIPLYADD && stage.Contents.ColorOp != D3DTOP_LERP && stage.Contents.AlphaOp != D3DTOP_MULTIPLYADD && stage.Contents.AlphaOp != D3DTOP_LERP) || stage.Contents.ColorArg0 == stage.Contents.AlphaArg0;
       if (stage.Contents.AlphaOp == D3DTOP_DISABLE || (identicalOp && identicalArguments) || stage.Contents.ColorOp == D3DTOP_DOTPRODUCT3) {
-        if (bitPos <= 64) {
+        if (bitPos <= 192) {
           optimizedTextureStages++;
         }
         continue;
@@ -8282,7 +8282,7 @@ namespace dxvk {
 
       if (identicalArguments) {
         activeAlphaIdenticalArgumentsMask |= 1u << i;
-        if (bitPos <= 64) {
+        if (bitPos <= 192) {
           optimizedTextureStages++;
         }
         continue;
@@ -8335,7 +8335,7 @@ namespace dxvk {
         }
       }
 
-      if (bitPos <= 64)
+      if (bitPos <= 192)
         optimizedTextureStages++;
     }
 
@@ -8343,7 +8343,7 @@ namespace dxvk {
     optimized |= ((activeAlphaMask) & 0b11111111u) << 6u;
     optimized |= ((activeAlphaIdenticalArgumentsMask) & 0b11111111u) << (6u + activeAlphaMask);
 
-    Logger::warn(str::format("ALL OPTIMIZED? ", activeTextureStages == optimizedTextureStages, ", Required bit count: ", bitPos, ", Active texture stages: ", activeTextureStages, ", Optimized texture stages: ", optimizedTextureStages, ", Stages with alpha: ", std::bitset<8>(activeAlphaMask), ", Stages with alpha but the same arguments: ", std::bitset<8>(activeAlphaIdenticalArgumentsMask)/*, ", Packed: ", std::bitset<64>(optimized)*/));
+    Logger::warn(str::format("ALL OPTIMIZED? ", activeTextureStages == optimizedTextureStages, ", Required bit count: ", bitPos, ", Active texture stages: ", activeTextureStages, ", Optimized texture stages: ", optimizedTextureStages, ", Stages with alpha: ", std::bitset<8>(activeAlphaMask), ", Stages with alpha but the same arguments: ", std::bitset<8>(activeAlphaIdenticalArgumentsMask), ", Packed: ", optimized));
 
     // Constants
 
