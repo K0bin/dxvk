@@ -8190,10 +8190,12 @@ namespace dxvk {
 
     // Spec constants
 
+    const uint32_t bitBudget = 128;
+
     const auto writeBits = [](std::bitset<192>& storage, uint32_t data, uint32_t bitCount, uint32_t& writePos) {
       uint32_t insertPos = writePos;
       writePos += bitCount;
-      if (writePos >= 192) {
+      if (writePos >= bitBudget) {
         return false;
       }
       uint32_t masked = data & ((1u << bitCount) - 1u);
@@ -8219,7 +8221,11 @@ namespace dxvk {
     uint32_t activeAlphaMask = 0u;
     uint32_t activeAlphaIdenticalArgumentsMask = 0u;
 
+    uint32_t stagesThatNeedArg0 = 0u;
+
+
     for (uint32_t i = 0u; i < activeTextureStages; i++) {
+      uint32_t stageStartBitPos = bitPos;
       std::bitset<192> optimizedBeforeStage = optimized;
       const auto& stage = key.Stages[i];
 
@@ -8237,6 +8243,7 @@ namespace dxvk {
       }
 
       if (stage.Contents.ColorOp == D3DTOP_MULTIPLYADD || stage.Contents.ColorOp == D3DTOP_LERP) {
+        stagesThatNeedArg0++;
         // Only those two operations need arg0
         if (!writeBits(optimized, repackArg(stage.Contents.ColorArg0), 5u, bitPos)) {
           //Logger::warn(str::format("Failed at: Stage: ", i, ", ColorArg0"));
@@ -8266,7 +8273,7 @@ namespace dxvk {
       identicalArguments &= (stage.Contents.ColorOp == D3DTOP_SELECTARG1 && stage.Contents.AlphaOp == D3DTOP_SELECTARG1) || stage.Contents.ColorArg2 == stage.Contents.AlphaArg2;
       identicalArguments &= (stage.Contents.ColorOp != D3DTOP_MULTIPLYADD && stage.Contents.ColorOp != D3DTOP_LERP && stage.Contents.AlphaOp != D3DTOP_MULTIPLYADD && stage.Contents.AlphaOp != D3DTOP_LERP) || stage.Contents.ColorArg0 == stage.Contents.AlphaArg0;
       if (stage.Contents.AlphaOp == D3DTOP_DISABLE || (identicalOp && identicalArguments) || stage.Contents.ColorOp == D3DTOP_DOTPRODUCT3) {
-        if (bitPos <= 192) {
+        if (bitPos <= bitBudget) {
           optimizedTextureStages++;
         }
         continue;
@@ -8282,7 +8289,7 @@ namespace dxvk {
 
       if (identicalArguments) {
         activeAlphaIdenticalArgumentsMask |= 1u << i;
-        if (bitPos <= 192) {
+        if (bitPos <= bitBudget) {
           optimizedTextureStages++;
         }
         continue;
@@ -8311,6 +8318,7 @@ namespace dxvk {
       Logger::warn(str::format("Identical arguments mask: ", std::bitset<3>(identicalArgumentMask & ((1u << argumentCount) - 1u))));*/
 
       if ((stage.Contents.AlphaOp == D3DTOP_MULTIPLYADD || stage.Contents.AlphaOp == D3DTOP_LERP) && !(identicalArgumentMask & 0b100)) {
+        stagesThatNeedArg0++;
         // Only those two operations need arg0
         if (!writeBits(optimized, repackArg(stage.Contents.AlphaArg0), 5u, bitPos)) {
           //Logger::warn(str::format("Failed at: Stage: ", i, ", AlphaArg0"));
@@ -8335,15 +8343,39 @@ namespace dxvk {
         }
       }
 
-      if (bitPos <= 192)
+      if (bitPos <= bitBudget)
         optimizedTextureStages++;
+
+      uint32_t stageSize = bitPos - stageStartBitPos;
+      if (bitPos <= bitBudget) {
+        Logger::warn(str::format("Stage: ", i, " Bits: ", stageSize, " ColorOp: ", stage.Contents.ColorOp, " AlphaOp: ", stage.Contents.AlphaOp));
+      }
     }
+
+    //optimizedTextureStages += std::min(activeTextureStages, bitBudget / 32u));
 
     optimized |= ((std::min(7u, optimizedTextureStages)) & 0b111u) << 3u;
     optimized |= ((activeAlphaMask) & 0b11111111u) << 6u;
     optimized |= ((activeAlphaIdenticalArgumentsMask) & 0b11111111u) << (6u + activeAlphaMask);
 
     Logger::warn(str::format("ALL OPTIMIZED? ", activeTextureStages == optimizedTextureStages, ", Required bit count: ", bitPos, ", Active texture stages: ", activeTextureStages, ", Optimized texture stages: ", optimizedTextureStages, ", Stages with alpha: ", std::bitset<8>(activeAlphaMask), ", Stages with alpha but the same arguments: ", std::bitset<8>(activeAlphaIdenticalArgumentsMask), ", Packed: ", optimized));
+
+    if (stagesThatNeedArg0 != 0) {
+      Logger::warn(str::format("Shader needs arg 0 in ", stagesThatNeedArg0, " stages"));
+    }
+
+    static uint32_t optimizedDrawsCount = 0;
+    static uint32_t optimizedDrawsSimpleSchemeCount = 0;
+    static uint32_t totalDrawsCount = 0;
+    totalDrawsCount++;
+    if (activeTextureStages == optimizedTextureStages)
+      optimizedDrawsCount++;
+    if (activeTextureStages <= (bitBudget / 32u) && stagesThatNeedArg0 == 0)
+      optimizedDrawsSimpleSchemeCount++;
+
+    Logger::warn(str::format("All draws: ", totalDrawsCount, " optimizedDraws: ", optimizedDrawsCount, " optimized rate: ", float(optimizedDrawsCount) / float(totalDrawsCount) * 100.0f, " optimized rate with simple scheme: ", float(optimizedDrawsSimpleSchemeCount) / float(totalDrawsCount) * 100.0f));
+
+
 
     // Constants
 
