@@ -3819,6 +3819,20 @@ namespace dxvk {
       BindShader<DxsoProgramTypes::PixelShader>(newShader);
 
       UpdateTextureTypeMismatchesForShader(newShader, newShaderMasks.samplerMask, 0);
+
+      bool dirty = m_specInfo.set<D3D9SpecConstantId::SpecFFTextureStageCount>(0u);
+      constexpr uint32_t perTextureStageSpecConsts = static_cast<uint32_t>(D3D9SpecConstantId::SpecFFTextureStage1ColorOp) - static_cast<uint32_t>(D3D9SpecConstantId::SpecFFTextureStage0ColorOp);
+      for (uint32_t i = 0; i < 4; i++) {
+        dirty |= m_specInfo.set(static_cast<D3D9SpecConstantId>(D3D9SpecConstantId::SpecFFTextureStage0ColorOp + perTextureStageSpecConsts * i), 0);
+        dirty |= m_specInfo.set(static_cast<D3D9SpecConstantId>(D3D9SpecConstantId::SpecFFTextureStage0ColorArg1 + perTextureStageSpecConsts * i), 0);
+        dirty |= m_specInfo.set(static_cast<D3D9SpecConstantId>(D3D9SpecConstantId::SpecFFTextureStage0ColorArg2 + perTextureStageSpecConsts * i), 0);
+        dirty |= m_specInfo.set(static_cast<D3D9SpecConstantId>(D3D9SpecConstantId::SpecFFTextureStage0AlphaOp + perTextureStageSpecConsts * i), 0);
+        dirty |= m_specInfo.set(static_cast<D3D9SpecConstantId>(D3D9SpecConstantId::SpecFFTextureStage0AlphaArg1 + perTextureStageSpecConsts * i), 0);
+        dirty |= m_specInfo.set(static_cast<D3D9SpecConstantId>(D3D9SpecConstantId::SpecFFTextureStage0AlphaArg2 + perTextureStageSpecConsts * i), 0);
+        dirty |= m_specInfo.set(static_cast<D3D9SpecConstantId>(D3D9SpecConstantId::SpecFFTextureStage0ResultIsTemp + perTextureStageSpecConsts * i), 0);
+      }
+      if (dirty)
+        m_flags.set(D3D9DeviceFlag::DirtySpecializationEntries);
     }
     else {
       // TODO: What fixed function textures are in use?
@@ -8190,191 +8204,33 @@ namespace dxvk {
 
     // Spec constants
 
-    const uint32_t bitBudget = 128;
-
-    const auto writeBits = [](std::bitset<192>& storage, uint32_t data, uint32_t bitCount, uint32_t& writePos) {
-      uint32_t insertPos = writePos;
-      writePos += bitCount;
-      if (writePos >= bitBudget) {
-        return false;
-      }
-      uint32_t masked = data & ((1u << bitCount) - 1u);
-      storage |= std::bitset<192>(masked) << insertPos;
-      return true;
-    };
-
     const auto repackArg = [](uint32_t arg) {
       return (arg & 0b111u) | ((arg & 0b110000u) >> 1u);
     };
-
-    std::bitset<192> optimized;
-
-    uint32_t optimizedTextureStages = 0u;
     uint32_t activeTextureStages = idx;
-    uint32_t bitPos = 0u;
-    bitPos += 3;
-    optimized |= (std::max(1u, activeTextureStages) - 1u) & 0b111u;
-    bitPos += 3; // Leave room for the number of spec-const optimized stages
-    bitPos += activeTextureStages; // Leave room for the mask of stages that have alpha
-    bitPos += activeTextureStages; // Leave room for the mask of stages that have alpha and use the same arguments
-
-    uint32_t activeAlphaMask = 0u;
-    uint32_t activeAlphaIdenticalArgumentsMask = 0u;
-
-    uint32_t stagesThatNeedArg0 = 0u;
-
-
-    for (uint32_t i = 0u; i < activeTextureStages; i++) {
-      uint32_t stageStartBitPos = bitPos;
-      std::bitset<192> optimizedBeforeStage = optimized;
-      const auto& stage = key.Stages[i];
-
-      if (!writeBits(optimized, stage.Contents.ResultIsTemp, 1u, bitPos)) {
-        //Logger::warn(str::format("Failed at: Stage: ", i, ", ResultIsTemp"));
-        optimized = optimizedBeforeStage;
-        //break;
-      }
-
-
-      if (!writeBits(optimized, stage.Contents.ColorOp, 5u, bitPos)) {
-        //Logger::warn(str::format("Failed at: Stage: ", i, ", ColorOp"));
-        optimized = optimizedBeforeStage;
-        //break;
-      }
-
-      if (stage.Contents.ColorOp == D3DTOP_MULTIPLYADD || stage.Contents.ColorOp == D3DTOP_LERP) {
-        stagesThatNeedArg0++;
-        // Only those two operations need arg0
-        if (!writeBits(optimized, repackArg(stage.Contents.ColorArg0), 5u, bitPos)) {
-          //Logger::warn(str::format("Failed at: Stage: ", i, ", ColorArg0"));
-          optimized = optimizedBeforeStage;
-          //break;
-        }
-      }
-
-      if (stage.Contents.ColorOp != D3DTOP_SELECTARG2) {
-        if (!writeBits(optimized, repackArg(stage.Contents.ColorArg1), 5u, bitPos)) {
-          //Logger::warn(str::format("Failed at: Stage: ", i, ", ColorArg1"));
-          optimized = optimizedBeforeStage;
-          //break;
-        }
-      }
-
-      if (stage.Contents.ColorOp != D3DTOP_SELECTARG1) {
-        if (!writeBits(optimized, repackArg(stage.Contents.ColorArg2), 5u, bitPos)) {
-          //Logger::warn(str::format("Failed at: Stage: ", i, ", ColorArg2"));
-          optimized = optimizedBeforeStage;
-          //break;
-        }
-      }
-
-      bool identicalOp = stage.Contents.ColorOp == stage.Contents.AlphaOp;
-      bool identicalArguments = (stage.Contents.ColorOp == D3DTOP_SELECTARG2 && stage.Contents.AlphaOp == D3DTOP_SELECTARG2) || stage.Contents.ColorArg1 == stage.Contents.AlphaArg1;
-      identicalArguments &= (stage.Contents.ColorOp == D3DTOP_SELECTARG1 && stage.Contents.AlphaOp == D3DTOP_SELECTARG1) || stage.Contents.ColorArg2 == stage.Contents.AlphaArg2;
-      identicalArguments &= (stage.Contents.ColorOp != D3DTOP_MULTIPLYADD && stage.Contents.ColorOp != D3DTOP_LERP && stage.Contents.AlphaOp != D3DTOP_MULTIPLYADD && stage.Contents.AlphaOp != D3DTOP_LERP) || stage.Contents.ColorArg0 == stage.Contents.AlphaArg0;
-      if (stage.Contents.AlphaOp == D3DTOP_DISABLE || (identicalOp && identicalArguments) || stage.Contents.ColorOp == D3DTOP_DOTPRODUCT3) {
-        if (bitPos <= bitBudget) {
-          optimizedTextureStages++;
-        }
-        continue;
-      }
-
-      activeAlphaMask |= 1u << i;
-
-      if (!writeBits(optimized, stage.Contents.AlphaOp, 5u, bitPos)) {
-        //Logger::warn(str::format("Failed at: Stage: ", i, ", AlphaOp"));
-        optimized = optimizedBeforeStage;
-        //break;
-      }
-
-      if (identicalArguments) {
-        activeAlphaIdenticalArgumentsMask |= 1u << i;
-        if (bitPos <= bitBudget) {
-          optimizedTextureStages++;
-        }
-        continue;
-      }
-
-      uint32_t argumentCount = 2u;
-      if (stage.Contents.AlphaOp == D3DTOP_SELECTARG1 || stage.Contents.AlphaOp == D3DTOP_SELECTARG1) {
-        argumentCount = 1u;
-      } else if (stage.Contents.AlphaOp == D3DTOP_MULTIPLYADD || stage.Contents.AlphaOp == D3DTOP_LERP) {
-        argumentCount = 3u;
-      }
-
-      uint32_t identicalArgumentMask = 0u;
-      identicalArgumentMask |= (stage.Contents.AlphaArg1 == stage.Contents.ColorArg1);
-      identicalArgumentMask |= (stage.Contents.AlphaArg2 == stage.Contents.ColorArg2) << 1u;
-      identicalArgumentMask |= (stage.Contents.AlphaArg0 == stage.Contents.ColorArg0) << 2u;
-
-      if (!writeBits(optimized, identicalArgumentMask, argumentCount, bitPos)) {
-        //Logger::warn(str::format("Failed at: Stage: ", i, ", AlphaOp"));
-        optimized = optimizedBeforeStage;
-        //break;
-      }
-
-      /*Logger::warn(str::format("Color calc: Op: ", stage.Contents.ColorOp, ", Arg1: ", stage.Contents.ColorArg1, ", Arg2: ", stage.Contents.ColorArg2, ", Arg0: ", stage.Contents.ColorArg0));
-      Logger::warn(str::format("Alpha calc: Op: ", stage.Contents.AlphaOp, ", Arg1: ", stage.Contents.AlphaArg1, ", Arg2: ", stage.Contents.AlphaArg2, ", Arg0: ", stage.Contents.AlphaArg0));
-      Logger::warn(str::format("Identical arguments mask: ", std::bitset<3>(identicalArgumentMask & ((1u << argumentCount) - 1u))));*/
-
-      if ((stage.Contents.AlphaOp == D3DTOP_MULTIPLYADD || stage.Contents.AlphaOp == D3DTOP_LERP) && !(identicalArgumentMask & 0b100)) {
-        stagesThatNeedArg0++;
-        // Only those two operations need arg0
-        if (!writeBits(optimized, repackArg(stage.Contents.AlphaArg0), 5u, bitPos)) {
-          //Logger::warn(str::format("Failed at: Stage: ", i, ", AlphaArg0"));
-          optimized = optimizedBeforeStage;
-          //break;
-        }
-      }
-
-      if (stage.Contents.AlphaOp != D3DTOP_SELECTARG2 && !(identicalArgumentMask & 0b1u)) {
-        if (!writeBits(optimized, repackArg(stage.Contents.AlphaArg1), 5u, bitPos)) {
-          //Logger::warn(str::format("Failed at: Stage: ", i, ", AlphaArg1"));
-          optimized = optimizedBeforeStage;
-          //break;
-        }
-      }
-
-      if (stage.Contents.AlphaOp != D3DTOP_SELECTARG1 && !(identicalArgumentMask & 0b10)) {
-        if (!writeBits(optimized, repackArg(stage.Contents.AlphaArg2), 5u, bitPos)) {
-          //Logger::warn(str::format("Failed at: Stage: ", i, ", AlphaArg2"));
-          optimized = optimizedBeforeStage;
-          //break;
-        }
-      }
-
-      if (bitPos <= bitBudget)
-        optimizedTextureStages++;
-
-      uint32_t stageSize = bitPos - stageStartBitPos;
-      if (bitPos <= bitBudget) {
-        Logger::warn(str::format("Stage: ", i, " Bits: ", stageSize, " ColorOp: ", stage.Contents.ColorOp, " AlphaOp: ", stage.Contents.AlphaOp));
+    bool dirty = m_specInfo.set<D3D9SpecConstantId::SpecFFTextureStageCount>(std::max(activeTextureStages, 1u) - 1u /* Subtract 1 to make it fit 3 bits */);
+    constexpr uint32_t perTextureStageSpecConsts = static_cast<uint32_t>(D3D9SpecConstantId::SpecFFTextureStage1ColorOp) - static_cast<uint32_t>(D3D9SpecConstantId::SpecFFTextureStage0ColorOp);
+    for (uint32_t i = 0; i < 4; i++) {
+      if (i <= activeTextureStages) {
+        dirty |= m_specInfo.set(static_cast<D3D9SpecConstantId>(D3D9SpecConstantId::SpecFFTextureStage0ColorOp + perTextureStageSpecConsts * i), key.Stages[i].Contents.ColorOp);
+        dirty |= m_specInfo.set(static_cast<D3D9SpecConstantId>(D3D9SpecConstantId::SpecFFTextureStage0ColorArg1 + perTextureStageSpecConsts * i), repackArg(key.Stages[i].Contents.ColorArg1));
+        dirty |= m_specInfo.set(static_cast<D3D9SpecConstantId>(D3D9SpecConstantId::SpecFFTextureStage0ColorArg2 + perTextureStageSpecConsts * i), repackArg(key.Stages[i].Contents.ColorArg2));
+        dirty |= m_specInfo.set(static_cast<D3D9SpecConstantId>(D3D9SpecConstantId::SpecFFTextureStage0AlphaOp + perTextureStageSpecConsts * i), key.Stages[i].Contents.AlphaOp);
+        dirty |= m_specInfo.set(static_cast<D3D9SpecConstantId>(D3D9SpecConstantId::SpecFFTextureStage0AlphaArg1 + perTextureStageSpecConsts * i), repackArg(key.Stages[i].Contents.AlphaArg1));
+        dirty |= m_specInfo.set(static_cast<D3D9SpecConstantId>(D3D9SpecConstantId::SpecFFTextureStage0AlphaArg2 + perTextureStageSpecConsts * i), repackArg(key.Stages[i].Contents.AlphaArg2));
+        dirty |= m_specInfo.set(static_cast<D3D9SpecConstantId>(D3D9SpecConstantId::SpecFFTextureStage0ResultIsTemp + perTextureStageSpecConsts * i), key.Stages[i].Contents.ResultIsTemp);
+      } else {
+        dirty |= m_specInfo.set(static_cast<D3D9SpecConstantId>(D3D9SpecConstantId::SpecFFTextureStage0ColorOp + perTextureStageSpecConsts * i), 0);
+        dirty |= m_specInfo.set(static_cast<D3D9SpecConstantId>(D3D9SpecConstantId::SpecFFTextureStage0ColorArg1 + perTextureStageSpecConsts * i), 0);
+        dirty |= m_specInfo.set(static_cast<D3D9SpecConstantId>(D3D9SpecConstantId::SpecFFTextureStage0ColorArg2 + perTextureStageSpecConsts * i), 0);
+        dirty |= m_specInfo.set(static_cast<D3D9SpecConstantId>(D3D9SpecConstantId::SpecFFTextureStage0AlphaOp + perTextureStageSpecConsts * i), 0);
+        dirty |= m_specInfo.set(static_cast<D3D9SpecConstantId>(D3D9SpecConstantId::SpecFFTextureStage0AlphaArg1 + perTextureStageSpecConsts * i), 0);
+        dirty |= m_specInfo.set(static_cast<D3D9SpecConstantId>(D3D9SpecConstantId::SpecFFTextureStage0AlphaArg2 + perTextureStageSpecConsts * i), 0);
+        dirty |= m_specInfo.set(static_cast<D3D9SpecConstantId>(D3D9SpecConstantId::SpecFFTextureStage0ResultIsTemp + perTextureStageSpecConsts * i), 0);
       }
     }
-
-    //optimizedTextureStages += std::min(activeTextureStages, bitBudget / 32u));
-
-    optimized |= ((std::min(7u, optimizedTextureStages)) & 0b111u) << 3u;
-    optimized |= ((activeAlphaMask) & 0b11111111u) << 6u;
-    optimized |= ((activeAlphaIdenticalArgumentsMask) & 0b11111111u) << (6u + activeAlphaMask);
-
-    Logger::warn(str::format("ALL OPTIMIZED? ", activeTextureStages == optimizedTextureStages, ", Required bit count: ", bitPos, ", Active texture stages: ", activeTextureStages, ", Optimized texture stages: ", optimizedTextureStages, ", Stages with alpha: ", std::bitset<8>(activeAlphaMask), ", Stages with alpha but the same arguments: ", std::bitset<8>(activeAlphaIdenticalArgumentsMask), ", Packed: ", optimized));
-
-    if (stagesThatNeedArg0 != 0) {
-      Logger::warn(str::format("Shader needs arg 0 in ", stagesThatNeedArg0, " stages"));
-    }
-
-    static uint32_t optimizedDrawsCount = 0;
-    static uint32_t optimizedDrawsSimpleSchemeCount = 0;
-    static uint32_t totalDrawsCount = 0;
-    totalDrawsCount++;
-    if (activeTextureStages == optimizedTextureStages)
-      optimizedDrawsCount++;
-    if (activeTextureStages <= (bitBudget / 32u) && stagesThatNeedArg0 == 0)
-      optimizedDrawsSimpleSchemeCount++;
-
-    Logger::warn(str::format("All draws: ", totalDrawsCount, " optimizedDraws: ", optimizedDrawsCount, " optimized rate: ", float(optimizedDrawsCount) / float(totalDrawsCount) * 100.0f, " optimized rate with simple scheme: ", float(optimizedDrawsSimpleSchemeCount) / float(totalDrawsCount) * 100.0f));
-
+    if (dirty)
+      m_flags.set(D3D9DeviceFlag::DirtySpecializationEntries);
 
 
     // Constants
