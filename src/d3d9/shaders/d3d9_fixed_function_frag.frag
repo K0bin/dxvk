@@ -206,6 +206,59 @@ uint SpecPointMode() {
 }
 
 
+
+
+
+
+uint SpecDword(uint index) {
+    switch (index) {
+        case 0:
+            return SpecConstDword0;
+        case 1:
+            return SpecConstDword1;
+        case 2:
+            return SpecConstDword2;
+        case 3:
+            return SpecConstDword3;
+        case 4:
+            return SpecConstDword4;
+        case 5:
+            return SpecConstDword5;
+        case 6:
+            return SpecConstDword6;
+        case 7:
+            return SpecConstDword7;
+        case 8:
+            return SpecConstDword8;
+        case 9:
+            return SpecConstDword9;
+        case 10:
+            return SpecConstDword10;
+        case 11:
+            return SpecConstDword11;
+        case 12:
+            return SpecConstDword12;
+    }
+}
+
+uint SpecExtract(uint dwordOffset, uint bitPos, uint bits) {
+    uint firstDwordIdx = dwordOffset + bitPos / 32u;
+    uint firstDword = SpecDword(firstDwordIdx);
+    uint bitPosInFirstDword = bitPos - (bitPos / 32u) * 32u;
+    uint bitsInFirstDword = min(32u - bitPosInFirstDword, bits);
+    uint value = bitfieldExtract(firstDword, int(bitPosInFirstDword), int(bitsInFirstDword));
+    uint bitsInSecondDword = bits - bitPosInFirstDword;
+    if (bitsInSecondDword != 0u) {
+        uint secondDwordIdx = dwordOffset + (bitPos + bits - 1u) / 32;
+        uint secondDword = SpecDword(secondDwordIdx);
+        value |= bitfieldExtract(secondDword, 0, int(bitsInSecondDword)) << bitsInFirstDword;
+    }
+    return value;
+}
+
+
+
+
 vec4 DoFixedFunctionFog(vec4 vPos, vec4 oColor) {
     vec3 fogColor = vec3(rs.fogColor[0], rs.fogColor[1], rs.fogColor[2]);
     float fogScale = rs.fogScale;
