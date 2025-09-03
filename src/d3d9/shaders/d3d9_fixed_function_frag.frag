@@ -645,14 +645,21 @@ void main() {
         if (colorOp == D3DTOP_DISABLE)
             break;
 
+        uint alphaOp = isStageOptimized ? SpecTextureStageAlphaOp(i) : AlphaOp(i);
+
+        bool usesArg0 = !isStageOptimized
+            || colorOp == D3DTOP_LERP
+            || colorOp == D3DTOP_MULTIPLYADD
+            || alphaOp == D3DTOP_LERP
+            || alphaOp == D3DTOP_MULTIPLYADD;
+
         uint colorArgs[TextureArgCount] = {
-            ColorArg0(i),
+            usesArg0 ? ColorArg0(i) : D3DTA_CONSTANT,
             isStageOptimized ? SpecTextureStageColorArg(i, 1u) : ColorArg1(i),
             isStageOptimized ? SpecTextureStageColorArg(i, 2u) : ColorArg2(i)
         };
-        uint alphaOp = isStageOptimized ? SpecTextureStageAlphaOp(i) : AlphaOp(i);
         uint alphaArgs[TextureArgCount] = {
-            AlphaArg0(i),
+            usesArg0 ? AlphaArg0(i) : D3DTA_CONSTANT,
             isStageOptimized ? SpecTextureStageAlphaArg(i, 1u) : AlphaArg1(i),
             isStageOptimized ? SpecTextureStageAlphaArg(i, 2u) : AlphaArg2(i)
         };
