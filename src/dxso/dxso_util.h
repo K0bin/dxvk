@@ -57,6 +57,6 @@ namespace dxvk {
     return getSWVPBufferSlot() + 1;
   }
 
-  uint32_t RegisterLinkerSlot(DxsoSemantic semantic);
+  uint32_t RegisterLinkerSlot(DxsoSemantic semantic, bool isSM3 = false);
 
 }

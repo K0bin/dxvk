@@ -26,13 +26,46 @@ namespace dxvk {
   // We set fixed locations for the outputs that fixed function vertex shaders
   // can produce so the uber shader doesn't need to be patched at runtime.
 
-  uint32_t RegisterLinkerSlot(DxsoSemantic semantic) {
+  std::array<uint32_t, 14> g_semanticCounts = {};
+
+  uint32_t RegisterLinkerSlot(DxsoSemantic semantic, bool isSM3) {
     // Lock, because games could be trying
     // to make multiple shaders at a time.
     std::lock_guard<dxvk::mutex> lock(g_linkerSlotMutex);
 
     // Need to choose a slot that maps nicely and similarly
     // between vertex and pixel shaders
+
+    if (isSM3) {
+      g_semanticCounts[static_cast<uint32_t>(semantic.usage)] = std::max(g_semanticCounts[static_cast<uint32_t>(semantic.usage)], semantic.usageIndex + 1);
+
+      auto usageToString = [](DxsoUsage usage) {
+        switch (usage) {
+          case DxsoUsage::Position: return "Position";
+          case DxsoUsage::BlendWeight: return "BlendWeight";
+          case DxsoUsage::BlendIndices: return "BlendIndices";
+          case DxsoUsage::Normal: return "Normal";
+          case DxsoUsage::PointSize: return "PointSize";
+          case DxsoUsage::Texcoord: return "Texcoord";
+          case DxsoUsage::Tangent: return "Tangent";
+          case DxsoUsage::Binormal: return "Binormal";
+          case DxsoUsage::TessFactor: return "TessFactor";
+          case DxsoUsage::PositionT: return "PositionT";
+          case DxsoUsage::Color: return "Color";
+          case DxsoUsage::Fog: return "Fog";
+          case DxsoUsage::Depth: return "Depth";
+          case DxsoUsage::Sample: return "Sample";
+          default: return "Unknown";
+        }
+      };
+
+      Logger::warn("============================");
+      Logger::warn(str::format("Registered semantic. Usage: ", usageToString(semantic.usage), ", Index: ", semantic.usageIndex));
+      for (uint32_t i = 0; i < g_semanticCounts.size(); i++) {
+        if (g_semanticCounts[i] == 0) continue;
+        Logger::warn(str::format("Usage: ", usageToString(static_cast<DxsoUsage>(i)), ", Highest index: ", g_semanticCounts[i] - 1));
+      }
+    }
 
     // Find or map a slot.
     uint32_t slot = g_linkerSlotCount;

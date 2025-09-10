@@ -662,7 +662,7 @@ namespace dxvk {
            || (input  && pixel ) ) {
       // Don't register the slot if it belongs to a builtin
       if (!builtin)
-        slot = RegisterLinkerSlot(semantic);
+        slot = RegisterLinkerSlot(semantic, m_programInfo.majorVersion() == 3);
     }
     else { //if (!input && pixel)
       // We want to make the output slot the same as the
@@ -1147,7 +1147,7 @@ namespace dxvk {
               bool input = m_programInfo.type() == DxsoProgramType::PixelShader;
               DxsoSemantic semantic = DxsoSemantic{ DxsoUsage::Fog, 0 };
 
-              uint32_t slot = RegisterLinkerSlot(semantic);
+              uint32_t slot = RegisterLinkerSlot(semantic, m_programInfo.majorVersion() == 3);
 
               uint32_t& slots = input
                 ? m_inputMask
@@ -3483,7 +3483,7 @@ void DxsoCompiler::emitControlFlowGenericLoop(
       info.type.alength = 1;
       info.sclass       = spv::StorageClassOutput;
 
-      uint32_t slot = RegisterLinkerSlot(semantic);
+      uint32_t slot = RegisterLinkerSlot(semantic, m_programInfo.majorVersion() == 3);
 
       uint32_t value;
 
