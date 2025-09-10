@@ -201,6 +201,80 @@ uint specPointMode() {
     return bitfieldExtract(dword, 29, 2);
 }
 
+uint specDword(uint index) {
+    switch (index) {
+        case 0:
+            return SpecConstDword0;
+        case 1:
+            return SpecConstDword1;
+        case 2:
+            return SpecConstDword2;
+        case 3:
+            return SpecConstDword3;
+        case 4:
+            return SpecConstDword4;
+        case 5:
+            return SpecConstDword5;
+        case 6:
+            return SpecConstDword6;
+        case 7:
+            return SpecConstDword7;
+        case 8:
+            return SpecConstDword8;
+        case 9:
+            return SpecConstDword9;
+        case 10:
+            return SpecConstDword10;
+        case 11:
+            return SpecConstDword11;
+        case 12:
+            return SpecConstDword12;
+        default:
+            return 0;
+    }
+}
+
+uint specActiveTextureStages() {
+    uint dword = specIsOptimized() ? SpecConstDword4 : dynamicSpecConstDword[4];
+    return bitfieldExtract(dword, 16, 3) + 1u;
+}
+
+bool specGlobalSpecularEnabled() {
+    uint dword = specIsOptimized() ? SpecConstDword6 : dynamicSpecConstDword[6];
+    return bitfieldExtract(dword, 31, 1) != 0;
+}
+
+uint specTextureStageColorOp(uint textureStage) {
+    uint dword = specIsOptimized() ? specDword(6 + textureStage) : dynamicSpecConstDword[6 + textureStage];
+    return bitfieldExtract(dword, 0, 5);
+}
+
+uint specTextureStageColorArg(uint textureStage, uint arg) {
+    uint dword = specIsOptimized() ? specDword(6 + textureStage) : dynamicSpecConstDword[6 + textureStage];
+    uint value = bitfieldExtract(dword, 5 + 5 * int(arg - 1u), 5);
+    // Move the flags by 1 bit. 0x18 = 0b11000
+    value = (value & ~0x18) | ((value & 0x18) << 1u);
+    return value;
+}
+
+uint specTextureStageAlphaOp(uint textureStage) {
+    uint dword = specIsOptimized() ? specDword(6 + textureStage) : dynamicSpecConstDword[6 + textureStage];
+    return bitfieldExtract(dword, 15, 5);
+}
+
+uint specTextureStageAlphaArg(uint textureStage, uint arg) {
+    uint dword = specIsOptimized() ? specDword(6 + textureStage) : dynamicSpecConstDword[6 + textureStage];
+    uint value = bitfieldExtract(dword, 20 + 5 * int(arg - 1u), 5);
+    // Move the flags by 1 bit. 0x18 = 0b11000
+    value = (value & ~0x18) | ((value & 0x18) << 1u);
+    return value;
+}
+
+bool specTextureStageResultIsTemp(uint textureStage) {
+    uint dword = specIsOptimized() ? specDword(6 + textureStage) : dynamicSpecConstDword[6 + textureStage];
+    return bitfieldExtract(dword, 30, 1) != 0;
+}
+
 
 vec4 calculateFog(vec4 vPos, vec4 oColor) {
     vec3 fogColor = vec3(rs.fogColor[0], rs.fogColor[1], rs.fogColor[2]);
@@ -231,7 +305,7 @@ vec4 calculateFog(vec4 vPos, vec4 oColor) {
 
         // 1 / (e^[d * density])^2
         case D3DFOG_EXP2:
-         // 1 / (e^[d * density])
+        // 1 / (e^[d * density])
         case D3DFOG_EXP:
             fogFactor = depth * fogDensity;
 
@@ -297,7 +371,8 @@ vec4 sampleTexture(uint stage, vec4 texcoord, vec4 previousStageTextureVal) {
 
     uint previousStageColorOp = 0;
     if (stage > 0) {
-        previousStageColorOp = colorOp(stage - 1);
+        bool isPreviousStageOptimized = specIsOptimized() && stage - 1 < SpecConstOptimizedTextureStageCount;
+        previousStageColorOp = isPreviousStageOptimized ? specTextureStageColorOp(stage - 1) : colorOp(stage - 1);
     }
 
     if (stage != 0 && (
@@ -562,31 +637,38 @@ struct TextureStageState {
 };
 
 TextureStageState runTextureStage(uint stage, TextureStageState state) {
-    const uint colorOp = colorOp(stage);
+    if (specActiveTextureStages() <= stage) {
+        return state;
+    }
+
+    const bool isStageOptimized = specIsOptimized() && stage < SpecConstOptimizedTextureStageCount;
+
+    const uint colorOp = isStageOptimized ? specTextureStageColorOp(stage) : colorOp(stage);
 
     // This cancels all subsequent stages.
     if (colorOp == D3DTOP_DISABLE)
         return state;
 
-    const bool resultIsTemp = resultIsTemp(stage);
+    const bool resultIsTemp = isStageOptimized ? specTextureStageResultIsTemp(stage) : resultIsTemp(stage);
     vec4 dst = resultIsTemp ? state.temp : state.current;
 
-    const uint alphaOp = alphaOp(stage);
+    const uint alphaOp = isStageOptimized ? specTextureStageAlphaOp(stage) : alphaOp(stage);
 
-    const bool usesArg0 = colorOp == D3DTOP_LERP
+    const bool usesArg0 = !isStageOptimized
+        || colorOp == D3DTOP_LERP
         || colorOp == D3DTOP_MULTIPLYADD
         || alphaOp == D3DTOP_LERP
         || alphaOp == D3DTOP_MULTIPLYADD;
 
     const uint colorArgs[TextureArgCount] = {
         usesArg0 ? colorArg0(stage) : D3DTA_CONSTANT,
-        colorArg1(stage),
-        colorArg2(stage)
+        isStageOptimized ? specTextureStageColorArg(stage, 1u) : colorArg1(stage),
+        isStageOptimized ? specTextureStageColorArg(stage, 2u) : colorArg2(stage)
     };
     const uint alphaArgs[TextureArgCount] = {
         usesArg0 ? alphaArg0(stage) : D3DTA_CONSTANT,
-        alphaArg1(stage),
-        alphaArg2(stage)
+        isStageOptimized ? specTextureStageAlphaArg(stage, 1u) : alphaArg1(stage),
+        isStageOptimized ? specTextureStageAlphaArg(stage, 2u) : alphaArg2(stage)
     };
 
     vec4 textureVal = vec4(0.0);
