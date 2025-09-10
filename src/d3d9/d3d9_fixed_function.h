@@ -159,7 +159,8 @@ namespace dxvk {
       const D3D9FFShaderKeyFS&    Key);
 
     D3D9FFShader(
-            D3D9DeviceEx*         pDevice);
+            D3D9DeviceEx*         pDevice,
+            DxsoProgramType       ProgramType);
 
     template <typename T>
     void Dump(D3D9DeviceEx* pDevice, const T& Key, const std::string& Name);
@@ -195,6 +196,10 @@ namespace dxvk {
       return m_vsUbershader;
     }
 
+    const D3D9FFShader& GetFSUbershaderModule() const {
+      return m_fsUbershader;
+    }
+
     UINT GetVSCount() const {
       return m_vsModules.size();
     }
@@ -216,6 +221,7 @@ namespace dxvk {
       D3D9FFShaderKeyHash, D3D9FFShaderKeyEq> m_fsModules;
 
     D3D9FFShader m_vsUbershader;
+    D3D9FFShader m_fsUbershader;
 
   };
 
