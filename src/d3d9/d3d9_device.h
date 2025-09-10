@@ -1488,6 +1488,7 @@ namespace dxvk {
     void UpdateFogModeSpec(bool fogEnabled, D3DFOGMODE vertexFogMode, D3DFOGMODE pixelFogMode);
 
     D3D9FFShaderKeyVS BuildFFKeyVS(D3D9FF_VertexBlendMode vertexBlendMode, bool indexedVertexBlend) const;
+    D3D9FFShaderKeyFS BuildFFKeyFS() const;
 
     void BindSpecConstants();
 
