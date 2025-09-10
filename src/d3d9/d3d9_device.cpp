@@ -8155,7 +8155,7 @@ namespace dxvk {
       data->InverseView  = transpose(inverse(m_state.transforms[GetTransformIndex(D3DTS_VIEW)]));
       data->Projection   = m_state.transforms[GetTransformIndex(D3DTS_PROJECTION)];
 
-      for (uint32_t i = 0; i < data->TexcoordMatrices.size(); i++)
+      for (uint32_t i = 0; i < caps::TextureStageCount; i++)
         data->TexcoordMatrices[i] = m_state.transforms[GetTransformIndex(D3DTS_TEXTURE0) + i];
 
       data->ViewportInfo = m_viewportInfo;
