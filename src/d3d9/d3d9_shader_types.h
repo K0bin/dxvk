@@ -230,7 +230,7 @@ struct D3D9FFShaderKeyVSData {
 
       uint32_t LightCount : 4;
 
-      uint32_t TexcoordDeclMask : 24;
+      uint32_t VertexTexcoordDeclMask : 24;
       uint32_t VertexHasFog : 1;
 
       uint32_t VertexBlendMode    : 2;

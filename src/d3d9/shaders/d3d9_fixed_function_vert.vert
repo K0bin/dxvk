@@ -113,7 +113,7 @@ spirv_instruction(set = "GLSL.std.450", id = 81) vec4 spvNClamp(vec4, vec4, vec4
 uint texcoordIndices() {
     return bitfieldExtract(data.Key.Primitive[0], 0, 24);
 }
-bool hasPositionT() {
+bool vertexHasPositionT() {
     return bitfieldExtract(data.Key.Primitive[0], 24, 1) != 0;
 }
 bool vertexHasColor0() {
@@ -161,7 +161,7 @@ uint lightCount() {
     return bitfieldExtract(data.Key.Primitive[2], 24, 4);
 }
 
-uint texcoordDeclMask() {
+uint vertexTexcoordDeclMask() {
     return bitfieldExtract(data.Key.Primitive[3], 0, 24);
 }
 bool vertexHasFog() {
@@ -265,7 +265,7 @@ uint specDrefScaling() {
 
 
 
-float calculateFog(vec4 vPos, vec4 oColor) {
+float calculateFog(vec4 vPos) {
     vec4 color1 = vertexHasColor1() ? in_Color1 : vec4(0.0);
 
     vec4 specular = color1;
@@ -291,7 +291,7 @@ float calculateFog(vec4 vPos, vec4 oColor) {
         depth = vertexHasFog() ? in_Fog : abs(z);
     }
     float fogFactor;
-    if (hasPositionT()) {
+    if (vertexHasPositionT()) {
         fogFactor = hasSpecular ? specular.w : 1.0;
     } else {
         switch (fogMode) {
@@ -395,7 +395,7 @@ void main() {
         normal = mix(normal, normal1, data.TweenFactor);
     }
 
-    if (!hasPositionT()) {
+    if (!vertexHasPositionT()) {
         if (blendMode() == D3D9FF_VertexBlendMode_Normal) {
             float blendWeightRemaining = 1.0;
             vec4 vtxSum = vec4(0.0);
@@ -480,7 +480,7 @@ void main() {
         // 0b111 = 7
         uint inputIndex = (texcoordIndices() >> (i * 3)) & 7;
         uint inputFlags = (texcoordFlags() >> (i * 3)) & 7;
-        uint texcoordCount = (texcoordDeclMask() >> (inputIndex * 3)) & 7;
+        uint texcoordCount = (vertexTexcoordDeclMask() >> (inputIndex * 3)) & 7;
 
         vec4 transformed;
 
@@ -505,7 +505,7 @@ void main() {
                     transformed.w = 0.0;
                 }
 
-                if (applyTransform && !hasPositionT()) {
+                if (applyTransform && !vertexHasPositionT()) {
                     /*This doesn't happen every time and I cannot figure out the difference between when it does and doesn't.
                     Keep it disabled for now, it's more likely that games rely on the zero texcoord than the weird 1 here.
                     if (texcoordCount <= 1) {
@@ -572,7 +572,7 @@ void main() {
             }
         }
 
-        if (applyTransform && !hasPositionT()) {
+        if (applyTransform && !vertexHasPositionT()) {
             transformed = transformed * data.TexcoordMatrices[i];
         }
 
@@ -722,7 +722,7 @@ void main() {
         out_Color1 = vertexHasColor1() ? in_Color1 : vec4(0.0);
     }
 
-    out_Fog = calculateFog(vtx, vec4(0.0));
+    out_Fog = calculateFog(vtx);
 
     gl_PointSize = calculatePointSize(vtx);
 
