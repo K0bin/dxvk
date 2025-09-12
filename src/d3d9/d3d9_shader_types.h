@@ -241,7 +241,7 @@ struct D3D9FFShaderKeyVSData {
     } Contents;
 #endif
 
-    uint32_t Primitive[5];
+    uint32_t Primitive[4];
 
 #ifndef GLSL
   };
