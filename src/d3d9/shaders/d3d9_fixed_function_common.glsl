@@ -1,6 +1,7 @@
 const float FloatMaxValue = 340282346638528859811704183484516925440.0;
 
 const uint TextureStageCount = 8;
+const uint SpecConstOptimizedTextureStageCount = 4;
 
 #define D3DFOGMODE uint
 const uint D3DFOG_NONE   = 0;
@@ -102,7 +103,8 @@ const uint SpecFFTextureStage3AlphaOp = 42;
 const uint SpecFFTextureStage3AlphaArg1 = 43;
 const uint SpecFFTextureStage3AlphaArg2 = 44;
 const uint SpecFFTextureStage3ResultIsTemp = 45;
-const uint SpecConstantCount = 46;
+const uint SpecFFTextureStageTexcoordSameAs = 46;
+const uint SpecConstantCount = 47;
 
 struct BitfieldPosition {
     uint dwordOffset;
@@ -168,6 +170,8 @@ BitfieldPosition SpecConstLayout[SpecConstantCount] = {
     { 9, 20, 5 },  // FFTextureStage3AlphaArg1
     { 9, 25, 5 },  // FFTextureStage3AlphaArg2
     { 9, 30, 1 },  // FFTextureStage3ResultIsTemp
+
+    { 10, 0, 12 }, // FFTextureStageTexcoordSameAs
 };
 
 bool specIsOptimized() {

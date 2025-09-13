@@ -452,6 +452,16 @@ void main() {
 
     for (uint i = 0; i < TextureStageCount; i++) {
         // 0b111 = 7
+
+        if (i < SpecConstOptimizedTextureStageCount) {
+            uint sameAsPrevious = specUint(SpecFFTextureStageTexcoordSameAs, i * 3u, 3u);
+            if (i != 0u && sameAsPrevious != 0u) {
+              // Decrease by 1 because 0 represents that there is no match.
+                sameAsPrevious--;
+                transformedTexCoords[i] = transformedTexCoords[sameAsPrevious];
+            }
+        }
+
         uint inputIndex = (texcoordIndices() >> (i * 3)) & 7;
         uint inputFlags = (texcoordFlags() >> (i * 3)) & 7;
         uint texcoordCount = (vertexTexcoordDeclMask() >> (inputIndex * 3)) & 7;

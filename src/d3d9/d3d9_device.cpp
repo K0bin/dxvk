@@ -3563,6 +3563,9 @@ namespace dxvk {
       BindShader<DxsoProgramTypes::VertexShader>(GetCommonShader(shader));
 
       UpdateTextureTypeMismatchesForShader(newShader, VSShaderMasks().samplerMask, FirstVSSamplerSlot);
+
+      if (m_specInfo.set<SpecFFTextureStageTexcoordSameAs>(0))
+        m_flags.set(D3D9DeviceFlag::DirtySpecializationEntries);
     } else if (wasUsingProgrammableVS) {
       m_flags.set(D3D9DeviceFlag::DirtyFFVertexShader);
       BindFFUbershader<DxsoProgramType::VertexShader>();
@@ -8142,43 +8145,6 @@ namespace dxvk {
     bool hasBlendWeight  = m_state.vertexDecl != nullptr && m_state.vertexDecl->TestFlag(D3D9VertexDeclFlag::HasBlendWeight);
     bool hasBlendIndices = m_state.vertexDecl != nullptr && m_state.vertexDecl->TestFlag(D3D9VertexDeclFlag::HasBlendIndices);
 
-    bool indexedVertexBlend = hasBlendIndices && m_state.renderStates[D3DRS_INDEXEDVERTEXBLENDENABLE];
-    D3D9FF_VertexBlendMode vertexBlendMode = D3D9FF_VertexBlendMode_Disabled;
-
-    if (m_state.renderStates[D3DRS_VERTEXBLEND] != D3DVBF_DISABLE && !hasPositionT) {
-      vertexBlendMode = m_state.renderStates[D3DRS_VERTEXBLEND] == D3DVBF_TWEENING
-        ? D3D9FF_VertexBlendMode_Tween
-        : D3D9FF_VertexBlendMode_Normal;
-
-      if (m_state.renderStates[D3DRS_VERTEXBLEND] != D3DVBF_0WEIGHTS) {
-        if (!hasBlendWeight)
-          vertexBlendMode = D3D9FF_VertexBlendMode_Disabled;
-      }
-      else if (!indexedVertexBlend)
-        vertexBlendMode = D3D9FF_VertexBlendMode_Disabled;
-    }
-
-    // Shader...
-    const bool useUbershader = m_d3d9Options.ffUbershaderVS;
-
-    if (useUbershader && m_flags.test(D3D9DeviceFlag::DirtyFFVertexShader)) {
-      m_flags.clr(D3D9DeviceFlag::DirtyFFVertexShader);
-      m_flags.set(D3D9DeviceFlag::DirtyFFVertexData);
-    } else if (m_flags.test(D3D9DeviceFlag::DirtyFFVertexShader)) {
-      m_flags.clr(D3D9DeviceFlag::DirtyFFVertexShader);
-
-      D3D9FFShaderKeyVS key = BuildFFKeyVS(vertexBlendMode, indexedVertexBlend);
-
-      EmitCs([
-        this,
-        cKey     = key,
-       &cShaders = m_ffModules
-      ](DxvkContext* ctx) {
-        auto shader = cShaders.GetShaderModule(this, cKey);
-        ctx->bindShader<VK_SHADER_STAGE_VERTEX_BIT>(shader.GetShader());
-      });
-    }
-
     // Viewport...
     if (hasPositionT && (m_flags.test(D3D9DeviceFlag::DirtyFFViewport) || m_ffZTest != IsZTestEnabled())) {
       m_flags.clr(D3D9DeviceFlag::DirtyFFViewport);
@@ -8208,6 +8174,73 @@ namespace dxvk {
       m_viewportInfo.inverseOffset = m_viewportInfo.inverseOffset * m_viewportInfo.inverseExtent;
 
       m_viewportInfo.inverseOffset = m_viewportInfo.inverseOffset + Vector4(-1.0f, 1.0f, 0.0f, 0.0f);
+    }
+
+
+    if (!m_flags.test(D3D9DeviceFlag::DirtyFFVertexShader) && !m_flags.test(D3D9DeviceFlag::DirtyFFVertexData)) {
+      return;
+    }
+
+    bool indexedVertexBlend = hasBlendIndices && m_state.renderStates[D3DRS_INDEXEDVERTEXBLENDENABLE];
+    D3D9FF_VertexBlendMode vertexBlendMode = D3D9FF_VertexBlendMode_Disabled;
+
+    if (m_state.renderStates[D3DRS_VERTEXBLEND] != D3DVBF_DISABLE && !hasPositionT) {
+      vertexBlendMode = m_state.renderStates[D3DRS_VERTEXBLEND] == D3DVBF_TWEENING
+        ? D3D9FF_VertexBlendMode_Tween
+        : D3D9FF_VertexBlendMode_Normal;
+
+      if (m_state.renderStates[D3DRS_VERTEXBLEND] != D3DVBF_0WEIGHTS) {
+        if (!hasBlendWeight)
+          vertexBlendMode = D3D9FF_VertexBlendMode_Disabled;
+      }
+      else if (!indexedVertexBlend)
+        vertexBlendMode = D3D9FF_VertexBlendMode_Disabled;
+    }
+
+    D3D9FFShaderKeyVS key = BuildFFKeyVS(vertexBlendMode, indexedVertexBlend);
+
+    uint32_t sameAsPreviousPacked = 0u;
+    for (uint32_t i = 1; i < 4; i++) {
+      uint32_t flags = (key.Data.Contents.TransformFlags >> (i * 3u)) & 0b111;
+      bool applyTransform = flags > D3DTTFF_COUNT1 && flags <= D3DTTFF_COUNT4;
+
+      if (applyTransform && !hasPositionT)
+        continue;
+
+      for (int32_t j = i - 1; j >= 0; j--) {
+        bool same = true;
+        same &= ((key.Data.Contents.TexcoordIndices >> (i * 3u)) & 0b111) == ((key.Data.Contents.TexcoordIndices >> (uint32_t(j) * 3u)) & 0b111);
+        same &= ((key.Data.Contents.TransformFlags >> (i * 3u)) & 0b111) == ((key.Data.Contents.TransformFlags >> (uint32_t(j) * 3u)) & 0b111);
+        same &= ((key.Data.Contents.TexcoordFlags >> (i * 3u)) & 0b111) == ((key.Data.Contents.TexcoordFlags >> (uint32_t(j) * 3u)) & 0b111);
+        same &= ((key.Data.Contents.VertexTexcoordDeclMask >> (i * 3u)) & 0b111) == ((key.Data.Contents.VertexTexcoordDeclMask >> (uint32_t(j) * 3u)) & 0b111);
+
+        if (same) {
+          // Increase by 1 because the max value for j is 6 and 0 should represent that there is no match.
+          sameAsPreviousPacked |= ((j + 1) & 0b111) << (i * 3u);
+          break;
+        }
+      }
+    }
+    if (m_specInfo.set<SpecFFTextureStageTexcoordSameAs>(sameAsPreviousPacked))
+      m_flags.set(D3D9DeviceFlag::DirtySpecializationEntries);
+
+    // Shader...
+    const bool useUbershader = m_d3d9Options.ffUbershaderVS;
+
+    if (useUbershader && m_flags.test(D3D9DeviceFlag::DirtyFFVertexShader)) {
+      m_flags.clr(D3D9DeviceFlag::DirtyFFVertexShader);
+      m_flags.set(D3D9DeviceFlag::DirtyFFVertexData);
+    } else if (m_flags.test(D3D9DeviceFlag::DirtyFFVertexShader)) {
+      m_flags.clr(D3D9DeviceFlag::DirtyFFVertexShader);
+
+      EmitCs([
+        this,
+        cKey     = key,
+       &cShaders = m_ffModules
+      ](DxvkContext* ctx) {
+        auto shader = cShaders.GetShaderModule(this, cKey);
+        ctx->bindShader<VK_SHADER_STAGE_VERTEX_BIT>(shader.GetShader());
+      });
     }
 
     // Constants...
@@ -8244,7 +8277,7 @@ namespace dxvk {
       data->Material = m_state.material;
       data->TweenFactor = bit::cast<float>(m_state.renderStates[D3DRS_TWEENFACTOR]);
       if (useUbershader) {
-        data->Key = BuildFFKeyVS(vertexBlendMode, indexedVertexBlend).Data;
+        data->Key = key.Data;
       }
     }
 

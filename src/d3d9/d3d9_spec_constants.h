@@ -69,6 +69,8 @@ namespace dxvk {
     SpecFFTextureStage3AlphaArg2, // Range: 0 -> 6 + 2 flags  | Bits: 5
     SpecFFTextureStage3ResultIsTemp, // Bool                  | Bits: 1
 
+    SpecFFTextureStageTexcoordSameAs, // 8x Range 0 -> 7      | Bits: 24
+
     SpecConstantCount,
   };
 
@@ -84,7 +86,7 @@ namespace dxvk {
 
   struct D3D9SpecializationInfo {
     // Spec const word 0 determines whether the other spec constants are used rather than the spec const UBO
-    static constexpr uint32_t MaxSpecDwords = 10;
+    static constexpr uint32_t MaxSpecDwords = 11;
 
     static constexpr size_t UBOSize = MaxSpecDwords * sizeof(uint32_t);
 
@@ -147,6 +149,8 @@ namespace dxvk {
       { 9, 20, 5 },  // FFTextureStage3AlphaArg1
       { 9, 25, 5 },  // FFTextureStage3AlphaArg2
       { 9, 30, 1 },  // FFTextureStage3ResultIsTemp
+
+      { 10, 0, 12 }, // FFTextureStageTexcoordSameAs
     }};
 
     template <D3D9SpecConstantId Id, typename T>
