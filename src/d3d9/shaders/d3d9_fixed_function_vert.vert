@@ -459,6 +459,7 @@ void main() {
               // Decrease by 1 because 0 represents that there is no match.
                 sameAsPrevious--;
                 transformedTexCoords[i] = transformedTexCoords[sameAsPrevious];
+                continue;
             }
         }
 

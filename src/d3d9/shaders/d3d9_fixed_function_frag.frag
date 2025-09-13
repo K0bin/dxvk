@@ -25,7 +25,6 @@ layout(location = 11) in float in_Fog;
 layout(location = 0) out vec4 out_Color0;
 
 
-const uint SpecConstOptimizedTextureStageCount = 4;
 const uint TextureArgCount = 3;
 const uint MaxSharedPushDataSize = 64;
 
@@ -695,6 +694,21 @@ void main() {
     state.current = calculateFog(gl_FragCoord, state.current);
 
     out_Color0 = state.current;
+
+    /*uint sameCount = 0;
+    for (uint i = 0; i < SpecConstOptimizedTextureStageCount; i++) {
+        uint sameAsPrevious = specUint(SpecFFTextureStageTexcoordSameAs, i * 3u, 3u);
+        if (sameAsPrevious != 0) {
+            sameCount++;
+        }
+    }
+    if (sameCount >= 3) {
+        out_Color0.r = 1.0;
+    } else if (sameCount >= 2) {
+        out_Color0.g = 1.0;
+    } else if (sameCount >= 1) {
+        out_Color0.b = 1.0;
+    }*/
 
     alphaTest();
 }
