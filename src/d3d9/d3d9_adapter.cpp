@@ -365,6 +365,8 @@ namespace dxvk {
     // TODO: Actually care about what the adapter supports here.
     // ^ For Intel and older cards most likely here.
 
+    memset(pCaps, 0, sizeof(D3DCAPS9));
+
     // Device Type
     pCaps->DeviceType               = DeviceType;
     // Adapter Id

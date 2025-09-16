@@ -388,6 +388,8 @@ namespace dxvk {
     HRESULT SetVertexBoolBitfield(uint32_t idx, uint32_t mask, uint32_t bits);
     HRESULT SetPixelBoolBitfield (uint32_t idx, uint32_t mask, uint32_t bits);
 
+    bool m_hasWaveTexture = false;
+
   private:
 
     void CapturePixelRenderStates();

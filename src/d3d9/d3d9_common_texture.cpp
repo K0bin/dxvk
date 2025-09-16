@@ -95,10 +95,37 @@ namespace dxvk {
       m_data = m_device->GetAllocator()->Alloc(m_totalSize);
     else if (m_mapMode != D3D9_COMMON_TEXTURE_MAP_MODE_NONE && m_desc.Pool != D3DPOOL_DEFAULT)
       CreateBuffer(false);
+
+    if (CouldBeWaveTexture(this)) {
+      Logger::warn(str::format("Created wave texture ", reinterpret_cast<size_t>(this)));
+    }
+
+    Logger::warn(str::format(
+          "D3D9: Created texture:",
+          "\n Ptr: ", reinterpret_cast<size_t>(this),
+          "\n  Type:    0x", std::hex, ResourceType, std::dec,
+          "\n  Format:  ", m_desc.Format,
+          "\n  Extent:  ", m_desc.Width,
+                      "x", m_desc.Height,
+                      "x", m_desc.Depth,
+          "\n  Samples: ", m_desc.MultiSample,
+          "\n  Layers:  ", m_desc.ArraySize,
+          "\n  Levels:  ", m_desc.MipLevels,
+          "\n  Usage:   0x", std::hex, m_desc.Usage, std::dec,
+          "\n  Pool:    0x", std::hex, m_desc.Pool, std::dec));
   }
+
+  /*const Rc<DxvkImage>& D3D9CommonTexture::GetImage() const {
+    Logger::warn(str::format("Common texture ptr: ", reinterpret_cast<size_t>(this), ", GetImage. Img ptr: ", reinterpret_cast<size_t>(m_image.ptr())));
+    return m_image;
+  }*/
 
 
   D3D9CommonTexture::~D3D9CommonTexture() {
+    //if (CouldBeWaveTexture(this)) {
+      Logger::warn(str::format("Destroyed texture ", reinterpret_cast<size_t>(this)));
+    //}
+
     if (m_size != 0)
       m_device->ChangeReportedMemory(m_size);
 

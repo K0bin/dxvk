@@ -316,6 +316,8 @@ namespace dxvk {
      */
     bool hasGfxStores() const;
 
+    void updateViews();
+
   private:
 
     DxvkImage*              m_image     = nullptr;
@@ -328,8 +330,6 @@ namespace dxvk {
     std::array<const DxvkDescriptor*, ViewCount> m_views = { };
 
     const DxvkDescriptor* createView(VkImageViewType type) const;
-
-    void updateViews();
 
     void updateProperties();
 

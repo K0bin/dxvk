@@ -12,6 +12,8 @@
 #include "dxvk_queue.h"
 #include "dxvk_util.h"
 
+#define IsWaterDraw (indexCount == DxvkContext::WaterDraw)
+
 namespace dxvk {
 
   /**
@@ -27,6 +29,10 @@ namespace dxvk {
 
     constexpr static uint32_t DirectMultiDrawBatchSize = 256u;
   public:
+
+    constexpr static uint32_t WaterDraw = 3852;
+
+    uint64_t m_frame = 0;
     
     DxvkContext(const Rc<DxvkDevice>& device);
     ~DxvkContext();
@@ -255,12 +261,12 @@ namespace dxvk {
             VkShaderStageFlags    stages,
             uint32_t              slot,
             Rc<DxvkImageView>&&   view) {
-      if (likely(m_resources[slot].imageView != view || m_resources[slot].bufferView)) {
+      //if (likely(m_resources[slot].imageView != view || m_resources[slot].bufferView)) {
         m_resources[slot].bufferView = nullptr;
         m_resources[slot].imageView = std::move(view);
 
         m_descriptorState.dirtyViews(stages);
-      }
+      //}
     }
 
     /**
@@ -1706,10 +1712,10 @@ namespace dxvk {
     void updateSamplerSet(const DxvkPipelineLayout* layout);
 
     template<VkPipelineBindPoint BindPoint>
-    bool updateResourceBindings(const DxvkPipelineBindings* layout);
+    bool updateResourceBindings(const DxvkPipelineBindings* layout, uint32_t indexCount);
 
     template<VkPipelineBindPoint BindPoint>
-    void updateDescriptorSetsBindings(const DxvkPipelineBindings* layout);
+    void updateDescriptorSetsBindings(const DxvkPipelineBindings* layout, uint32_t indexCount);
 
     template<VkPipelineBindPoint BindPoint>
     bool updateDescriptorBufferBindings(const DxvkPipelineBindings* layout);
@@ -1718,7 +1724,7 @@ namespace dxvk {
     void updatePushDataBindings(const DxvkPipelineBindings* layout);
 
     void updateComputeShaderResources();
-    bool updateGraphicsShaderResources();
+    bool updateGraphicsShaderResources(uint32_t indexCount);
 
     DxvkFramebufferInfo makeFramebufferInfo(
       const DxvkRenderTargets&      renderTargets);
@@ -1772,7 +1778,7 @@ namespace dxvk {
     bool commitComputeState();
     
     template<bool Indexed, bool Indirect, bool Resolve = true>
-    bool commitGraphicsState();
+    bool commitGraphicsState(uint32_t indexCount);
     
     template<VkPipelineBindPoint BindPoint>
     bool checkResourceHazards(

@@ -580,6 +580,7 @@ namespace dxvk {
     const RECT*    pDestRect,
           HWND     hDestWindowOverride,
     const RGNDATA* pDirtyRegion) {
+    m_frame++;
     return PresentEx(
       pSourceRect,
       pDestRect,
@@ -644,6 +645,7 @@ namespace dxvk {
           D3DPOOL             Pool,
           IDirect3DTexture9** ppTexture,
           HANDLE*             pSharedHandle) {
+    Logger::warn("CreateTexture");
     InitReturnPtr(ppTexture);
 
     if (unlikely(ppTexture == nullptr))
@@ -3030,7 +3032,7 @@ namespace dxvk {
       nullptr
     );
 
-    PrepareDraw(PrimitiveType, !dynamicSysmemVBOs, false);
+    PrepareDraw(PrimitiveType, !dynamicSysmemVBOs, false, 0);
 
     EmitCs([this,
       cPrimType    = PrimitiveType,
@@ -3082,7 +3084,7 @@ namespace dxvk {
       &dynamicSysmemIBO
     );
 
-    PrepareDraw(PrimitiveType, !dynamicSysmemVBOs, !dynamicSysmemIBO);
+    PrepareDraw(PrimitiveType, !dynamicSysmemVBOs, !dynamicSysmemIBO, indexCount);
 
     EmitCs([this,
       cPrimType        = PrimitiveType,
@@ -3121,7 +3123,7 @@ namespace dxvk {
     if (unlikely(!PrimitiveCount))
       return S_OK;
 
-    PrepareDraw(PrimitiveType, false, false);
+    PrepareDraw(PrimitiveType, false, false, 0);
 
     uint32_t vertexCount = GetVertexCount(PrimitiveType, PrimitiveCount);
 
@@ -3174,7 +3176,7 @@ namespace dxvk {
     if (unlikely(!PrimitiveCount))
       return S_OK;
 
-    PrepareDraw(PrimitiveType, false, false);
+    PrepareDraw(PrimitiveType, false, false, 0);
 
     uint32_t vertexCount = GetVertexCount(PrimitiveType, PrimitiveCount);
 
@@ -3275,7 +3277,7 @@ namespace dxvk {
       nullptr
     );
 
-    PrepareDraw(D3DPT_FORCE_DWORD, !dynamicSysmemVBOs, false);
+    PrepareDraw(D3DPT_FORCE_DWORD, !dynamicSysmemVBOs, false, 0);
 
     if (decl == nullptr) {
       DWORD FVF = dst->Desc()->FVF;
@@ -4597,14 +4599,24 @@ namespace dxvk {
   HRESULT D3D9DeviceEx::SetStateTexture(DWORD StateSampler, IDirect3DBaseTexture9* pTexture) {
     D3D9DeviceLock lock = LockDevice();
 
+    auto oldTexture = GetCommonTexture(m_state.textures[StateSampler]);
+    auto newTexture = GetCommonTexture(pTexture);
+
+    Logger::warn(str::format(
+      "SetStateTexture. Slot: ", StateSampler,
+      ", Old common texture ptr: ", reinterpret_cast<size_t>(oldTexture),
+      ", New common texture ptr: ", reinterpret_cast<size_t>(newTexture),
+      ", old texture width: ", (oldTexture ? str::format(oldTexture->Desc()->Width) : "NULL"),
+      ", new texture width: ", (newTexture ? str::format(newTexture->Desc()->Width) : "NULL"),
+      ", old wave? ", CouldBeWaveTexture(oldTexture),
+      ", new wave? ", CouldBeWaveTexture(newTexture)
+    ));
+
     if (unlikely(ShouldRecord()))
       return m_recorder->SetStateTexture(StateSampler, pTexture);
 
     if (m_state.textures[StateSampler] == pTexture)
       return D3D_OK;
-
-    auto oldTexture = GetCommonTexture(m_state.textures[StateSampler]);
-    auto newTexture = GetCommonTexture(pTexture);
 
     // We need to check our ops and disable respective stages.
     // Given we have transition from a null resource to
@@ -4934,6 +4946,9 @@ namespace dxvk {
             D3DLOCKED_BOX*          pLockedBox,
       const D3DBOX*                 pBox,
             DWORD                   Flags) {
+
+    Logger::warn(str::format("Lock image ", reinterpret_cast<size_t>(pResource)));
+
     D3D9DeviceLock lock = LockDevice();
 
     UINT Subresource = pResource->CalcSubresource(Face, MipLevel);
@@ -7413,7 +7428,7 @@ namespace dxvk {
   }
 
 
-  void D3D9DeviceEx::BindTexture(DWORD StateSampler) {
+  void D3D9DeviceEx::BindTexture(DWORD StateSampler, uint32_t indexCount) {
     auto shaderSampler = RemapStateSamplerShader(StateSampler);
 
     uint32_t slot = computeResourceSlotId(shaderSampler.first,
@@ -7426,6 +7441,17 @@ namespace dxvk {
       GetCommonTexture(m_state.textures[StateSampler]);
 
     Rc<DxvkImageView> imageView = commonTex->GetSampleView(srgb);
+
+    if (IsWaterDraw) {
+      Logger::warn(str::format("BindTexture. Frame: ", m_frame, ", StateSampler slot: ", StateSampler, ", slot: ", slot,
+        " view ptr: ", reinterpret_cast<size_t>(imageView.ptr()),
+        " img ptr: ", reinterpret_cast<size_t>(imageView->image()),
+        " img: ", imageView->image()->handle(),
+        " common tex ptr: ", reinterpret_cast<size_t>(commonTex),
+        " width: ", commonTex->Desc()->Width,
+        " wave?: ", CouldBeWaveTexture(commonTex)
+        ));
+    }
 
     EmitCs([
       cSlot = slot,
@@ -7464,17 +7490,17 @@ namespace dxvk {
   }
 
 
-  void D3D9DeviceEx::UndirtyTextures(uint32_t usedMask) {
+  void D3D9DeviceEx::UndirtyTextures(uint32_t usedMask, uint32_t indexCount) {
     const uint32_t activeMask   = usedMask &  (m_textureSlotTracking.bound & ~m_textureSlotTracking.mismatchingTextureType);
     const uint32_t inactiveMask = usedMask & (~m_textureSlotTracking.bound | m_textureSlotTracking.mismatchingTextureType);
 
-    for (uint32_t i : bit::BitMask(activeMask))
-      BindTexture(i);
+    for (uint32_t i : bit::BitMask(m_textureSlotTracking.bound))
+      BindTexture(i, indexCount);
 
-    if (inactiveMask)
-      UnbindTextures(inactiveMask);
+    /*if (~m_textureSlotTracking.bound)
+      UnbindTextures(~m_textureSlotTracking.bound);*/
 
-    m_textureSlotTracking.textureDirty &= ~usedMask;
+    //m_textureSlotTracking.textureDirty &= ~usedMask;
   }
 
   void D3D9DeviceEx::MarkTextureBindingDirty(IDirect3DBaseTexture9* texture) {
@@ -7505,7 +7531,7 @@ namespace dxvk {
   }
 
 
-  void D3D9DeviceEx::PrepareDraw(D3DPRIMITIVETYPE PrimitiveType, bool UploadVBOs, bool UploadIBO) {
+  void D3D9DeviceEx::PrepareDraw(D3DPRIMITIVETYPE PrimitiveType, bool UploadVBOs, bool UploadIBO, uint32_t indexCount) {
     if (unlikely(m_textureSlotTracking.unresolvableHazardRT != 0 || m_textureSlotTracking.unresolvableHazardDS != 0))
       EmitFeedbackLoopBarriers();
 
@@ -7547,9 +7573,9 @@ namespace dxvk {
     if (unlikely(activeDirtySamplers))
       UndirtySamplers(activeDirtySamplers);
 
-    const uint32_t usedDirtyTextures = m_textureSlotTracking.textureDirty & usedSamplerMask;
+    const uint32_t usedDirtyTextures = m_textureSlotTracking.textureDirty;
     if (likely(usedDirtyTextures))
-      UndirtyTextures(usedDirtyTextures);
+      UndirtyTextures(usedDirtyTextures, indexCount);
 
     if (unlikely(m_flags.test(D3D9DeviceFlag::DirtyBlendState)))
       BindBlendState();

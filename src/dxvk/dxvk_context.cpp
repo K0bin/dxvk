@@ -69,7 +69,6 @@ namespace dxvk {
       m_features.set(DxvkContextFeature::DebugUtils);
   }
   
-  
   DxvkContext::~DxvkContext() {
     
   }
@@ -107,6 +106,8 @@ namespace dxvk {
     this->submitDescriptorPool(true);
 
     m_renderPassIndex = 0u;
+
+    m_frame++;
   }
 
 
@@ -959,7 +960,7 @@ namespace dxvk {
           VkDeviceSize      counterOffset,
           uint32_t          counterDivisor,
           uint32_t          counterBias) {
-    if (this->commitGraphicsState<false, true>()) {
+    if (this->commitGraphicsState<false, true>(0)) {
       auto argInfo = m_state.id.cntBuffer.getSliceInfo();
 
       m_cmd->cmdDrawIndirectVertexCount(1, 0,
@@ -1691,7 +1692,13 @@ namespace dxvk {
   void DxvkContext::drawGeneric(
           uint32_t                  count,
     const T*                        draws) {
-    if (this->commitGraphicsState<Indexed, false>()) {
+    bool committedResult;
+    if constexpr (Indexed) {
+      committedResult = this->commitGraphicsState<Indexed, false>(draws->indexCount);
+    } else {
+      committedResult = this->commitGraphicsState<Indexed, false>(0);
+    }
+    if (committedResult) {
       if (count == 1u) {
         // Most common case, just emit a single draw
         if constexpr (Indexed) {
@@ -1707,8 +1714,12 @@ namespace dxvk {
         // If the current pipeline has storage resource hazards,
         // unroll draws and insert a barrier after each one.
         for (uint32_t i = 0; i < count; i++) {
-          if (i)
-            this->commitGraphicsState<Indexed, false>();
+          if (i) {
+            if constexpr (Indexed)
+              this->commitGraphicsState<Indexed, false>(draws[i].indexCount);
+            else
+              this->commitGraphicsState<Indexed, false>(0);
+          }
 
           if constexpr (Indexed) {
             m_cmd->cmdDrawIndexed(draws[i].indexCount, draws[i].instanceCount,
@@ -1814,7 +1825,7 @@ namespace dxvk {
       ? sizeof(VkDrawIndexedIndirectCommand)
       : sizeof(VkDrawIndirectCommand);
 
-    if (this->commitGraphicsState<Indexed, true>()) {
+    if (this->commitGraphicsState<Indexed, true>(0)) {
       auto argInfo = m_state.id.argBuffer.getSliceInfo();
 
       if (likely(count == 1u || !unroll || !needsDrawBarriers())) {
@@ -1841,7 +1852,7 @@ namespace dxvk {
         // draw at a time and insert barriers in between.
         for (uint32_t i = 0; i < count; i++) {
           if (i)
-            this->commitGraphicsState<Indexed, true>();
+            this->commitGraphicsState<Indexed, true>(0);
 
           if (Indexed) {
             m_cmd->cmdDrawIndexedIndirect(argInfo.buffer,
@@ -1869,7 +1880,7 @@ namespace dxvk {
           VkDeviceSize          countOffset,
           uint32_t              maxCount,
           uint32_t              stride) {
-    if (this->commitGraphicsState<Indexed, true>()) {
+    if (this->commitGraphicsState<Indexed, true>(0)) {
       auto argInfo = m_state.id.argBuffer.getSliceInfo();
       auto cntInfo = m_state.id.cntBuffer.getSliceInfo();
 
@@ -6259,12 +6270,12 @@ namespace dxvk {
 
 
   template<VkPipelineBindPoint BindPoint>
-  bool DxvkContext::updateResourceBindings(const DxvkPipelineBindings* layout) {
+  bool DxvkContext::updateResourceBindings(const DxvkPipelineBindings* layout, uint32_t indexCount) {
     if (m_features.test(DxvkContextFeature::DescriptorBuffer)) {
       if (!updateDescriptorBufferBindings<BindPoint>(layout))
         return false;
     } else {
-      updateDescriptorSetsBindings<BindPoint>(layout);
+      updateDescriptorSetsBindings<BindPoint>(layout, indexCount);
     }
 
     updatePushDataBindings<BindPoint>(layout);
@@ -6273,7 +6284,7 @@ namespace dxvk {
 
 
   template<VkPipelineBindPoint BindPoint>
-  void DxvkContext::updateDescriptorSetsBindings(const DxvkPipelineBindings* layout) {
+  void DxvkContext::updateDescriptorSetsBindings(const DxvkPipelineBindings* layout, uint32_t indexCount) {
     DxvkPipelineLayoutType pipelineLayoutType = getActivePipelineLayoutType(BindPoint);
     const auto* pipelineLayout = layout->getLayout(pipelineLayoutType);
 
@@ -6286,11 +6297,15 @@ namespace dxvk {
     // changed, but we have no way of knowing that up-front.
     uint32_t dirtySetMask = layout->getDirtySetMask(pipelineLayoutType, m_descriptorState);
 
+    if (IsWaterDraw) {
+      Logger::warn(str::format("Dirty set mask: ", dirtySetMask));
+    }
+
     if (likely(dirtySetMask)) {
       // On 32-bit wine, vkUpdateDescriptorSets has significant overhead due
       // to struct conversion, so we should use descriptor update templates.
       // For 64-bit applications, using templates is slower on some drivers.
-      constexpr bool useDescriptorTemplates = env::is32BitHostPlatform();
+      constexpr bool useDescriptorTemplates = false; //env::is32BitHostPlatform();
 
       std::array<VkDescriptorSet, DxvkDescriptorSets::SetCount> sets = { };
       m_descriptorPool->alloc(pipelineLayout, dirtySetMask, sets.data());
@@ -6334,8 +6349,25 @@ namespace dxvk {
                 const auto& res = m_resources[binding.getResourceIndex()];
                 const DxvkDescriptor* descriptor = nullptr;
 
-                if (res.imageView)
+                if (IsWaterDraw) {
+                  Logger::warn(str::format("Binding image. Frame: ", m_frame, ", set: ", setIndex, ", binding: ", binding.getBinding(), ", j: ", j, ", view ptr: ", reinterpret_cast<size_t>(res.imageView.ptr())));
+                }
+
+                if (res.imageView) {
+
+                  if (IsWaterDraw && m_frame % 1000 == 0) {
+                    res.imageView->updateViews();
+                  }
                   descriptor = res.imageView->getDescriptor(binding.getViewType());
+
+                  if (IsWaterDraw) {
+                    Logger::warn(str::format("Binding image. Frame: ", m_frame, ", set: ", setIndex, ", binding: ", binding.getBinding(), ", j: ", j,
+                      ", descriptor: ", descriptor->legacy.image.imageView,
+                      ", image ptr: ", reinterpret_cast<size_t>(res.imageView->image()),
+                      ", image: ", res.imageView->image()->handle()
+                      ));
+                  }
+                }
 
                 if (descriptor) {
                   if (likely(!res.imageView->isMultisampled() || binding.isMultisampled())) {
@@ -6707,14 +6739,14 @@ namespace dxvk {
 
   void DxvkContext::updateComputeShaderResources() {
     this->updateResourceBindings<VK_PIPELINE_BIND_POINT_COMPUTE>(
-      m_state.cp.pipeline->getLayout());
+      m_state.cp.pipeline->getLayout(), 0);
 
     m_descriptorState.clearStages(VK_SHADER_STAGE_COMPUTE_BIT);
   }
   
   
-  bool DxvkContext::updateGraphicsShaderResources() {
-    if (!updateResourceBindings<VK_PIPELINE_BIND_POINT_GRAPHICS>(m_state.gp.pipeline->getLayout()))
+  bool DxvkContext::updateGraphicsShaderResources(uint32_t indexCount) {
+    if (!updateResourceBindings<VK_PIPELINE_BIND_POINT_GRAPHICS>(m_state.gp.pipeline->getLayout(), indexCount))
       return false;
 
     m_descriptorState.clearStages(VK_SHADER_STAGE_ALL_GRAPHICS);
@@ -7433,7 +7465,7 @@ namespace dxvk {
   
   
   template<bool Indexed, bool Indirect, bool Resolve>
-  bool DxvkContext::commitGraphicsState() {
+  bool DxvkContext::commitGraphicsState(uint32_t indexCount) {
     if (m_flags.test(DxvkContextFlag::GpDirtyPipeline)) {
       if (unlikely(!this->updateGraphicsPipeline()))
         return false;
@@ -7500,9 +7532,18 @@ namespace dxvk {
       if (unlikely(!this->updateGraphicsPipelineState()))
         return false;
     }
-    
+
+    if (IsWaterDraw) {
+      Logger::warn(str::format("Water draw. Frame: ", m_frame));
+    }
     if (m_descriptorState.hasDirtyResources(VK_SHADER_STAGE_ALL_GRAPHICS)) {
-      if (unlikely(!this->updateGraphicsShaderResources())) {
+      if (IsWaterDraw) {
+        Logger::warn("dirty resources");
+      }
+      if (unlikely(!this->updateGraphicsShaderResources(indexCount))) {
+        if (IsWaterDraw) {
+          Logger::warn("dirty resources failed");
+        }
         // This can only happen if we were inside a secondary command buffer.
         // Technically it would be sufficient to only restart the secondary
         // command buffer, but this should almost never happen in practice
@@ -7511,7 +7552,7 @@ namespace dxvk {
 
         m_cmd->createDescriptorRange();
 
-        return this->commitGraphicsState<Indexed, Indirect>();
+        return this->commitGraphicsState<Indexed, Indirect>(indexCount);
       }
 
       if (unlikely(Resolve && m_implicitResolves.hasPendingResolves())) {
@@ -7520,7 +7561,7 @@ namespace dxvk {
         this->spillRenderPass(true);
         this->flushImplicitResolves();
 
-        return this->commitGraphicsState<Indexed, Indirect, false>();
+        return this->commitGraphicsState<Indexed, Indirect, false>(indexCount);
       }
     }
     

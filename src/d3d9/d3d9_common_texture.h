@@ -551,4 +551,18 @@ namespace dxvk {
 
   };
 
+  inline bool CouldBeWaveTexture(const D3D9_COMMON_TEXTURE_DESC* desc) {
+    return desc != nullptr
+      && desc->Width == 256
+      && desc->Height == 256
+      && (desc->MipLevels == 9 || (desc->Usage & D3DUSAGE_AUTOGENMIPMAP) != 0)
+      && desc->Format == D3D9Format::DXT5;
+  }
+
+  inline bool CouldBeWaveTexture(const D3D9CommonTexture* tex) {
+    if (tex == nullptr) return false;
+    const D3D9_COMMON_TEXTURE_DESC* desc = tex->Desc();
+    return CouldBeWaveTexture(desc);
+  }
+
 }

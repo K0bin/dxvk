@@ -1063,13 +1063,13 @@ namespace dxvk {
 
     void BindSampler(DWORD Sampler);
 
-    void BindTexture(DWORD SamplerSampler);
+    void BindTexture(DWORD SamplerSampler, uint32_t indexCount);
 
     void UnbindTextures(uint32_t mask);
 
     void UndirtySamplers(uint32_t mask);
 
-    void UndirtyTextures(uint32_t usedMask);
+    void UndirtyTextures(uint32_t usedMask, uint32_t indexCount);
 
     void MarkTextureBindingDirty(IDirect3DBaseTexture9* texture);
 
@@ -1084,7 +1084,7 @@ namespace dxvk {
 
     uint32_t GetInstanceCount() const;
 
-    void PrepareDraw(D3DPRIMITIVETYPE PrimitiveType, bool UploadVBOs, bool UploadIBOs);
+    void PrepareDraw(D3DPRIMITIVETYPE PrimitiveType, bool UploadVBOs, bool UploadIBOs, uint32_t indexCount);
 
     void EnsureSamplerLimit();
 
@@ -1712,6 +1712,8 @@ namespace dxvk {
     // Written by CS thread
     alignas(CACHE_LINE_SIZE)
     std::atomic<uint64_t>           m_lastSamplerStats = { 0u };
+
+    uint64_t m_frame = 0;
   };
 
 }

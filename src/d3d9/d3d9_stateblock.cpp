@@ -60,14 +60,20 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9StateBlock::Apply() {
+    Logger::warn(str::format("StateBlock apply. State block ptr: ", reinterpret_cast<size_t>(this), " Could have wave texture: ", m_hasWaveTexture));
+
     // A state block can't be applied while another is being recorded.
-    if (unlikely(m_parent->ShouldRecord()))
+    if (unlikely(m_parent->ShouldRecord())) {
+    Logger::warn("StateBlock apply fail");
       return D3DERR_INVALIDCALL;
+    }
 
     if (m_captures.flags.test(D3D9CapturedStateFlag::VertexDecl) && m_state.vertexDecl != nullptr)
       m_parent->SetVertexDeclaration(m_state.vertexDecl.ptr());
 
     ApplyOrCapture<D3D9StateFunction::Apply, false>();
+
+    Logger::warn(str::format("StateBlock apply DONE. State block ptr: ", reinterpret_cast<size_t>(this), " Could have wave texture: ", m_hasWaveTexture));
 
     return D3D_OK;
   }
@@ -151,6 +157,27 @@ namespace dxvk {
 
 
   HRESULT D3D9StateBlock::SetStateTexture(DWORD StateSampler, IDirect3DBaseTexture9* pTexture) {
+
+    auto oldTexture = GetCommonTexture(m_state.textures[StateSampler]);
+    auto newTexture = GetCommonTexture(pTexture);
+
+    Logger::warn(str::format(
+      "Stateblock ptr: ", reinterpret_cast<size_t>(this), ", SetStateTexture. Slot: ", StateSampler,
+      ", Old common texture ptr: ", reinterpret_cast<size_t>(oldTexture),
+      ", New common texture ptr: ", reinterpret_cast<size_t>(newTexture),
+      ", old texture width: ", (oldTexture ? str::format(oldTexture->Desc()->Width) : "NULL"),
+      ", new texture width: ", (newTexture ? str::format(newTexture->Desc()->Width) : "NULL"),
+      ", new texture height: ", (newTexture ? str::format(newTexture->Desc()->Height) : "NULL"),
+      ", new texture mips: ", (newTexture ? str::format(newTexture->Desc()->MipLevels) : "NULL"),
+      ", new texture usage: ", (newTexture ? str::format(newTexture->Desc()->Usage) : "NULL"),
+      ", new texture format: ", (newTexture ? str::format(newTexture->Desc()->Format) : "NULL"),
+      ", old wave? ", CouldBeWaveTexture(oldTexture),
+      ", new wave? ", CouldBeWaveTexture(newTexture)
+    ));
+
+    if (CouldBeWaveTexture(newTexture))
+      m_hasWaveTexture = true;
+
     TextureChangePrivate(m_state.textures[StateSampler], pTexture);
 
     m_captures.flags.set(D3D9CapturedStateFlag::Textures);
@@ -537,6 +564,7 @@ namespace dxvk {
 
 
   void D3D9StateBlock::CaptureType(D3D9StateBlockType Type) {
+    m_hasWaveTexture = false;
     if (Type == D3D9StateBlockType::PixelState || Type == D3D9StateBlockType::All) {
       CapturePixelRenderStates();
       CapturePixelSamplerStates();
