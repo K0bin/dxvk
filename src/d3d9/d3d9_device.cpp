@@ -89,7 +89,7 @@ namespace dxvk {
       ctx->setLogicOpState(loState);
     });
 
-    SynchronizeCsThread(DxvkCsThread::SynchronizeAll);
+    SynchronizeCsThread(DxvkCsThread::SynchronizeAll, "Constructor");
 
     if (!(BehaviorFlags & D3DCREATE_FPU_PRESERVE))
       SetupFPU();
@@ -205,7 +205,7 @@ namespace dxvk {
       return;
 
     Flush();
-    SynchronizeCsThread(DxvkCsThread::SynchronizeAll);
+    SynchronizeCsThread(DxvkCsThread::SynchronizeAll, "Destructor");
 
     if (m_annotation)
       delete m_annotation;
@@ -566,7 +566,7 @@ namespace dxvk {
     }
 
     Flush();
-    SynchronizeCsThread(DxvkCsThread::SynchronizeAll);
+    SynchronizeCsThread(DxvkCsThread::SynchronizeAll, "Reset");
 
     if (m_d3d9Options.deferSurfaceCreation)
       m_resetCtr++;
@@ -4881,7 +4881,8 @@ namespace dxvk {
   bool D3D9DeviceEx::WaitForResource(
     const DxvkPagedResource&                Resource,
           uint64_t                          SequenceNumber,
-          DWORD                             MapFlags) {
+          DWORD                             MapFlags,
+    const std::string&                      Reason) {
     // Wait for the any pending D3D9 command to be executed
     // on the CS thread so that we can determine whether the
     // resource is currently in use or not.
@@ -4892,7 +4893,7 @@ namespace dxvk {
       : DxvkAccess::Read;
 
     if (!Resource.isInUse(access))
-      SynchronizeCsThread(SequenceNumber);
+      SynchronizeCsThread(SequenceNumber, str::format(Reason, " CheckIfInUse"));
 
     if (Resource.isInUse(access)) {
       if (MapFlags & D3DLOCK_DONOTWAIT) {
@@ -4906,7 +4907,9 @@ namespace dxvk {
         // Make sure pending commands using the resource get
         // executed on the the GPU if we have to wait for it
         Flush();
-        SynchronizeCsThread(SequenceNumber);
+        SynchronizeCsThread(SequenceNumber, Reason);
+
+        Logger::warn(str::format("WaitForResource: ", Reason));
 
         m_dxvkDevice->waitForResource(Resource, access);
       }
@@ -4957,6 +4960,8 @@ namespace dxvk {
     D3D9DeviceLock lock = LockDevice();
 
     UINT Subresource = pResource->CalcSubresource(Face, MipLevel);
+
+    DWORD originalFlags = Flags;
 
     // Don't allow multiple lockings.
     if (unlikely(pResource->GetLocked(Subresource)))
@@ -5134,7 +5139,13 @@ namespace dxvk {
       }
 
       // Wait until the buffer is idle which may include the copy (and resolve) we just issued.
-      if (!WaitForResource(*mappedBuffer, pResource->GetMappingBufferSequenceNumber(Subresource), Flags))
+      if (!WaitForResource(*mappedBuffer, pResource->GetMappingBufferSequenceNumber(Subresource), Flags,
+        str::format("LockImage_TextureReadback. Texture: ", reinterpret_cast<size_t>(pResource), ", Pool: ", pResource->Desc()->Pool, ", Usage: ", pResource->Desc()->Usage,
+          ", MapMode: ", pResource->GetMapMode(), ", LockFlags: ", originalFlags,
+          ", box x: ", pBox ? str::format(pBox->Left, "-", pBox->Right) : str::format("NULL"),
+          ", box y: ", pBox ? str::format(pBox->Top, "-", pBox->Bottom) : str::format("NULL"),
+          ", box z: ", pBox ? str::format(pBox->Front, "-", pBox->Back) : str::format("NULL")
+          )))
         return D3DERR_WASSTILLDRAWING;
     }
 
@@ -5318,7 +5329,8 @@ namespace dxvk {
       // That means that NeedsReadback is only true if the texture has been used with GetRTData or GetFrontbufferData before.
       // Those functions create a buffer, so the buffer always exists here.
       const Rc<DxvkBuffer>& buffer = pSrcTexture->GetBuffer();
-      WaitForResource(*buffer, pSrcTexture->GetMappingBufferSequenceNumber(SrcSubresource), 0);
+      WaitForResource(*buffer, pSrcTexture->GetMappingBufferSequenceNumber(SrcSubresource), 0,
+        str::format("UpdateTextureFromBuffer_TextureReadback. Pool: ", pSrcTexture->Desc()->Pool, ", Usage: ", pSrcTexture->Desc()->Usage));
       pSrcTexture->SetNeedsReadback(SrcSubresource, false);
     }
 
@@ -5455,6 +5467,8 @@ namespace dxvk {
           DWORD                   Flags) {
     D3D9DeviceLock lock = LockDevice();
 
+    DWORD originalFlags = Flags;
+
     if (unlikely(ppbData == nullptr))
       return D3DERR_INVALIDCALL;
 
@@ -5556,7 +5570,10 @@ namespace dxvk {
 
       if (!skipWait) {
         const Rc<DxvkBuffer> mappingBuffer = pResource->GetBuffer<D3D9_COMMON_BUFFER_TYPE_MAPPING>();
-        if (!WaitForResource(*mappingBuffer, pResource->GetMappingBufferSequenceNumber(), Flags))
+        if (!WaitForResource(*mappingBuffer, pResource->GetMappingBufferSequenceNumber(), Flags,
+          str::format("LockBuffer_Wait. Buffer: ", reinterpret_cast<size_t>(pResource), " Pool: ", pResource->Desc()->Pool, ", Usage: ", pResource->Desc()->Usage,
+            ", MapMode: ", pResource->GetMapMode(), ", Buffer size: ", pResource->Desc()->Size, ", LockFlags: ", originalFlags,
+            ", Offset: ", OffsetToLock, ", SizeToLock: ", SizeToLock)))
           return D3DERR_WASSTILLDRAWING;
 
         pResource->SetNeedsReadback(false);
@@ -5709,7 +5726,8 @@ namespace dxvk {
         // - Write to the primary buffer using ProcessVertices which gets copied over to the staging buffer at the end.
         //   So it could end up writing to the buffer on the GPU while the same buffer gets read here on the CPU.
         //   That is why we need to ensure the staging buffer is idle here.
-        WaitForResource(*vbo->GetBuffer<D3D9_COMMON_BUFFER_TYPE_STAGING>(), vbo->GetMappingBufferSequenceNumber(), D3DLOCK_READONLY);
+        WaitForResource(*vbo->GetBuffer<D3D9_COMMON_BUFFER_TYPE_STAGING>(), vbo->GetMappingBufferSequenceNumber(), D3DLOCK_READONLY,
+          str::format("UploadPerDrawData. Pool: ", vbo->Desc()->Pool, ", Usage: ", vbo->Desc()->Usage));
       }
 
       const uint32_t vertexSize = m_state.vertexDecl->GetSize(i);
@@ -5877,8 +5895,11 @@ namespace dxvk {
   }
 
 
-  void D3D9DeviceEx::SynchronizeCsThread(uint64_t SequenceNumber) {
+  void D3D9DeviceEx::SynchronizeCsThread(uint64_t SequenceNumber, const std::string& Reason) {
     D3D9DeviceLock lock = LockDevice();
+
+    Logger::warn(str::format("Synchronizing CS Thread. CS Thread sequence number: ", m_csThread.lastSequenceNumber(),
+      ", Sync Sequence number: ", SequenceNumber, ", Reason: ", Reason));
 
     // Dispatch current chunk so that all commands
     // recorded prior to this function will be run
@@ -7744,7 +7765,7 @@ namespace dxvk {
     uint64_t sequenceNumber = m_csThread.lastSequenceNumber();
 
     while (++sequenceNumber <= GetCurrentSequenceNumber()) {
-      SynchronizeCsThread(sequenceNumber);
+      SynchronizeCsThread(sequenceNumber, "EnsureSamplerLimit A");
 
       uint64_t lastStats = m_lastSamplerStats.load(std::memory_order_relaxed);
       m_lastSamplerLiveCount = lastStats & SamplerCountMask;
@@ -7760,7 +7781,7 @@ namespace dxvk {
     Logger::warn("Sampler pool exhausted, synchronizing with GPU.");
 
     Flush();
-    SynchronizeCsThread(DxvkCsThread::SynchronizeAll);
+    SynchronizeCsThread(DxvkCsThread::SynchronizeAll, "EnsureSamplerLimit B");
 
     uint64_t submissionId = m_submissionFence->value();
 
@@ -8947,7 +8968,7 @@ namespace dxvk {
       return hr;
 
     Flush();
-    SynchronizeCsThread(DxvkCsThread::SynchronizeAll);
+    SynchronizeCsThread(DxvkCsThread::SynchronizeAll, "InitialReset");
 
     return D3D_OK;
   }

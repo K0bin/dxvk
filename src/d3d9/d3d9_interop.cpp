@@ -234,7 +234,7 @@ namespace dxvk {
 
   void STDMETHODCALLTYPE D3D9VkInteropDevice::FlushRenderingCommands() {
     m_device->Flush();
-    m_device->SynchronizeCsThread(DxvkCsThread::SynchronizeAll);
+    m_device->SynchronizeCsThread(DxvkCsThread::SynchronizeAll, "Interop_FlushRenderingCommands");
   }
 
   void STDMETHODCALLTYPE D3D9VkInteropDevice::LockSubmissionQueue() {
@@ -270,7 +270,7 @@ namespace dxvk {
   bool STDMETHODCALLTYPE D3D9VkInteropDevice::WaitForResource(
           IDirect3DResource9*  pResource,
           DWORD                MapFlags) {
-    return m_device->WaitForResource(*GetDxvkResource(pResource), DxvkCsThread::SynchronizeAll, MapFlags);
+    return m_device->WaitForResource(*GetDxvkResource(pResource), DxvkCsThread::SynchronizeAll, MapFlags, "Interop_WaitForResource");
   }
 
   HRESULT STDMETHODCALLTYPE D3D9VkInteropDevice::CreateImage(

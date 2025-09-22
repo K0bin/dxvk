@@ -824,7 +824,8 @@ namespace dxvk {
     bool WaitForResource(
       const DxvkPagedResource&      Resource,
             uint64_t                SequenceNumber,
-            DWORD                   MapFlags);
+            DWORD                   MapFlags,
+      const std::string&            Reason);
 
     /**
      * \brief Locks a subresource of an image
@@ -924,7 +925,7 @@ namespace dxvk {
 
     void CreateConstantBuffers();
 
-    void SynchronizeCsThread(uint64_t SequenceNumber);
+    void SynchronizeCsThread(uint64_t SequenceNumber, const std::string& Reason);
 
     void Flush();
     void FlushAndSync9On12();
