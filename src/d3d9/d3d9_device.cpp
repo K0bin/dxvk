@@ -5573,6 +5573,7 @@ namespace dxvk {
         if (!WaitForResource(*mappingBuffer, pResource->GetMappingBufferSequenceNumber(), Flags,
           str::format("LockBuffer_Wait. Buffer: ", reinterpret_cast<size_t>(pResource), " Pool: ", pResource->Desc()->Pool, ", Usage: ", pResource->Desc()->Usage,
             ", MapMode: ", pResource->GetMapMode(), ", Buffer size: ", pResource->Desc()->Size, ", LockFlags: ", originalFlags,
+            ", Type: ", pResource->Desc()->Type, ", BoundMask: ", std::bitset<4>(pResource->BoundMask()),
             ", Offset: ", OffsetToLock, ", SizeToLock: ", SizeToLock)))
           return D3DERR_WASSTILLDRAWING;
 
@@ -5898,8 +5899,9 @@ namespace dxvk {
   void D3D9DeviceEx::SynchronizeCsThread(uint64_t SequenceNumber, const std::string& Reason) {
     D3D9DeviceLock lock = LockDevice();
 
-    Logger::warn(str::format("Synchronizing CS Thread. CS Thread sequence number: ", m_csThread.lastSequenceNumber(),
-      ", Sync Sequence number: ", SequenceNumber, ", Reason: ", Reason));
+    if (SequenceNumber > m_csThread.lastSequenceNumber())
+      Logger::warn(str::format("Synchronizing CS Thread. CS Thread sequence number: ", m_csThread.lastSequenceNumber(),
+        ", Sync Sequence number: ", SequenceNumber, ", Reason: ", Reason));
 
     // Dispatch current chunk so that all commands
     // recorded prior to this function will be run

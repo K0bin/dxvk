@@ -215,6 +215,10 @@ namespace dxvk {
       m_boundMask |= ~(uint8_t(Bound) << Slot);
     }
 
+    uint8_t BoundMask() const {
+      return m_boundMask;
+    }
+
   private:
 
     Rc<DxvkBuffer> CreateBuffer() const;
