@@ -91,7 +91,7 @@ namespace dxvk {
     /**
     * \brief Determine the mapping mode of the buffer, (ie. direct mapping or backed)
     */
-    D3D9_COMMON_BUFFER_MAP_MODE DetermineMapMode(const D3D9Options* options) const;
+    D3D9_COMMON_BUFFER_MAP_MODE DetermineMapMode() const;
 
     /**
     * \brief Get the mapping mode of the buffer, (ie. direct mapping or backed)

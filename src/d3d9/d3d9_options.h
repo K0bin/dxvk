@@ -119,20 +119,11 @@ namespace dxvk {
     /// Forces sample rate shading
     bool forceSampleRateShading;
 
-    /// Allow D3DLOCK_DISCARD
-    bool allowDiscard;
-
     /// Enumerate adapters by displays
     bool enumerateByDisplays;
 
-    /// Cached dynamic buffers: Maps all buffers in cached memory.
-    bool cachedDynamicBuffers;
-
     /// Use device local memory for constant buffers.
     bool deviceLocalConstantBuffers;
-
-    /// Disable direct buffer mapping
-    bool allowDirectBufferMapping;
 
     /// Don't use non seamless cube maps
     bool seamlessCubes;

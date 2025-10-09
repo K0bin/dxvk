@@ -5469,13 +5469,14 @@ namespace dxvk {
     if (unlikely(ppbData == nullptr))
       return D3DERR_INVALIDCALL;
 
-    if (unlikely(!m_d3d9Options.allowDiscard))
-      Flags &= ~D3DLOCK_DISCARD;
-
     auto& desc = *pResource->Desc();
 
     // Ignore DISCARD if NOOVERWRITE is set
     if (unlikely((Flags & (D3DLOCK_DISCARD | D3DLOCK_NOOVERWRITE)) == (D3DLOCK_DISCARD | D3DLOCK_NOOVERWRITE)))
+      Flags &= ~D3DLOCK_DISCARD;
+
+    // Ignore DISCARD if READONLY is set
+    if (unlikely((Flags & (D3DLOCK_DISCARD | D3DLOCK_READONLY)) == (D3DLOCK_DISCARD | D3DLOCK_READONLY)))
       Flags &= ~D3DLOCK_DISCARD;
 
     // Ignore DISCARD and NOOVERWRITE if the buffer is not DEFAULT pool (tests + Halo 2)
@@ -5484,10 +5485,14 @@ namespace dxvk {
     if (desc.Pool != D3DPOOL_DEFAULT || CanOnlySWVP())
       Flags &= ~(D3DLOCK_DISCARD | D3DLOCK_NOOVERWRITE);
 
-    // Ignore DONOTWAIT if we are DYNAMIC
+    // Ignore DONOTWRITE of lock flags if we are DYNAMIC
     // Yes... D3D9 is a good API.
     if (desc.Usage & D3DUSAGE_DYNAMIC)
       Flags &= ~D3DLOCK_DONOTWAIT;
+
+    // Ignore a bunch of lock flags if we are not DYNAMIC
+    if (desc.Usage & D3DUSAGE_DYNAMIC)
+      Flags &= ~(D3DLOCK_NOOVERWRITE | D3DLOCK_READONLY);
 
     // Tests show that D3D9 drivers ignore DISCARD when the device is lost.
     if (unlikely(m_deviceLostState != D3D9DeviceLostState::Ok))
@@ -5500,8 +5505,6 @@ namespace dxvk {
       Flags |= D3DLOCK_NOOVERWRITE;
 
     // We only bounds check for MANAGED.
-    // (TODO: Apparently this is meant to happen for DYNAMIC too but I am not sure
-    //  how that works given it is meant to be a DIRECT access..?)
     const bool respectUserBounds = !(Flags & D3DLOCK_DISCARD) &&
                                     SizeToLock != 0;
 
@@ -5528,7 +5531,10 @@ namespace dxvk {
 
     uint8_t* data = nullptr;
 
-    if ((Flags & D3DLOCK_DISCARD) && (directMapping || needsReadback)) {
+    Rc<DxvkBuffer> mappingBuffer = pResource->GetBuffer<D3D9_COMMON_BUFFER_TYPE_MAPPING>();
+    uint64_t seqNum = pResource->GetMappingBufferSequenceNumber();
+    if ((Flags & D3DLOCK_DISCARD) && (directMapping || needsReadback) &&
+      (!pResource->HasSequenceNumber() || (m_csThread.lastSequenceNumber() < seqNum || !WaitForResource(*mappingBuffer, pResource->GetMappingBufferSequenceNumber(), D3DLOCK_DONOTWAIT)))) {
       // If we're not directly mapped and don't need readback,
       // the buffer is not currently getting used anyway
       // so there's no reason to waste memory by discarding.
@@ -5536,7 +5542,6 @@ namespace dxvk {
       // Allocate a new backing slice for the buffer and set
       // it as the 'new' mapped slice. This assumes that the
       // only way to invalidate a buffer is by mapping it.
-      Rc<DxvkBuffer> mappingBuffer = pResource->GetBuffer<D3D9_COMMON_BUFFER_TYPE_MAPPING>();
       auto bufferSlice = pResource->DiscardMapSlice();
       data = reinterpret_cast<uint8_t*>(bufferSlice->mapPtr());
 
@@ -5563,11 +5568,10 @@ namespace dxvk {
       const bool directMapping = pResource->GetMapMode() == D3D9_COMMON_BUFFER_MAP_MODE_DIRECT;
 
       // If we're not directly mapped, we can rely on needsReadback to tell us if a sync is required.
-      const bool skipWait = (!needsReadback && (readOnly || !directMapping)) || noOverwrite;
+      const bool skipWait = !needsReadback && (readOnly || !directMapping || noOverwrite);
 
       if (!skipWait) {
-        const Rc<DxvkBuffer> mappingBuffer = pResource->GetBuffer<D3D9_COMMON_BUFFER_TYPE_MAPPING>();
-        if (!WaitForResource(*mappingBuffer, pResource->GetMappingBufferSequenceNumber(), Flags))
+        if (!WaitForResource(*mappingBuffer, seqNum, Flags))
           return D3DERR_WASSTILLDRAWING;
 
         pResource->SetNeedsReadback(false);
