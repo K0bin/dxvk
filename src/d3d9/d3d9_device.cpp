@@ -1719,23 +1719,32 @@ namespace dxvk {
     m_state.renderTargets[RenderTargetIndex] = rt;
 
     // Update feedback loop tracking bitmasks
-    UpdateActiveRTs(RenderTargetIndex);
+    const uint32_t bit = 1 << RenderTargetIndex;
+    m_rtSlotTracking.canBeSampled &= ~bit;
+
+    uint8_t oldBoundMask = m_rtSlotTracking.bound;
+    m_rtSlotTracking.bound &= ~bit;
 
     // Update render target alpha swizzle bitmask if we need to fix up the alpha channel
     // for XRGB formats
-    uint32_t originalAlphaSwizzleRTs = m_rtSlotTracking.hasAlphaSwizzle;
-
-    m_rtSlotTracking.hasAlphaSwizzle &= ~(1 << RenderTargetIndex);
+    uint32_t oldAlphaSwizzleRTs = m_rtSlotTracking.hasAlphaSwizzle;
+    m_rtSlotTracking.hasAlphaSwizzle &= ~bit;
 
     if (rt != nullptr) {
-      if (texInfo->GetMapping().Swizzle.a == VK_COMPONENT_SWIZZLE_ONE)
-        m_rtSlotTracking.hasAlphaSwizzle |= 1 << RenderTargetIndex;
+      m_rtSlotTracking.hasAlphaSwizzle |= uint8_t(texInfo->GetMapping().Swizzle.a == VK_COMPONENT_SWIZZLE_ONE) << RenderTargetIndex;
+      m_rtSlotTracking.bound |= uint8_t(!texInfo->IsNull()) << RenderTargetIndex;
+      m_rtSlotTracking.canBeSampled |= uint8_t(!texInfo->IsNull() && m_state.renderTargets[RenderTargetIndex]->GetBaseTexture() != nullptr) << RenderTargetIndex;
 
       if (texInfo->IsAutomaticMip())
         texInfo->SetNeedsMipGen(true);
     }
+    UpdateActiveHazardsRT(std::numeric_limits<uint32_t>::max());
 
-    if (originalAlphaSwizzleRTs != m_rtSlotTracking.hasAlphaSwizzle)
+    if (unlikely(!!oldBoundMask != !!m_rtSlotTracking.bound)) {
+      UpdatePixelShaderActive();
+    }
+
+    if (oldAlphaSwizzleRTs != m_rtSlotTracking.hasAlphaSwizzle)
       m_flags.set(D3D9DeviceFlag::DirtyBlendState);
 
     if (RenderTargetIndex == 0) {
@@ -3934,13 +3943,12 @@ namespace dxvk {
         || newShader->GetMeta().maxConstIndexB > oldShader->GetMeta().maxConstIndexB;
     }
 
+    const bool wasDepthOnlyPass = IsDepthOnlyPass();
     const D3D9ShaderMasks oldShaderMasks = PSShaderMasks();
     m_state.pixelShader = shader;
     const D3D9ShaderMasks newShaderMasks = PSShaderMasks();
 
     if (shader != nullptr) {
-      BindShader<DxsoProgramTypes::PixelShader>(newShader);
-
       UpdateTextureTypeMismatchesForShader(newShader, newShaderMasks.samplerMask, 0);
 
       bool dirty = m_specInfo.set<D3D9SpecConstantId::SpecFFLastActiveTextureStage>(0u);
@@ -3962,7 +3970,6 @@ namespace dxvk {
     else {
       m_flags.set(D3D9DeviceFlag::DirtyFFPixelShader);
       m_flags.set(D3D9DeviceFlag::DirtyFFPSMasks);
-      BindFFUbershader<DxsoProgramType::PixelShader>();
 
       // TODO: What fixed function textures are in use?
       // Currently we are making all 8 of them as in use here.
@@ -3970,6 +3977,7 @@ namespace dxvk {
       m_textureSlotTracking.textureDirty |= newShaderMasks.samplerMask & m_textureSlotTracking.mismatchingTextureType;
       m_textureSlotTracking.mismatchingTextureType &= ~newShaderMasks.samplerMask;
     }
+    UpdatePixelShaderActive(wasDepthOnlyPass != IsDepthOnlyPass());
 
     // Check whether the color output mask or the mask of the used samplers
     // forces us to deal with hazards in a different way.
@@ -6342,23 +6350,18 @@ namespace dxvk {
     });
   }
 
-
-  inline void D3D9DeviceEx::UpdateActiveRTs(uint32_t index) {
-    const uint32_t bit = 1 << index;
-
-    m_rtSlotTracking.canBeSampled &= ~bit;
-
-    if (HasRenderTargetBound(index) &&
-      m_state.renderTargets[index]->GetBaseTexture() != nullptr)
-      m_rtSlotTracking.canBeSampled |= bit;
-
-    UpdateActiveHazardsRT(std::numeric_limits<uint32_t>::max());
-  }
-
   template <uint32_t Index>
   inline void D3D9DeviceEx::UpdateAnyColorWrites() {
     // Writes to a render target have been enabled => check for hazards
     UpdateActiveHazardsRT(std::numeric_limits<uint32_t>::max());
+
+    const uint8_t oldMask = m_rtSlotTracking.anyColorWrite;
+    const bool anyWrite = m_state.renderStates[ColorWriteIndex(Index)] != 0;
+    m_rtSlotTracking.anyColorWrite &= 1u << Index;
+    m_rtSlotTracking.anyColorWrite |= uint8_t(anyWrite) << Index;
+
+    if (unlikely(!!oldMask != !!m_rtSlotTracking.anyColorWrite)) {
+    }
 
     // Writes to render target 0 have been enabled and the RT might not be bound due to the 1x1 hack.
     if (Index == 0 && m_state.depthStencil != nullptr)
@@ -6476,6 +6479,19 @@ namespace dxvk {
     uint32_t rtMask = m_rtSlotTracking.canBeSampled;
     texMask &= m_textureSlotTracking.rtUsage;
 
+    if (IsDepthOnlyPass()) {
+      texMask &= ~((1u << caps::MaxTexturesPS) - 1u);
+    } else {
+      Logger::warn(str::format("PS mask: ", psMasks.samplerMask));
+      if ((PSShaderMasks().rtMask & m_rtSlotTracking.bound & m_rtSlotTracking.anyColorWrite) == 0) {
+        if (m_alphaTestEnabled)
+          Logger::warn("No rt bound but alpha test");
+
+        if (m_atocEnabled)
+          Logger::warn("No rt bound but atoc");
+      }
+    }
+
     for (uint32_t rtIdx : bit::BitMask(rtMask)) {
       bool anyColorWrite = m_state.renderStates[ColorWriteIndex(rtIdx)] != 0;
       bool shaderWritesToRt = (psMasks.rtMask & (1 << rtIdx)) != 0;
@@ -6533,6 +6549,10 @@ namespace dxvk {
 
     auto psMasks = PSShaderMasks();
     texMask &= m_textureSlotTracking.dsUsage;
+
+    if (IsDepthOnlyPass()) {
+      texMask &= ~((1u << caps::MaxTexturesPS) - 1u);
+    }
 
     const bool depthWrite = m_state.renderStates[D3DRS_ZENABLE] && m_state.renderStates[D3DRS_ZWRITEENABLE];
 
@@ -7111,6 +7131,7 @@ namespace dxvk {
       if (m_atocEnabled != alphaToCoverageEnabled) {
         m_flags.set(D3D9DeviceFlag::DirtyMultiSampleState);
         m_atocEnabled = alphaToCoverageEnabled;
+        UpdatePixelShaderActive();
       }
     }
 
@@ -7119,6 +7140,7 @@ namespace dxvk {
     if (m_alphaTestEnabled != alphaTestEnabled) {
       m_flags.set(D3D9DeviceFlag::DirtyAlphaTestState);
       m_alphaTestEnabled = alphaTestEnabled;
+      UpdatePixelShaderActive();
     }
   }
 
@@ -7808,6 +7830,13 @@ namespace dxvk {
   template <DxsoProgramType ShaderStage>
   void D3D9DeviceEx::BindShader(
   const D3D9CommonShader*                 pShaderModule) {
+    if (unlikely(pShaderModule == nullptr)) {
+      EmitCs([] (DxvkContext* ctx) {
+        ctx->bindShader<VK_SHADER_STAGE_FRAGMENT_BIT>(nullptr);
+      });
+      return;
+    }
+
     auto shader = pShaderModule->GetShader();
 
     if (unlikely(shader->needsCompile()))
@@ -7838,6 +7867,23 @@ namespace dxvk {
         auto shader = cShaders.GetFSUbershaderModule();
         ctx->bindShader<VK_SHADER_STAGE_FRAGMENT_BIT>(shader.GetShader());
       });
+    }
+  }
+
+
+  void D3D9DeviceEx::UpdatePixelShaderActive(bool UpdateHazards) {
+    if (UpdateHazards) {
+      UpdateActiveHazardsRT(~((1u << caps::MaxTexturesPS) - 1u));
+      UpdateActiveHazardsDS(~((1u << caps::MaxTexturesPS) - 1u));
+    }
+    if (unlikely(IsDepthOnlyPass())) {
+      BindShader<DxsoProgramType::PixelShader>(nullptr);
+    } else {
+      if (UseProgrammablePS()) {
+        BindShader<DxsoProgramType::PixelShader>(m_state.pixelShader->GetCommonShader());
+      } else {
+        BindFFUbershader<DxsoProgramType::PixelShader>();
+      }
     }
   }
 

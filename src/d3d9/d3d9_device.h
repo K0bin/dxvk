@@ -187,6 +187,9 @@ namespace dxvk {
     /* D3D9 allows rendering to 4 render targets at the same time.
      * So all RT bit masks only use the first 4 bits. */
 
+    /** Whether any (non-NULL-format) render target is bound. */
+    uint8_t bound = 0;
+
     /** Whether a render target is a D3D9Texture rather than just a D3D9Surface.
       * Textures can be bound for sampling so there can be a feedback loop if this
       * RT is also bound for sampling. */
@@ -195,6 +198,9 @@ namespace dxvk {
     /** Whether the alpha channel of the format of this RT needs to be manually handled
       * as part of the blend state. */
     uint8_t hasAlphaSwizzle = 0;
+
+    /** Whether the color write mask is anything but 0 for the RT slot. */
+    uint8_t anyColorWrite = 0;
   };
 
   struct D3D9VBSlotTracking {
@@ -1096,6 +1102,8 @@ namespace dxvk {
     template <DxsoProgramType ShaderStage>
     void BindFFUbershader();
 
+    void UpdatePixelShaderActive(bool UpdateHazards = true);
+
     void BindInputLayout();
 
     void BindVertexBuffer(
@@ -1569,6 +1577,11 @@ namespace dxvk {
         m_ffShaderMasks = BuildFFShaderMasks();
 
       return m_ffShaderMasks;
+    }
+
+    bool IsDepthOnlyPass() {
+      return (PSShaderMasks().rtMask & m_rtSlotTracking.bound & m_rtSlotTracking.anyColorWrite) == 0
+        && !m_alphaTestEnabled && !m_atocEnabled;
     }
 
     D3D9ShaderMasks BuildFFShaderMasks() const;
