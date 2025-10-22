@@ -185,6 +185,7 @@ namespace dxvk {
     m_flags.set(D3D9DeviceFlag::DirtyFFPixelShader);
     m_flags.set(D3D9DeviceFlag::DirtyFFViewport);
     m_flags.set(D3D9DeviceFlag::DirtyFFPixelData);
+    m_flags.set(D3D9DeviceFlag::DirtyFFPSMasks);
     m_flags.set(D3D9DeviceFlag::DirtySharedPixelShaderData);
     m_flags.set(D3D9DeviceFlag::DirtyDepthBounds);
     m_flags.set(D3D9DeviceFlag::DirtyPointScale);
@@ -2453,6 +2454,7 @@ namespace dxvk {
 
         case D3DRS_TEXTUREFACTOR:
           m_flags.set(D3D9DeviceFlag::DirtyFFPixelData);
+          m_flags.set(D3D9DeviceFlag::DirtyFFPSMasks);
           break;
 
         case D3DRS_DIFFUSEMATERIALSOURCE:
@@ -2472,6 +2474,7 @@ namespace dxvk {
 
         case D3DRS_SPECULARENABLE:
           m_flags.set(D3D9DeviceFlag::DirtyFFPixelShader);
+          m_flags.set(D3D9DeviceFlag::DirtyFFPSMasks);
           break;
 
         case D3DRS_FOGENABLE:
@@ -3371,6 +3374,7 @@ namespace dxvk {
         GetCommonShader(m_state.pixelShader));
     } else {
       m_flags.set(D3D9DeviceFlag::DirtyFFPixelShader);
+      m_flags.set(D3D9DeviceFlag::DirtyFFPSMasks);
       BindFFUbershader<DxsoProgramType::PixelShader>();
     }
 
@@ -3957,6 +3961,7 @@ namespace dxvk {
     }
     else {
       m_flags.set(D3D9DeviceFlag::DirtyFFPixelShader);
+      m_flags.set(D3D9DeviceFlag::DirtyFFPSMasks);
       BindFFUbershader<DxsoProgramType::PixelShader>();
 
       // TODO: What fixed function textures are in use?
@@ -4699,6 +4704,7 @@ namespace dxvk {
         case DXVK_TSS_ALPHAARG2:
         case DXVK_TSS_RESULTARG:
           m_flags.set(D3D9DeviceFlag::DirtyFFPixelShader);
+          m_flags.set(D3D9DeviceFlag::DirtyFFPSMasks);
           break;
 
         case DXVK_TSS_TEXCOORDINDEX:
@@ -6357,6 +6363,26 @@ namespace dxvk {
     // Writes to render target 0 have been enabled and the RT might not be bound due to the 1x1 hack.
     if (Index == 0 && m_state.depthStencil != nullptr)
       m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
+  }
+
+
+  D3D9ShaderMasks D3D9DeviceEx::BuildFFShaderMasks() const {
+    D3D9ShaderMasks mask;
+    mask.rtMask = 0b1u;
+    for (uint32_t i = 0u; i < m_state.textureStages->size(); i++) {
+      const auto& stage = m_state.textureStages[i];
+      if (stage[DXVK_TSS_COLOROP] == D3DTOP_DISABLE)
+        break;
+
+      if (stage[DXVK_TSS_COLORARG0] == D3DTA_TEXTURE
+        || stage[DXVK_TSS_ALPHAARG0] == D3DTA_TEXTURE
+        || stage[DXVK_TSS_COLORARG1] == D3DTA_TEXTURE
+        || stage[DXVK_TSS_ALPHAARG1] == D3DTA_TEXTURE
+        || stage[DXVK_TSS_COLORARG2] == D3DTA_TEXTURE
+        || stage[DXVK_TSS_ALPHAARG2] == D3DTA_TEXTURE)
+        mask.samplerMask |= (1u << i);
+    }
+    return mask;
   }
 
 
@@ -8651,6 +8677,7 @@ namespace dxvk {
 
     rs[D3DRS_TEXTUREFACTOR]       = 0xffffffff;
     m_flags.set(D3D9DeviceFlag::DirtyFFPixelData);
+    m_flags.set(D3D9DeviceFlag::DirtyFFPSMasks);
 
     rs[D3DRS_DIFFUSEMATERIALSOURCE]  = D3DMCS_COLOR1;
     rs[D3DRS_SPECULARMATERIALSOURCE] = D3DMCS_COLOR2;
@@ -8769,6 +8796,7 @@ namespace dxvk {
     }
     m_flags.set(D3D9DeviceFlag::DirtySharedPixelShaderData);
     m_flags.set(D3D9DeviceFlag::DirtyFFPixelShader);
+    m_flags.set(D3D9DeviceFlag::DirtyFFPSMasks);
 
     for (uint32_t i = 0; i < caps::MaxStreams; i++)
       m_state.streamFreq[i] = 1;
