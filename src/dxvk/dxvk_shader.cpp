@@ -295,6 +295,8 @@ namespace dxvk {
     if (!pipeline.handle)
       return { VK_NULL_HANDLE, 0 };
 
+    this->notifyLibraryCompileFinished();
+
     return pipeline;
   }
 
@@ -741,6 +743,14 @@ namespace dxvk {
     // building the shader's standalone pipeline library
     if (m_shaders.getShaderCount() == 1u)
       m_shaders.getShader(0u)->notifyCompile();
+  }
+
+
+  void DxvkShaderPipelineLibrary::notifyLibraryCompileFinished() const {
+    // Only notify the shader itself if we're actually
+    // building the shader's standalone pipeline library
+    if (m_shaders.getShaderCount() == 1u)
+      m_shaders.getShader(0u)->notifyCompileFinished();
   }
 
 

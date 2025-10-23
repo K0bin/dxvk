@@ -273,6 +273,18 @@ namespace dxvk {
     }
 
     /**
+     * \brief Tests whether this shader has been compiled
+     *
+     * If pipeline libraries are supported, this will return
+     * \c true once the pipeline library is compiled.
+     * \returns \c false if compilation either has not started
+     * yet (see needsCompile) or if compilation is not done yet.
+     */
+    bool compileFinished() const {
+      return m_compileFinished.load(std::memory_order_relaxed);
+    }
+
+    /**
      * \brief Notifies library compile
      *
      * Called automatically when pipeline compilation begins. Returns
@@ -281,6 +293,15 @@ namespace dxvk {
      */
     bool notifyCompile() {
       return m_needsCompile.exchange(false);
+    }
+
+    /**
+     * \brief Notifies library compile has finished
+     *
+     * Called automatically when pipeline compilation is done.
+     */
+    void notifyCompileFinished() {
+      m_compileFinished.store(true, std::memory_order_relaxed);
     }
 
     /**
@@ -358,6 +379,8 @@ namespace dxvk {
     uint32_t                      m_cookie = 0;
 
     std::atomic<bool>             m_needsCompile = { true };
+
+    std::atomic<bool>             m_compileFinished = { false };
 
     std::optional<DxvkShaderMetadata> m_metadata;
 
@@ -668,6 +691,8 @@ namespace dxvk {
             VkShaderStageFlagBits         stage);
 
     void notifyLibraryCompile() const;
+
+    void notifyLibraryCompileFinished() const;
 
     void compileShaders();
 
