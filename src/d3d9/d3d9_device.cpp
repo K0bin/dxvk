@@ -1716,10 +1716,20 @@ namespace dxvk {
       : GpuFlushType::ImplicitWeakHint);
     m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
 
+    // Store whether something was bound before the change
+    // to figure out whether we need to update the FF shader mask
+    bool wasBound = HasRenderTargetBound(RenderTargetIndex);
+
     m_state.renderTargets[RenderTargetIndex] = rt;
 
     // Update feedback loop tracking bitmasks
-    UpdateActiveRTs(RenderTargetIndex);
+    const uint32_t bit = 1 << RenderTargetIndex;
+
+    m_rtSlotTracking.canBeSampled &= ~bit;
+
+    if (HasRenderTargetBound(RenderTargetIndex) &&
+      m_state.renderTargets[RenderTargetIndex]->GetBaseTexture() != nullptr)
+      m_rtSlotTracking.canBeSampled |= bit;
 
     // Update render target alpha swizzle bitmask if we need to fix up the alpha channel
     // for XRGB formats
@@ -1764,7 +1774,13 @@ namespace dxvk {
         m_flags.set(D3D9DeviceFlag::DirtyMultiSampleState);
         m_flags.set(D3D9DeviceFlag::DirtyAlphaTestState);
       }
+
+      if (HasRenderTargetBound(0u) != wasBound) {
+        m_flags.set(D3D9DeviceFlag::DirtyFFPSMasks);
+      }
     }
+
+    UpdateActiveHazardsRT(std::numeric_limits<uint32_t>::max());
 
     return D3D_OK;
   }
@@ -6343,45 +6359,85 @@ namespace dxvk {
   }
 
 
-  inline void D3D9DeviceEx::UpdateActiveRTs(uint32_t index) {
-    const uint32_t bit = 1 << index;
-
-    m_rtSlotTracking.canBeSampled &= ~bit;
-
-    if (HasRenderTargetBound(index) &&
-      m_state.renderTargets[index]->GetBaseTexture() != nullptr)
-      m_rtSlotTracking.canBeSampled |= bit;
-
-    UpdateActiveHazardsRT(std::numeric_limits<uint32_t>::max());
-  }
-
   template <uint32_t Index>
   inline void D3D9DeviceEx::UpdateAnyColorWrites() {
+    // Writes to render target 0 have been enabled and the RT might not be bound due to the 1x1 hack.
+    if (Index == 0) {
+      if (m_state.depthStencil != nullptr) {
+        m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
+      }
+
+      m_flags.set(D3D9DeviceFlag::DirtyFFPSMasks);
+    }
+
     // Writes to a render target have been enabled => check for hazards
     UpdateActiveHazardsRT(std::numeric_limits<uint32_t>::max());
-
-    // Writes to render target 0 have been enabled and the RT might not be bound due to the 1x1 hack.
-    if (Index == 0 && m_state.depthStencil != nullptr)
-      m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
   }
 
 
   D3D9ShaderMasks D3D9DeviceEx::BuildFFShaderMasks() const {
+    bool colorUsed = HasRenderTargetBound(0u) && m_state.renderStates[ColorWriteIndex(0u)] != 0u;
     D3D9ShaderMasks mask;
     mask.rtMask = 0b1u;
+
+    uint8_t alphaTempInfluencedByTexture = 0u;
+    uint8_t alphaCurrentInfluencedByTexture = 0u;
     for (uint32_t i = 0u; i < m_state.textureStages->size(); i++) {
       const auto& stage = m_state.textureStages[i];
       if (stage[DXVK_TSS_COLOROP] == D3DTOP_DISABLE)
         break;
 
-      if (stage[DXVK_TSS_COLORARG0] == D3DTA_TEXTURE
-        || stage[DXVK_TSS_ALPHAARG0] == D3DTA_TEXTURE
-        || stage[DXVK_TSS_COLORARG1] == D3DTA_TEXTURE
-        || stage[DXVK_TSS_ALPHAARG1] == D3DTA_TEXTURE
-        || stage[DXVK_TSS_COLORARG2] == D3DTA_TEXTURE
-        || stage[DXVK_TSS_ALPHAARG2] == D3DTA_TEXTURE)
-        mask.samplerMask |= (1u << i);
+      if (colorUsed) {
+        bool textureArg = stage[DXVK_TSS_COLORARG0] == D3DTA_TEXTURE
+          || stage[DXVK_TSS_ALPHAARG0] == D3DTA_TEXTURE
+          || stage[DXVK_TSS_COLORARG1] == D3DTA_TEXTURE
+          || stage[DXVK_TSS_ALPHAARG1] == D3DTA_TEXTURE
+          || stage[DXVK_TSS_COLORARG2] == D3DTA_TEXTURE
+          || stage[DXVK_TSS_ALPHAARG2] == D3DTA_TEXTURE;
+        mask.samplerMask |= uint8_t(textureArg) << i;
+        continue;
+      }
+
+      // Find texture accesses that aren't being overwritten by a constant later.
+      // Dawn of War Definitive Edition hits this for the depth prepass.
+      // This case is only really likely to happen in depth passes
+      // where the fixed function stages are configured the same way
+      // as for regular color passes.
+
+      bool resultAsTemp = stage[DXVK_TSS_RESULTARG] == D3DTA_TEMP;
+
+      uint8_t influenceMask = 0;
+      if (stage[DXVK_TSS_ALPHAOP] != D3DTOP_SELECTARG2) {
+        switch (stage[DXVK_TSS_ALPHAARG1]) {
+          case D3DTA_TEMP:    influenceMask |= alphaTempInfluencedByTexture;    break;
+          case D3DTA_CURRENT: influenceMask |= alphaCurrentInfluencedByTexture; break;
+          case D3DTA_TEXTURE: influenceMask |= 1u << i;                         break;
+        }
+      }
+
+      if (stage[DXVK_TSS_ALPHAOP] != D3DTOP_SELECTARG1) {
+        switch (stage[DXVK_TSS_ALPHAARG2]) {
+          case D3DTA_TEMP:    influenceMask |= alphaTempInfluencedByTexture;    break;
+          case D3DTA_CURRENT: influenceMask |= alphaCurrentInfluencedByTexture; break;
+          case D3DTA_TEXTURE: influenceMask |= 1u << i;                         break;
+        }
+      }
+
+      if (stage[DXVK_TSS_ALPHAOP] == D3DTOP_SELECTARG1 || stage[DXVK_TSS_ALPHAOP] == D3DTOP_SELECTARG2) {
+        uint32_t selectArg = stage[DXVK_TSS_ALPHAOP] == D3DTOP_SELECTARG1 ? stage[DXVK_TSS_ALPHAARG1] : stage[DXVK_TSS_ALPHAARG2];
+        switch (selectArg) {
+          case D3DTA_CONSTANT: influenceMask = 0;                               break;
+          case D3DTA_CURRENT:  influenceMask = alphaCurrentInfluencedByTexture; break;
+          case D3DTA_TEMP:     influenceMask = alphaTempInfluencedByTexture;    break;
+        }
+      }
+
+      if (resultAsTemp)
+        alphaTempInfluencedByTexture = influenceMask;
+      else
+        alphaCurrentInfluencedByTexture = influenceMask;
     }
+    mask.samplerMask |= alphaTempInfluencedByTexture | alphaCurrentInfluencedByTexture;
     return mask;
   }
 
