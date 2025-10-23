@@ -1715,6 +1715,8 @@ namespace dxvk {
       : GpuFlushType::ImplicitWeakHint);
     m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
 
+    bool wasBound = HasRenderTargetBound(RenderTargetIndex);
+
     m_state.renderTargets[RenderTargetIndex] = rt;
 
     // Update feedback loop tracking bitmasks
@@ -1762,6 +1764,10 @@ namespace dxvk {
         m_flags.clr(D3D9DeviceFlag::ValidSampleMask);
         m_flags.set(D3D9DeviceFlag::DirtyMultiSampleState);
         m_flags.set(D3D9DeviceFlag::DirtyAlphaTestState);
+      }
+
+      if (HasRenderTargetBound(0u) != wasBound) {
+        m_flags.set(D3D9DeviceFlag::DirtyFFPixelShader);
       }
     }
 
@@ -8303,9 +8309,13 @@ namespace dxvk {
 
     D3D9FFShaderKeyFS key;
 
-    uint32_t activeTextureStageCount = 0;
+    bool colorUsed = HasRenderTargetBound(0u);
+    uint32_t currentLastWrittenPass = 0u;
+    uint32_t tempLastWrittenPass = 0u;
+
     for (uint32_t i = 0; i < caps::TextureStageCount; i++) {
-      auto& stage = key.Stages[i].Contents;
+      uint32_t index = i != 0 ? std::max(currentLastWrittenPass, tempLastWrittenPass) + 1 : 0;
+      auto& stage = key.Stages[index].Contents;
       auto& data  = m_state.textureStages[i];
 
       // Subsequent stages do not occur if this is true.
@@ -8334,8 +8344,32 @@ namespace dxvk {
 
       stage.ResultIsTemp = data[DXVK_TSS_RESULTARG] == D3DTA_TEMP;
 
-      activeTextureStageCount = i + 1;
+      if (!colorUsed) {
+        // Optimization for Dawn of War Definitive Edition which does a depth pass with alpha test activated.
+        // Those draws have 6 texture stages activates, render to a NULL texture and the alpha ops are mostly
+        // SELECTARG + CURRENT/TEMP.
+        if (stage.AlphaOp == D3DTOP_SELECTARG1 || stage.AlphaOp == D3DTOP_SELECTARG2) {
+          uint32_t selectArg = stage.AlphaOp == D3DTOP_SELECTARG1 ? stage.AlphaArg1 : stage.AlphaArg2;
+          if (selectArg == D3DTA_CURRENT || selectArg == D3DTA_TEMP) {
+            uint32_t selectIndex = selectArg == D3DTA_CURRENT ? currentLastWrittenPass : tempLastWrittenPass;
+
+            if (stage.AlphaArg1 == D3DTA_CURRENT)
+              tempLastWrittenPass = selectIndex;
+            else if (stage.AlphaArg1 == D3DTA_TEMP)
+              currentLastWrittenPass = selectIndex;
+
+            continue;
+          }
+        }
+      }
+
+      if (stage.ResultIsTemp) {
+        tempLastWrittenPass = index;
+      } else {
+        currentLastWrittenPass = index;
+      }
     }
+    uint32_t activeTextureStageCount = std::max(currentLastWrittenPass, tempLastWrittenPass) + 1;
 
     auto& stage0 = key.Stages[0].Contents;
 
