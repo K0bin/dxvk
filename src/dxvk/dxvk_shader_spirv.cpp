@@ -1547,4 +1547,55 @@ namespace dxvk {
     }
   }
 
+
+  DxvkSpirvShader DxvkSpirvShader::specialize(
+    const uint32_t* specConstValues,
+    const bool* applySpecConst,
+    uint32_t specConstCount
+  ) const {
+    SpirvCodeBuffer code = m_code.decompress();
+
+    std::unordered_map<uint32_t, uint32_t> specConstPtrs;
+    std::unordered_map<uint32_t, uint32_t> locationPtrs;
+
+    for (auto iter = code.begin(); iter != code.end(); ++iter) {
+      auto ins = *iter;
+
+      switch (ins.opCode()) {
+        case spv::OpSpecConstant: {
+          uint32_t spvId = ins.arg(2);
+          specConstPtrs.insert({ spvId, ins.offset() });
+        } break;
+
+        case spv::OpDecorate: {
+          if (ins.arg(2) == uint32_t(spv::DecorationSpecId)) {
+            uint32_t constId = ins.arg(3);
+            uint32_t spvId = ins.arg(1);
+            if (constId < specConstCount && applySpecConst[constId]) {
+              locationPtrs.insert({ spvId, ins.offset() });
+            }
+          }
+        } break;
+      }
+    }
+
+    for (auto iter = locationPtrs.begin(); iter != locationPtrs.end(); ++iter) {
+      auto decorationIter = SpirvInstructionIterator(code.data(), iter->second, code.dwords());
+      uint32_t spvId = (*decorationIter).arg(1);
+      uint32_t constId = (*decorationIter).arg(3);
+
+      auto specConstIter = specConstPtrs.find(spvId);
+      if (specConstIter == specConstPtrs.end()) {
+        continue;
+      }
+
+      code.beginInsertion(specConstIter->second + 3);
+      code.erase(1);
+      code.putWord(specConstValues[constId]);
+      code.endInsertion();
+    }
+
+    return { m_info, std::move(code) };
+  }
+
 }

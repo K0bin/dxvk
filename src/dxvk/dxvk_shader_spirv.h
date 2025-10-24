@@ -104,6 +104,12 @@ namespace dxvk {
      */
     std::string debugName();
 
+    DxvkSpirvShader specialize(
+      const uint32_t* specConstValues,
+      const bool* applySpecConst,
+      uint32_t specConstCount
+    ) const;
+
   private:
 
     DxvkSpirvShaderCreateInfo     m_info  = { };

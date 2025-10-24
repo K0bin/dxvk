@@ -9247,7 +9247,7 @@ namespace dxvk {
       return;
 
     EmitCs([cSpecInfo = m_specInfo](DxvkContext* ctx) {
-      for (size_t i = 0; i < cSpecInfo.data.size(); i++)
+      for (size_t i = 0; i < MaxNumSpecConstants; i++)
         ctx->setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, i, cSpecInfo.data[i]);
     });
 
