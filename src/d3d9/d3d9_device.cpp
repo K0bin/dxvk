@@ -8768,7 +8768,7 @@ namespace dxvk {
       stage[DXVK_TSS_COLORARG0]             = D3DTA_CURRENT;
       stage[DXVK_TSS_ALPHAARG0]             = D3DTA_CURRENT;
       stage[DXVK_TSS_RESULTARG]             = D3DTA_CURRENT;
-      stage[DXVK_TSS_CONSTANT]              = 0x00000000;
+      stage[DXVK_TSS_CONSTANT]              = 0xffffffff;
     }
     m_flags.set(D3D9DeviceFlag::DirtySharedPixelShaderData);
     m_flags.set(D3D9DeviceFlag::DirtyFFPixelShader);
