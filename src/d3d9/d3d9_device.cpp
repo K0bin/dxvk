@@ -3562,14 +3562,25 @@ namespace dxvk {
     bool oldCopies = oldShader && oldShader->GetMeta().needsConstantCopies;
     bool newCopies = newShader && newShader->GetMeta().needsConstantCopies;
 
-    m_consts[DxsoProgramTypes::VertexShader].dirty |= oldCopies || newCopies || !oldShader;
-    m_consts[DxsoProgramTypes::VertexShader].meta  = newShader ? newShader->GetMeta() : DxsoShaderMetaInfo();
+    auto& constantSet = m_consts[DxsoProgramTypes::VertexShader];
+    constantSet.dirty |= oldCopies || newCopies || !oldShader;
+    constantSet.meta  = newShader ? newShader->GetMeta() : DxsoShaderMetaInfo();
 
     if (newShader && oldShader) {
-      m_consts[DxsoProgramTypes::VertexShader].dirty
+      constantSet.dirty
         |= newShader->GetMeta().maxConstIndexF > oldShader->GetMeta().maxConstIndexF
         || newShader->GetMeta().maxConstIndexI > oldShader->GetMeta().maxConstIndexI
         || newShader->GetMeta().maxConstIndexB > oldShader->GetMeta().maxConstIndexB;
+    }
+
+    if (unlikely(m_isD3D8Compatible && constSet.meta.needsConstantCopies)) {
+      // In D3D8, shader defined constants are applied in SetVertexShader
+      // and impact shaders used after that which don't define the same constants.
+      auto& shaderConsts = newShader->GetConstants();
+      for (const auto& constant : shaderConsts) {
+        SetVertexShaderConstantF(constant.uboIdx, constant.float32, 1u);
+        // TODO Bool & Int constants
+      }
     }
 
     const bool wasUsingProgrammableVS = UseProgrammableVS();
@@ -3921,14 +3932,25 @@ namespace dxvk {
     bool oldCopies = oldShader && oldShader->GetMeta().needsConstantCopies;
     bool newCopies = newShader && newShader->GetMeta().needsConstantCopies;
 
-    m_consts[DxsoProgramTypes::PixelShader].dirty |= oldCopies || newCopies || !oldShader;
-    m_consts[DxsoProgramTypes::PixelShader].meta  = newShader ? newShader->GetMeta() : DxsoShaderMetaInfo();
+    auto& constSet = m_consts[DxsoProgramTypes::PixelShader];
+    constSet.dirty |= oldCopies || newCopies || !oldShader;
+    constSet.meta  = newShader ? newShader->GetMeta() : DxsoShaderMetaInfo();
 
     if (newShader && oldShader) {
-      m_consts[DxsoProgramTypes::PixelShader].dirty
+      constSet.dirty
         |= newShader->GetMeta().maxConstIndexF > oldShader->GetMeta().maxConstIndexF
         || newShader->GetMeta().maxConstIndexI > oldShader->GetMeta().maxConstIndexI
         || newShader->GetMeta().maxConstIndexB > oldShader->GetMeta().maxConstIndexB;
+    }
+
+    if (unlikely(m_isD3D8Compatible && constSet.meta.needsConstantCopies)) {
+      // In D3D8, shader defined constants are applied in SetVertexShader
+      // and impact shaders used after that which don't define the same constants.
+      auto& shaderConsts = newShader->GetConstants();
+      for (const auto& constant : shaderConsts) {
+        SetPixelShaderConstantF(constant.uboIdx, constant.float32, 1u);
+        // TODO Bool & Int constants
+      }
     }
 
     const D3D9ShaderMasks oldShaderMasks = PSShaderMasks();
@@ -6055,9 +6077,10 @@ namespace dxvk {
     if (likely(constSet.meta.maxConstIndexF != 0)) {
       auto mapPtr = CopySoftwareConstants(constSet.buffer, Src.fConsts, floatDataSize);
 
-      if (constSet.meta.needsConstantCopies) {
+      if (constSet.meta.needsConstantCopies && !m_isD3D8Compatible) {
         // Copy shader defined constants over so they can be accessed
         // with relative addressing.
+        // In D3D8 those constants are applied in SetShader.
         Vector4* data = reinterpret_cast<Vector4*>(mapPtr);
 
         auto& shaderConsts = GetCommonShader(m_state.vertexShader)->GetConstants();
@@ -6131,7 +6154,7 @@ namespace dxvk {
     if (constSet.meta.maxConstIndexF != 0)
       std::memcpy(dst->fConsts, Src.fConsts, floatDataSize);
 
-    if (constSet.meta.needsConstantCopies) {
+    if (constSet.meta.needsConstantCopies && !m_isD3D8Compatible) {
       // Copy shader defined constants over so they can be accessed
       // with relative addressing.
       Vector4* data = reinterpret_cast<Vector4*>(dst->fConsts);
