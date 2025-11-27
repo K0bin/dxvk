@@ -174,9 +174,9 @@ namespace dxvk {
     inline uint32_t GetLockCount() const { return m_lockCount; }
 
     /**
-     * \brief Whether or not the staging buffer needs to be copied to the actual buffer
+     * \brief Whether the staging buffer needs to be copied to the actual buffer
      */
-    inline bool NeedsUpload() const { return m_desc.Pool != D3DPOOL_DEFAULT && !m_dirtyRange.IsDegenerate(); }
+    inline bool NeedsUpload() const { return !m_dirtyRange.IsDegenerate(); }
 
     void PreLoad();
 
