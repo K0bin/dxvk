@@ -1271,6 +1271,10 @@ namespace dxvk {
       return m_d3d9On12Args.Enable9On12;
     }
 
+    uint64_t m_writeonlyBuffers = 0ull;
+    uint64_t m_writeonlyDynamicBuffers = 0ull;
+    uint64_t m_dynamicBuffers = 0ull;
+
   private:
 
     template<bool AllowFlush = true, typename Cmd>

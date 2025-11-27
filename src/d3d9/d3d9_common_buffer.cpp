@@ -18,11 +18,41 @@ namespace dxvk {
 
     if (m_desc.Pool != D3DPOOL_DEFAULT)
       m_dirtyRange = D3D9Range(0, m_desc.Size);
+
+    if (m_desc.Pool == D3DPOOL_DEFAULT) {
+      if (m_desc.Usage & D3DUSAGE_DYNAMIC) {
+        m_parent->m_dynamicBuffers += m_desc.Size;
+      }
+      if (m_desc.Usage & D3DUSAGE_WRITEONLY) {
+        m_parent->m_writeonlyBuffers += m_desc.Size;
+      }
+      if ((m_desc.Usage & (D3DUSAGE_DYNAMIC | D3DUSAGE_WRITEONLY)) == (D3DUSAGE_DYNAMIC | D3DUSAGE_WRITEONLY)) {
+        m_parent->m_writeonlyDynamicBuffers += m_desc.Size;
+      }
+      if ((m_desc.Usage & (D3DUSAGE_DYNAMIC | D3DUSAGE_WRITEONLY)) != 0) {
+        Logger::warn(str::format("Writeonly buffers: ", (m_parent->m_writeonlyBuffers >> 20), ", dynamic buffers: ", (m_parent->m_dynamicBuffers >> 20), ", dynamic+writeonly buffers: ", (m_parent->m_writeonlyDynamicBuffers >> 20)));
+      }
+    }
   }
 
   D3D9CommonBuffer::~D3D9CommonBuffer() {
     if (m_desc.Pool == D3DPOOL_DEFAULT)
       m_parent->DecrementLosableCounter();
+
+    if (m_desc.Pool == D3DPOOL_DEFAULT) {
+      if (m_desc.Usage & D3DUSAGE_DYNAMIC) {
+        m_parent->m_dynamicBuffers -= m_desc.Size;
+      }
+      if (m_desc.Usage & D3DUSAGE_WRITEONLY) {
+        m_parent->m_writeonlyBuffers -= m_desc.Size;
+      }
+      if ((m_desc.Usage & (D3DUSAGE_DYNAMIC | D3DUSAGE_WRITEONLY)) == (D3DUSAGE_DYNAMIC | D3DUSAGE_WRITEONLY)) {
+        m_parent->m_writeonlyDynamicBuffers -= m_desc.Size;
+      }
+      if ((m_desc.Usage & (D3DUSAGE_DYNAMIC | D3DUSAGE_WRITEONLY)) != 0) {
+        Logger::warn(str::format("Writeonly buffers: ", (m_parent->m_writeonlyBuffers >> 20), ", dynamic buffers: ", (m_parent->m_dynamicBuffers >> 20), ", dynamic+writeonly buffers: ", (m_parent->m_writeonlyDynamicBuffers >> 20)));
+      }
+    }
   }
 
 
