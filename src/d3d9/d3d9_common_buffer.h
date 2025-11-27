@@ -176,7 +176,7 @@ namespace dxvk {
     /**
      * \brief Whether the staging buffer needs to be copied to the actual buffer
      */
-    inline bool NeedsUpload() const { return !m_dirtyRange.IsDegenerate(); }
+    inline bool NeedsUpload() const { return !m_dirtyRange.IsDegenerate() && m_mapMode != D3D9_COMMON_BUFFER_MAP_MODE_DIRECT; }
 
     void PreLoad();
 

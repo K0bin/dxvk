@@ -5555,10 +5555,11 @@ namespace dxvk {
 
     const bool directMapping = pResource->GetMapMode() == D3D9_COMMON_BUFFER_MAP_MODE_DIRECT;
     const bool needsReadback = pResource->NeedsReadback();
+    const bool disableStagingBuffer = m_d3d9Options.disableStagingBufferBufferUploads;
 
     uint8_t* data = nullptr;
 
-    if ((Flags & D3DLOCK_DISCARD) && (directMapping || needsReadback)) {
+    if ((Flags & D3DLOCK_DISCARD) && (directMapping || needsReadback || disableStagingBuffer)) {
       // If we're not directly mapped and don't need readback,
       // the buffer is not currently getting used anyway
       // so there's no reason to waste memory by discarding.
@@ -5590,10 +5591,9 @@ namespace dxvk {
       const bool readOnly = Flags & D3DLOCK_READONLY;
       // NOOVERWRITE promises that they will not write in a currently used area.
       const bool noOverwrite = Flags & D3DLOCK_NOOVERWRITE;
-      const bool directMapping = pResource->GetMapMode() == D3D9_COMMON_BUFFER_MAP_MODE_DIRECT;
 
       // If we're not directly mapped, we can rely on needsReadback to tell us if a sync is required.
-      const bool skipWait = (!needsReadback && (readOnly || !directMapping)) || noOverwrite;
+      const bool skipWait = (!needsReadback && !disableStagingBuffer && (readOnly || !directMapping)) || noOverwrite;
 
       if (!skipWait) {
         const Rc<DxvkBuffer> mappingBuffer = pResource->GetBuffer<D3D9_COMMON_BUFFER_TYPE_MAPPING>();
@@ -5633,27 +5633,44 @@ namespace dxvk {
     WaitStagingBuffer();
 
     auto dstBuffer = pResource->GetBufferSlice<D3D9_COMMON_BUFFER_TYPE_REAL>();
-    auto srcSlice = pResource->GetMappedSlice();
 
     D3D9Range& range = pResource->DirtyRange();
 
-    D3D9BufferSlice slice = AllocStagingBuffer(range.max - range.min);
-    void* srcData = reinterpret_cast<uint8_t*>(srcSlice->mapPtr()) + range.min;
-    memcpy(slice.mapPtr, srcData, range.max - range.min);
+    if (!m_d3d9Options.disableStagingBufferBufferUploads) {
+      auto srcSlice = pResource->GetMappedSlice();
+      D3D9BufferSlice slice = AllocStagingBuffer(range.max - range.min);
+      void* srcData = reinterpret_cast<uint8_t*>(srcSlice->mapPtr()) + range.min;
+      memcpy(slice.mapPtr, srcData, range.max - range.min);
 
-    EmitCs([
-      cDstSlice  = dstBuffer,
-      cSrcSlice  = slice.slice,
-      cDstOffset = range.min,
-      cLength    = range.max - range.min
-    ] (DxvkContext* ctx) {
-      ctx->copyBuffer(
-        cDstSlice.buffer(),
-        cDstSlice.offset() + cDstOffset,
-        cSrcSlice.buffer(),
-        cSrcSlice.offset(),
-        cLength);
-    });
+      EmitCs([
+        cDstSlice  = dstBuffer,
+        cSrcSlice  = slice.slice,
+        cDstOffset = range.min,
+        cLength    = range.max - range.min
+      ] (DxvkContext* ctx) {
+        ctx->copyBuffer(
+          cDstSlice.buffer(),
+          cDstSlice.offset() + cDstOffset,
+          cSrcSlice.buffer(),
+          cSrcSlice.offset(),
+          cLength);
+      });
+    } else {
+      auto slice = pResource->GetBufferSlice<D3D9_COMMON_BUFFER_TYPE_STAGING>();
+      EmitCs([
+        cDstSlice  = dstBuffer,
+        cSrcSlice  = slice,
+        cOffset    = range.min,
+        cLength    = range.max - range.min
+      ] (DxvkContext* ctx) {
+        ctx->copyBuffer(
+          cDstSlice.buffer(),
+          cDstSlice.offset() + cOffset,
+          cSrcSlice.buffer(),
+          cSrcSlice.offset() + cOffset,
+          cLength);
+      });
+    }
 
     pResource->DirtyRange().Clear();
     TrackBufferMappingBufferSequenceNumber(pResource);

@@ -134,6 +134,9 @@ namespace dxvk {
     /// Disable direct buffer mapping
     bool allowDirectBufferMapping;
 
+    /// Disables the staging buffer for buffer uploads
+    bool disableStagingBufferBufferUploads;
+
     /// Don't use non seamless cube maps
     bool seamlessCubes;
 
