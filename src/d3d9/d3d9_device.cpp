@@ -3617,6 +3617,7 @@ namespace dxvk {
     }
 
     m_dirty.set(D3D9DeviceDirtyFlag::InputLayout);
+    m_dirty.set(D3D9DeviceDirtyFlag::ShaderCombination);
 
     return D3D_OK;
   }
@@ -4007,6 +4008,8 @@ namespace dxvk {
 
     if (likely(oldShaderMasks.samplerMask != newShaderMasks.samplerMask))
       UpdateActiveHazardsDS(oldShaderMasks.samplerMask | newShaderMasks.samplerMask);
+
+    m_dirty.set(D3D9DeviceDirtyFlag::ShaderCombination);
 
     return D3D_OK;
   }
@@ -7604,6 +7607,67 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::PrepareDraw(D3DPRIMITIVETYPE PrimitiveType, bool UploadVBOs, bool UploadIBO) {
+    if (m_dirty.test(D3D9DeviceDirtyFlag::ShaderCombination)) {
+      m_dirty.clr(D3D9DeviceDirtyFlag::ShaderCombination);
+
+      const auto& vsIsgn = m_state.vertexShader != nullptr
+        ? GetCommonShader(m_state.vertexShader)->GetOsgn()
+        : GetFixedFunctionIsgn();
+
+      const auto& psIsgn = m_state.pixelShader != nullptr
+        ? GetCommonShader(m_state.pixelShader)->GetIsgn()
+        : GetFixedFunctionIsgn();
+
+      bool matches = true;
+      for (uint32_t i = 0; i < psIsgn.elemCount; i++) {
+        const auto& psElem = psIsgn.elems[i];
+        bool foundMatchForElement = false;
+        for (uint32_t j = 0; j < vsIsgn.elemCount; j++) {
+          const auto& vsElem = vsIsgn.elems[j];
+          if (psElem.newSlot == vsElem.newSlot && psElem.semantic == vsElem.semantic) {
+            foundMatchForElement = true;
+            break;
+          }
+        }
+        if (!foundMatchForElement) {
+          matches = false;
+          break;
+        }
+      }
+      if (!matches) {
+        Logger::warn(str::format("Shader combination needs patching. VS: ", size_t(m_state.vertexShader.ptr()), " PS: ", size_t(m_state.pixelShader.ptr())));
+
+
+        for (uint32_t i = 0; i < psIsgn.elemCount; i++) {
+          const auto& psElem = psIsgn.elems[i];
+          bool foundMatchForElement = false;
+          for (uint32_t j = 0; j < vsIsgn.elemCount; j++) {
+            const auto& vsElem = vsIsgn.elems[j];
+            if (psElem.newSlot == vsElem.newSlot) {
+              if (foundMatchForElement) {
+                Logger::warn(str::format("Found more than one match for PS: Location: ", psElem.newSlot, " Semantic: ", psElem.semantic.usage, " - " , psElem.semantic.usageIndex));
+              }
+
+              if (psElem.semantic == vsElem.semantic) {
+                //Logger::warn(str::format("Found match for PS: Location: ", psElem.newSlot, " Semantic: ", psElem.semantic.usage, " - " , psElem.semantic.usageIndex));
+              } else {
+                Logger::warn(str::format("Found WRONG match for PS: Location: ", psElem.newSlot, " Semantic: ", psElem.semantic.usage, " - " , psElem.semantic.usageIndex));
+              }
+              foundMatchForElement = true;
+            }
+          }
+          if (!foundMatchForElement) {
+            //Logger::warn(str::format("Found no match for: Location PS: ", psElem.newSlot, " Semantic: ", psElem.semantic.usage, " - " , psElem.semantic.usageIndex));
+          }
+        }
+
+        for (uint32_t j = 0; j < vsIsgn.elemCount; j++) {
+          const auto& vsElem = vsIsgn.elems[j];
+          //Logger::warn(str::format("VS: Location: ", vsElem.newSlot, " Semantic: ", vsElem.semantic.usage, " - " , vsElem.semantic.usageIndex));
+        }
+      }
+    }
+
     if (unlikely(m_textureSlotTracking.unresolvableHazardRT != 0 || m_textureSlotTracking.unresolvableHazardDS != 0))
       EmitFeedbackLoopBarriers();
 

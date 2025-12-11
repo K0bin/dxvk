@@ -10,6 +10,7 @@ namespace dxvk {
     DxsoSemantic semantic  = DxsoSemantic{ DxsoUsage::Position, 0 };
     DxsoRegMask  mask      = IdentityWriteMask;
     bool         centroid  = false;
+    uint32_t newSlot = 0;
   };
 
   struct DxsoIsgn {

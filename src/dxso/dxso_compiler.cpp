@@ -639,6 +639,38 @@ namespace dxvk {
     if (pixel && input && semantic.usage == DxsoUsage::Color)
       centroid = true;
 
+    std::array<DxsoSemantic, 14> linkerSlots = {
+      {
+        {DxsoUsage::Normal,   0},
+        {DxsoUsage::Texcoord,   0},
+        {DxsoUsage::Texcoord,   1},
+        {DxsoUsage::Texcoord,   2},
+        {DxsoUsage::Texcoord,   3},
+        {DxsoUsage::Texcoord,   4},
+        {DxsoUsage::Texcoord,   5},
+        {DxsoUsage::Texcoord,   6},
+        {DxsoUsage::Texcoord,   7},
+        {DxsoUsage::Texcoord,   8},
+        {DxsoUsage::Texcoord,   9},
+
+        {DxsoUsage::Color,      0},
+        {DxsoUsage::Color,      1},
+
+        {DxsoUsage::Fog,        0},
+      }};
+
+    uint32_t newSlot = 0;
+    bool foundNewSlot = false;
+    for (uint32_t i = 0; i < linkerSlots.size(); i++) {
+      if (linkerSlots[i] == semantic) {
+        newSlot = i;
+        foundNewSlot = true;
+      }
+    }
+    if (!foundNewSlot) {
+      newSlot = linkerSlots.size() + sgn.elemCount;
+    }
+
     uint32_t slot = 0;
 
     uint32_t& slots = input
@@ -682,6 +714,7 @@ namespace dxvk {
     elem.semantic  = semantic;
     elem.mask      = mask;
     elem.centroid  = centroid;
+    elem.newSlot = newSlot;
   }
 
   void DxsoCompiler::emitDclSampler(

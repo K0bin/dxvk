@@ -56,6 +56,7 @@ namespace dxvk {
       : pDevice->GetPixelConstantLayout();
     m_shader       = pModule->compile(*pDxsoModuleInfo, name, AnalysisInfo, constantLayout);
     m_isgn         = pModule->isgn();
+    m_osgn         = pModule->osgn();
     m_usedSamplers = pModule->usedSamplers();
     m_textureTypes = pModule->textureTypes();
 

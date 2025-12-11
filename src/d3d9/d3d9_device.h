@@ -84,6 +84,8 @@ namespace dxvk {
     DepthBounds,
     PointScale,
 
+    ShaderCombination,
+
     SpecializationEntries,
   };
 
