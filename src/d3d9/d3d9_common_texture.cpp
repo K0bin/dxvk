@@ -45,17 +45,18 @@ namespace dxvk {
 
     const bool createImage = m_desc.Pool != D3DPOOL_SYSTEMMEM && m_desc.Pool != D3DPOOL_SCRATCH && m_desc.Format != D3D9Format::NULL_FORMAT;
     if (createImage) {
-      m_image = CreatePrimaryImage(ResourceType, pSharedHandle);
+      DxvkImageCreateInfo imageInfo;
+      HRESULT result = CreatePrimaryImageCreateInfo(&m_desc, m_device, ResourceType, pSharedHandle, &imageInfo);
 
-      if (unlikely(m_image == nullptr && (m_desc.Usage & D3DUSAGE_AUTOGENMIPMAP))) {
+      if (unlikely(FAILED(result) && (m_desc.Usage & D3DUSAGE_AUTOGENMIPMAP))) {
         // AUTOGENMIPMAP is supposed to be treated like a hint according to the docs.
         // So if creating an image with it fails, create one without it.
         m_desc.Usage &= ~D3DUSAGE_AUTOGENMIPMAP;
         m_desc.MipLevels = 1;
-        m_image = CreatePrimaryImage(ResourceType, pSharedHandle);
+        result = CreatePrimaryImageCreateInfo(&m_desc, m_device, ResourceType, pSharedHandle, &imageInfo);
       }
 
-      if (unlikely(m_image == nullptr)) {
+      if (unlikely(FAILED(result))) {
         throw DxvkError(str::format(
           "D3D9: Cannot create texture:",
           "\n  Type:    0x", std::hex, ResourceType, std::dec,
@@ -69,6 +70,8 @@ namespace dxvk {
           "\n  Usage:   0x", std::hex, m_desc.Usage, std::dec,
           "\n  Pool:    0x", std::hex, m_desc.Pool, std::dec));
       }
+
+      m_image = m_device->GetDXVKDevice()->createImage(imageInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
       if (pSharedHandle && *pSharedHandle == nullptr) {
         *pSharedHandle = m_image->sharedHandle();
@@ -178,7 +181,7 @@ namespace dxvk {
 
     // Sample counts need to be valid
     VkSampleCountFlagBits sampleCount;
-    if (FAILED(DecodeMultiSampleType(pDevice->GetDXVKDevice(), pDesc->MultiSample, pDesc->MultisampleQuality, &sampleCount)))
+    if (FAILED(DecodeMultiSampleType(pDesc->MultiSample, pDesc->MultisampleQuality, &sampleCount)))
       return D3DERR_INVALIDCALL;
 
     // Using MANAGED pool with DYNAMIC usage is illegal
@@ -353,30 +356,38 @@ namespace dxvk {
   }
 
 
-  Rc<DxvkImage> D3D9CommonTexture::CreatePrimaryImage(D3DRESOURCETYPE ResourceType, HANDLE* pSharedHandle) const {
+  HRESULT D3D9CommonTexture::CreatePrimaryImageCreateInfo(
+      const D3D9_COMMON_TEXTURE_DESC* pDesc,
+            D3D9DeviceEx*             pDevice,
+            D3DRESOURCETYPE           ResourceType,
+            HANDLE*                   pSharedHandle,
+            DxvkImageCreateInfo*      pCreateInfo
+    ) {
+    D3D9_VK_FORMAT_MAPPING formatMapping = pDevice->LookupFormat(pDesc->Format);
+
     DxvkImageCreateInfo imageInfo;
     imageInfo.type            = GetImageTypeFromResourceType(ResourceType);
-    imageInfo.format          = m_mapping.ConversionFormatInfo.FormatColor != VK_FORMAT_UNDEFINED
-                              ? m_mapping.ConversionFormatInfo.FormatColor
-                              : m_mapping.FormatColor;
+    imageInfo.format          = formatMapping.ConversionFormatInfo.FormatColor != VK_FORMAT_UNDEFINED
+                              ? formatMapping.ConversionFormatInfo.FormatColor
+                              : formatMapping.FormatColor;
     imageInfo.flags           = 0;
     imageInfo.sampleCount     = VK_SAMPLE_COUNT_1_BIT;
-    imageInfo.extent.width    = m_desc.Width;
-    imageInfo.extent.height   = m_desc.Height;
-    imageInfo.extent.depth    = m_desc.Depth;
-    imageInfo.numLayers       = m_desc.ArraySize;
-    imageInfo.mipLevels       = m_desc.MipLevels;
+    imageInfo.extent.width    = pDesc->Width;
+    imageInfo.extent.height   = pDesc->Height;
+    imageInfo.extent.depth    = pDesc->Depth;
+    imageInfo.numLayers       = pDesc->ArraySize;
+    imageInfo.mipLevels       = pDesc->MipLevels;
     imageInfo.usage           = VK_IMAGE_USAGE_TRANSFER_SRC_BIT
                               | VK_IMAGE_USAGE_TRANSFER_DST_BIT
-                              | m_desc.ImageUsage;
+                              | pDesc->ImageUsage;
     imageInfo.stages          = VK_PIPELINE_STAGE_TRANSFER_BIT
-                              | m_device->GetEnabledShaderStages();
+                              | pDevice->GetEnabledShaderStages();
     imageInfo.access          = VK_ACCESS_TRANSFER_READ_BIT
                               | VK_ACCESS_TRANSFER_WRITE_BIT
                               | VK_ACCESS_SHADER_READ_BIT;
     imageInfo.tiling          = VK_IMAGE_TILING_OPTIMAL;
     imageInfo.layout          = VK_IMAGE_LAYOUT_GENERAL;
-    imageInfo.shared          = m_desc.IsBackBuffer;
+    imageInfo.shared          = pDesc->IsBackBuffer;
 
     if (pSharedHandle) {
       imageInfo.sharing.type = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_KMT_BIT;
@@ -388,37 +399,37 @@ namespace dxvk {
       // TODO: validate metadata?
     }
 
-    if (m_mapping.ConversionFormatInfo.FormatType != D3D9ConversionFormat_None) {
+    if (formatMapping.ConversionFormatInfo.FormatType != D3D9ConversionFormat_None) {
       imageInfo.usage  |= VK_IMAGE_USAGE_STORAGE_BIT;
       imageInfo.stages |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
       imageInfo.access |= VK_ACCESS_SHADER_WRITE_BIT;
       imageInfo.shared = true;
     }
 
-    DecodeMultiSampleType(m_device->GetDXVKDevice(), m_desc.MultiSample, m_desc.MultisampleQuality, &imageInfo.sampleCount);
+    DecodeMultiSampleType(pDesc->MultiSample, pDesc->MultisampleQuality, &imageInfo.sampleCount);
 
     // The image must be marked as mutable if it can be reinterpreted
     // by a view with a different format. Depth-stencil formats cannot
     // be reinterpreted in Vulkan, so we'll ignore those.
-    auto formatProperties = lookupFormatInfo(m_mapping.FormatColor);
+    auto formatProperties = lookupFormatInfo(formatMapping.FormatColor);
 
-    bool isMutable     = m_mapping.FormatSrgb != VK_FORMAT_UNDEFINED;
+    bool isMutable     = formatMapping.FormatSrgb != VK_FORMAT_UNDEFINED;
     bool isColorFormat = (formatProperties->aspectMask & VK_IMAGE_ASPECT_COLOR_BIT) != 0;
 
     if (isMutable && isColorFormat) {
       imageInfo.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
 
       imageInfo.viewFormatCount = 2;
-      imageInfo.viewFormats     = m_mapping.Formats;
+      imageInfo.viewFormats     = formatMapping.Formats;
     }
 
     const bool hasAttachmentFeedbackLoops =
-      m_device->GetDXVKDevice()->features().extAttachmentFeedbackLoopLayout.attachmentFeedbackLoopLayout;
-    const bool isRT = m_desc.Usage & D3DUSAGE_RENDERTARGET;
-    const bool isDS = m_desc.Usage & D3DUSAGE_DEPTHSTENCIL;
-    const bool isAutoGen = m_desc.Usage & D3DUSAGE_AUTOGENMIPMAP;
+      pDevice->GetDXVKDevice()->features().extAttachmentFeedbackLoopLayout.attachmentFeedbackLoopLayout;
+    const bool isRT = pDesc->Usage & D3DUSAGE_RENDERTARGET;
+    const bool isDS = pDesc->Usage & D3DUSAGE_DEPTHSTENCIL;
+    const bool isAutoGen = pDesc->Usage & D3DUSAGE_AUTOGENMIPMAP;
 
-    if (!m_desc.IsAttachmentOnly || (!isRT && !isDS))
+    if (!pDesc->IsAttachmentOnly || (!isRT && !isDS))
       imageInfo.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
 
     // Are we an RT, need to gen mips or an offscreen plain surface?
@@ -445,7 +456,7 @@ namespace dxvk {
 
     // Some image formats (i.e. the R32G32B32 ones) are
     // only supported with linear tiling on most GPUs
-    if (!CheckImageSupport(&imageInfo, VK_IMAGE_TILING_OPTIMAL))
+    if (FAILED(CheckImageSupport(*pDevice->GetDXVKDevice()->adapter(), &imageInfo, VK_IMAGE_TILING_OPTIMAL)))
       imageInfo.tiling = VK_IMAGE_TILING_LINEAR;
 
     // We must keep LINEAR images in GENERAL layout, but we
@@ -455,10 +466,13 @@ namespace dxvk {
       imageInfo.layout = OptimizeLayout(imageInfo.usage);
 
     // Check if we can actually create the image
-    if (!CheckImageSupport(&imageInfo, imageInfo.tiling))
-      return nullptr;
+    HRESULT result = CheckImageSupport(*pDevice->GetDXVKDevice()->adapter(), &imageInfo, imageInfo.tiling);
+    if (FAILED(result))
+      return result;
 
-    return m_device->GetDXVKDevice()->createImage(imageInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    *pCreateInfo = imageInfo;
+
+    return S_OK;
   }
 
 
@@ -491,9 +505,10 @@ namespace dxvk {
   }
 
 
-  BOOL D3D9CommonTexture::CheckImageSupport(
-    const DxvkImageCreateInfo*  pImageInfo,
-          VkImageTiling         Tiling) const {
+  HRESULT D3D9CommonTexture::CheckImageSupport(
+    const DxvkAdapter&         Adapter,
+    const DxvkImageCreateInfo* pImageInfo,
+          VkImageTiling        Tiling) {
     DxvkFormatQuery formatQuery = { };
     formatQuery.format = pImageInfo->format;
     formatQuery.type = pImageInfo->type;
@@ -501,17 +516,22 @@ namespace dxvk {
     formatQuery.usage = pImageInfo->usage;
     formatQuery.flags = pImageInfo->flags;
 
-    auto properties = m_device->GetDXVKDevice()->getFormatLimits(formatQuery);
+    auto properties = Adapter.getFormatLimits(formatQuery);
     
     if (!properties)
-      return FALSE;
+      return D3DERR_INVALIDCALL;
+
+    if (!(pImageInfo->sampleCount & properties->sampleCounts))
+      return D3DERR_NOTAVAILABLE;
     
-    return (pImageInfo->extent.width  <= properties->maxExtent.width)
-        && (pImageInfo->extent.height <= properties->maxExtent.height)
-        && (pImageInfo->extent.depth  <= properties->maxExtent.depth)
-        && (pImageInfo->numLayers     <= properties->maxArrayLayers)
-        && (pImageInfo->mipLevels     <= properties->maxMipLevels)
-        && (pImageInfo->sampleCount    & properties->sampleCounts);
+    if (   (pImageInfo->extent.width  > properties->maxExtent.width)
+        || (pImageInfo->extent.height > properties->maxExtent.height)
+        || (pImageInfo->extent.depth  > properties->maxExtent.depth)
+        || (pImageInfo->numLayers     > properties->maxArrayLayers)
+        || (pImageInfo->mipLevels     > properties->maxMipLevels))
+      return D3DERR_INVALIDCALL;
+
+    return S_OK;
   }
 
 
@@ -541,7 +561,7 @@ namespace dxvk {
   }
 
 
-  VkImageLayout D3D9CommonTexture::OptimizeLayout(VkImageUsageFlags Usage) const {
+  VkImageLayout D3D9CommonTexture::OptimizeLayout(VkImageUsageFlags Usage) {
     // Filter out unnecessary flags. Transfer operations
     // are handled by the backend in a transparent manner.
     // Feedback loops are handled by hazard tracking.

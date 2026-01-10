@@ -12,6 +12,8 @@
 
 #include <cfloat>
 
+#include "d3d9_common_texture.h"
+
 namespace dxvk {
 
   const char* GetDriverDLL(DxvkGpuVendor vendor) {
@@ -288,28 +290,12 @@ namespace dxvk {
       // Adreno 7XX GPUs cannot report general support for 8x MSAA because they do not support it for 128 bit formats.
       // So take the format into consideration when checking whether the sample count is supported.
 
-      VkImageUsageFlags usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+      DxvkImageCreateInfo imageInfo;
+      HRESULT result = CreatePrimaryImageCreateInfo(&m_desc, m_device, ResourceType, pSharedHandle, &imageInfo);
+      HRESULT result;
 
-      if (IsDepthStencilFormat(SurfaceFormat))
-        usage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-      else
-        usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-      DxvkFormatQuery query = {
-        dst.FormatColor,
-        VK_IMAGE_TYPE_2D, // D3D9 only allows using MSAA with 2D textures
-        VK_IMAGE_TILING_OPTIMAL,
-        usage,
-        0,
-        VkExternalMemoryHandleTypeFlagBits(0)
-      };
-      auto limits_optional = m_adapter->getFormatLimits(query);
-      if (!limits_optional.has_value()) {
-        return D3DERR_NOTAVAILABLE;
-      }
-
-      auto limits = *limits_optional;
-      availableFlags = limits.sampleCounts;
+      //HRESULT result = D3D9CommonTexture::CheckImageSupport(*m_adapter, )
     }
 
     if (!(availableFlags & sampleFlags))

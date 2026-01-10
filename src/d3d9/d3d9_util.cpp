@@ -39,7 +39,6 @@ namespace dxvk {
 
 
   HRESULT DecodeMultiSampleType(
-    const Rc<DxvkDevice>&           pDevice,
           D3DMULTISAMPLE_TYPE       MultiSample,
           DWORD                     MultisampleQuality,
           VkSampleCountFlagBits*    pSampleCount) {
@@ -51,12 +50,6 @@ namespace dxvk {
 
     if (MultiSample == D3DMULTISAMPLE_NONMASKABLE)
       sampleCount = 1u << MultisampleQuality;
-
-    const auto& limits = pDevice->properties().core.properties.limits;
-    VkSampleCountFlags supportedSampleCounts = limits.framebufferColorSampleCounts & limits.framebufferDepthSampleCounts;
-
-    if ((sampleCount & supportedSampleCounts) == 0)
-      return D3DERR_INVALIDCALL;
 
     if (pSampleCount)
       *pSampleCount = VkSampleCountFlagBits(sampleCount);

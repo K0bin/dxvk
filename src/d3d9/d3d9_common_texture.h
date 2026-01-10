@@ -482,6 +482,14 @@ namespace dxvk {
 
     ID3D9VkInteropTexture* GetVkInterop() { return &m_d3d9Interop; }
 
+    static HRESULT CreatePrimaryImageCreateInfo(
+      const D3D9_COMMON_TEXTURE_DESC* pDesc,
+            D3D9DeviceEx*             pDevice,
+            D3DRESOURCETYPE           ResourceType,
+            HANDLE*                   pSharedHandle,
+            DxvkImageCreateInfo*      pCreateInfo
+    );
+
   private:
 
     D3D9DeviceEx*                 m_device;
@@ -530,22 +538,21 @@ namespace dxvk {
 
     D3D9VkInteropTexture          m_d3d9Interop;
 
-    Rc<DxvkImage> CreatePrimaryImage(D3DRESOURCETYPE ResourceType, HANDLE* pSharedHandle) const;
-
     Rc<DxvkImage> CreateResolveImage() const;
 
     BOOL DetermineShadowState() const;
 
     BOOL DetermineFetch4Compatibility() const;
 
-    BOOL CheckImageSupport(
-      const DxvkImageCreateInfo*  pImageInfo,
-            VkImageTiling         Tiling) const;
+    static BOOL CheckImageSupport(
+      const DxvkAdapter&         Adapter,
+      const DxvkImageCreateInfo* pImageInfo,
+            VkImageTiling        Tiling);
 
     D3D9_COMMON_TEXTURE_MAP_MODE DetermineMapMode() const;
 
-    VkImageLayout OptimizeLayout(
-            VkImageUsageFlags         Usage) const;
+    static VkImageLayout OptimizeLayout(
+            VkImageUsageFlags         Usage);
 
     void ExportImageInfo();
 
