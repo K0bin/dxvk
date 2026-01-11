@@ -1028,15 +1028,15 @@ namespace dxvk {
 
     void BindDepthBias();
 
-    inline void UploadSoftwareConstantSet(const D3D9ShaderConstantsVSSoftware& Src, const D3D9ConstantLayout& Layout);
+    inline static void UploadSoftwareConstantSet(DxvkContext* Ctx, D3D9ConstantSets<D3D9ShaderConstantsVSSoftware>& Consts);
 
-    inline void* CopySoftwareConstants(D3D9ConstantBuffer& dstBuffer, const void* src, uint32_t size);
+    inline static void* CopySoftwareConstants(DxvkContext* Ctx, D3D9CSConstantBuffer& dstBuffer, const void* src, uint32_t size);
 
-    template <DxsoProgramType ShaderStage, typename HardwareLayoutType, typename SoftwareLayoutType, typename ShaderType>
-    inline void UploadConstantSet(const SoftwareLayoutType& Src, const D3D9ConstantLayout& Layout, const ShaderType& Shader);
+    template <typename HardwareLayoutType, typename SoftwareLayoutType>
+    inline static void UploadConstantSet(DxvkContext* Ctx, D3D9ConstantSets<SoftwareLayoutType>& Consts);
 
-    template <DxsoProgramType ShaderStage>
-    void UploadConstants();
+    template <typename SoftwareLayoutType>
+    static void UploadConstants(DxvkContext* Ctx, D3D9ConstantSets<SoftwareLayoutType>& Consts, bool CanSWVP);
 
     void UpdateClipPlanes();
 
@@ -1143,8 +1143,8 @@ namespace dxvk {
             VkImageLayout            OldLayout,
             VkImageLayout            NewLayout);
 
-    const D3D9ConstantLayout& GetVertexConstantLayout() { return m_consts[DxsoProgramType::VertexShader].layout; }
-    const D3D9ConstantLayout& GetPixelConstantLayout()  { return m_consts[DxsoProgramType::PixelShader].layout; }
+    const D3D9ConstantLayout& GetVertexConstantLayout() { return m_constLayouts[DxsoProgramType::VertexShader]; }
+    const D3D9ConstantLayout& GetPixelConstantLayout()  { return m_constLayouts[DxsoProgramType::PixelShader]; }
 
     void ResetState(D3DPRESENT_PARAMETERS* pPresentationParameters);
     HRESULT ResetSwapChain(D3DPRESENT_PARAMETERS* pPresentationParameters, D3DDISPLAYMODEEX* pFullscreenDisplayMode);
@@ -1292,6 +1292,24 @@ namespace dxvk {
       }
     }
 
+    template<typename M, bool AllowFlush = true, typename Cmd>
+    DxvkCsDataBlock* EmitCsWithData(size_t count, Cmd&& command) {
+      DxvkCsDataBlock* data = m_csChunk->pushCmd<M, Cmd>(command, count);
+
+      if (unlikely(!data)) {
+        EmitCsChunk(std::move(m_csChunk));
+        m_csChunk = AllocCsChunk();
+
+        if constexpr (AllowFlush)
+          ConsiderFlush(GpuFlushType::ImplicitWeakHint);
+
+        // We must record this command after the potential
+        // flush since the caller may still access the data
+        data = m_csChunk->pushCmd<M, Cmd>(command, count);
+      }
+      return data;
+    }
+
     void EmitCsChunk(DxvkCsChunkRef&& chunk);
 
     void FlushCsChunk() {
@@ -1385,7 +1403,7 @@ namespace dxvk {
     template <DxsoProgramType  ProgramType,
               D3D9ConstantType ConstantType>
     inline uint32_t DetermineHardwareRegCount() const {
-      const auto& layout = m_consts[ProgramType].layout;
+      const auto& layout = m_constLayouts[ProgramType];
 
       switch (ConstantType) {
         default:
@@ -1683,7 +1701,11 @@ namespace dxvk {
     uint32_t                        m_robustSSBOAlignment     = 1;
     uint32_t                        m_robustUBOAlignment      = 1;
 
-    D3D9ConstantSets                m_consts[DxsoProgramTypes::Count];
+    // Constants are managed on the CS thread so this must only ever be accessed on the CS thread.
+    D3D9ConstantSets<D3D9ShaderConstantsVSSoftware> m_vsConsts;
+    D3D9ConstantSets<D3D9ShaderConstantsPS>         m_psConsts;
+
+    D3D9ConstantLayout              m_constLayouts[DxsoProgramTypes::Count];
 
     D3D9UserDefinedAnnotation*      m_annotation = nullptr;
 
