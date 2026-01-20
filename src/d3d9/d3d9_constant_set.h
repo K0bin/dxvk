@@ -47,11 +47,18 @@ namespace dxvk {
     D3D9ConstantLayout        layout;
     D3D9SwvpConstantBuffers   swvp;
     D3D9ConstantBuffer        buffer;
+    D3D9CSConstantBuffer      csBuffer;
     DxsoShaderMetaInfo        meta  = {};
     bool                      dirty = true;
     uint32_t                  maxChangedConstF = 0;
     uint32_t                  maxChangedConstI = 0;
     uint32_t                  maxChangedConstB = 0;
+    uint32_t                  drawMaxChangedConstF = 0;
+    uint32_t                  drawMinChangedConstF = 0;
+    uint32_t                  drawMaxChangedConstI = 0;
+    uint32_t                  drawMinChangedConstI = 0;
+    uint32_t                  drawMaxChangedConstB = 0;
+    uint32_t                  drawMinChangedConstB = 0;
   };
 
 }

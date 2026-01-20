@@ -1028,12 +1028,12 @@ namespace dxvk {
 
     void BindDepthBias();
 
-    inline void UploadSoftwareConstantSet(const D3D9ShaderConstantsVSSoftware& Src, const D3D9ConstantLayout& Layout);
+    inline void UploadSoftwareConstantSet(const D3D9ShaderConstantsVSSoftware& Src, D3D9ShaderConstantsVSSoftware& CsConsts, const D3D9ConstantLayout& Layout);
 
     inline void* CopySoftwareConstants(D3D9ConstantBuffer& dstBuffer, const void* src, uint32_t size);
 
     template <DxsoProgramType ShaderStage, typename HardwareLayoutType, typename SoftwareLayoutType, typename ShaderType>
-    inline void UploadConstantSet(const SoftwareLayoutType& Src, const D3D9ConstantLayout& Layout, const ShaderType& Shader);
+    inline void UploadConstantSet(const SoftwareLayoutType& Src, SoftwareLayoutType& CsConsts, const D3D9ConstantLayout& Layout, const ShaderType& Shader);
 
     template <DxsoProgramType ShaderStage>
     void UploadConstants();
@@ -1754,6 +1754,10 @@ namespace dxvk {
     std::atomic<uint64_t>           m_lastSamplerStats = { 0u };
 
     bool m_unlockAdditionalFormats = false;
+
+
+    D3D9ShaderConstantsVSSoftware   m_csVSConsts = { };
+    D3D9ShaderConstantsPS           m_csPSConsts = { };
   };
 
 }
