@@ -6181,6 +6181,27 @@ namespace dxvk {
     void* mapPtr = constSet.buffer.Alloc(bufferSize);
     auto* dst = reinterpret_cast<HardwareLayoutType*>(mapPtr);
 
+    constSet.copiedI += constSet.meta.maxConstIndexI;
+    constSet.copiedF += floatCount;
+    double avgCopiedI = ((double) constSet.copiedI) / ((double) m_draws);
+    double avgCopiedF = ((double) constSet.copiedF) / ((double) m_draws);
+    Logger::warn(str::format("Shader consts copy. Shader stage: ", ShaderStage, ", avg copied F: ", avgCopiedF, ", avg copied I: ", avgCopiedI, ", draws: ", m_draws, ", shader max const idx F: ", constSet.meta.maxConstIndexF));
+
+    constSet.drawMinTotalF += constSet.drawMinChangedConstF;
+    constSet.drawMaxTotalF += constSet.drawMaxChangedConstF;
+    if (constSet.drawMaxChangedConstF > constSet.drawMinChangedConstF)
+      constSet.drawTotalF += (constSet.drawMaxChangedConstF - constSet.drawMinChangedConstF);
+
+    double avgDrawMinF = ((double) constSet.drawMinTotalF) / ((double) m_draws);
+    double avgDrawMaxF = ((double) constSet.drawMaxTotalF) / ((double) m_draws);
+    double avgTotalF = ((double) constSet.drawTotalF) / ((double) m_draws);
+
+    Logger::warn(str::format("Draw min: ", constSet.drawMinChangedConstF, ", draw max: ", constSet.drawMaxChangedConstF, ", avg draw min: ", avgDrawMinF, ", avg draw max: ", avgDrawMaxF,
+      ", count: ", constSet.drawMaxChangedConstF - constSet.drawMinChangedConstF, ", avg count: ", avgTotalF));
+
+    constSet.drawMaxChangedConstF = 0;
+    constSet.drawMinChangedConstF = 256;
+
     const uint32_t intDataSize = constSet.meta.maxConstIndexI * sizeof(Vector4i);
     if (constSet.meta.maxConstIndexI != 0)
       std::memcpy(dst->iConsts, Src.iConsts, intDataSize);
@@ -7618,6 +7639,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::PrepareDraw(D3DPRIMITIVETYPE PrimitiveType, bool UploadVBOs, bool UploadIBO) {
+    m_draws++;
     if (unlikely(m_textureSlotTracking.unresolvableHazardRT != 0 || m_textureSlotTracking.unresolvableHazardDS != 0))
       EmitFeedbackLoopBarriers();
 
@@ -8156,6 +8178,8 @@ namespace dxvk {
 
     if constexpr (ConstantType == D3D9ConstantType::Float) {
       constSet.maxChangedConstF = std::max(constSet.maxChangedConstF, StartRegister + Count);
+      constSet.drawMaxChangedConstF = std::max(constSet.drawMaxChangedConstF, StartRegister + Count);
+      constSet.drawMinChangedConstF = std::min(constSet.drawMinChangedConstF, StartRegister);
     } else if constexpr (ConstantType == D3D9ConstantType::Int && ProgramType == DxsoProgramType::VertexShader) {
       // We only track changed int constants for vertex shaders (and it's only used when the device uses the SWVP UBO layout).
       // Pixel shaders (and vertex shaders on HWVP devices) always copy all int constants into the same UBO as the float constants

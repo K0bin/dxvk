@@ -1735,6 +1735,8 @@ namespace dxvk {
     alignas(CACHE_LINE_SIZE)
     std::atomic<uint64_t>           m_lastSamplerStats = { 0u };
 
+    uint64_t m_draws = 0;
+
     bool m_unlockAdditionalFormats = false;
   };
 
