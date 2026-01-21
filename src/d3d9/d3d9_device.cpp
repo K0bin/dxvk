@@ -8265,12 +8265,12 @@ namespace dxvk {
       // We only track changed int constants for vertex shaders (and it's only used when the device uses the SWVP UBO layout).
       // Pixel shaders (and vertex shaders on HWVP devices) always copy all int constants into the same UBO as the float constants
       constSet.drawMaxChangedConstI = std::max(constSet.drawMaxChangedConstI, StartRegister + Count);
-      constSet.drawMaxChangedConstI = std::min(constSet.drawMaxChangedConstI, StartRegister);
+      constSet.drawMinChangedConstI = std::min(constSet.drawMinChangedConstI, StartRegister);
     } else  if constexpr (ConstantType == D3D9ConstantType::Bool && ProgramType == DxsoProgramType::VertexShader) {
       // We only track changed bool constants for vertex shaders (and it's only used when the device uses the SWVP UBO layout).
       // Pixel shaders (and vertex shaders on HWVP devices) always put all bool constants into a single spec constant.
       constSet.drawMaxChangedConstB = std::max(constSet.drawMaxChangedConstB, StartRegister + Count);
-      constSet.drawMaxChangedConstB = std::min(constSet.drawMaxChangedConstB, StartRegister);
+      constSet.drawMinChangedConstB = std::min(constSet.drawMinChangedConstB, StartRegister);
     }
 
     if constexpr (ConstantType != D3D9ConstantType::Bool) {
