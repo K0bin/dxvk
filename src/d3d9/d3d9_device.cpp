@@ -6024,33 +6024,25 @@ namespace dxvk {
     constexpr VkDeviceSize DefaultConstantBufferSize  = 1024ull << 10;
     constexpr VkDeviceSize SmallConstantBufferSize    =   64ull << 10;
 
-    m_consts[DxsoProgramTypes::VertexShader].buffer = D3D9ConstantBuffer(this,
-      DxsoProgramType::VertexShader,
-      DxsoConstantBuffers::VSConstantBuffer,
-      DefaultConstantBufferSize);
-
-    m_consts[DxsoProgramTypes::VertexShader].csBuffer = D3D9CSConstantBuffer(m_dxvkDevice,
+    m_consts[DxsoProgramTypes::VertexShader].buffer = D3D9CSConstantBuffer(m_dxvkDevice,
       DxsoProgramType::VertexShader,
       DxsoConstantBuffers::VSConstantBuffer,
       DefaultConstantBufferSize,
       m_d3d9Options.deviceLocalConstantBuffers);
 
-    m_consts[DxsoProgramTypes::VertexShader].swvp.intBuffer = D3D9ConstantBuffer(this,
+    m_consts[DxsoProgramTypes::VertexShader].swvp.intBuffer = D3D9CSConstantBuffer(m_dxvkDevice,
       DxsoProgramType::VertexShader,
       DxsoConstantBuffers::VSIntConstantBuffer,
-      SmallConstantBufferSize);
+      SmallConstantBufferSize,
+      m_d3d9Options.deviceLocalConstantBuffers);
 
-    m_consts[DxsoProgramTypes::VertexShader].swvp.boolBuffer = D3D9ConstantBuffer(this,
+    m_consts[DxsoProgramTypes::VertexShader].swvp.boolBuffer = D3D9CSConstantBuffer(m_dxvkDevice,
       DxsoProgramType::VertexShader,
       DxsoConstantBuffers::VSBoolConstantBuffer,
-      SmallConstantBufferSize);
+      SmallConstantBufferSize,
+      m_d3d9Options.deviceLocalConstantBuffers);
 
-    m_consts[DxsoProgramTypes::PixelShader].buffer = D3D9ConstantBuffer(this,
-      DxsoProgramType::PixelShader,
-      DxsoConstantBuffers::PSConstantBuffer,
-      DefaultConstantBufferSize);
-
-    m_consts[DxsoProgramTypes::PixelShader].csBuffer = D3D9CSConstantBuffer(m_dxvkDevice,
+    m_consts[DxsoProgramTypes::PixelShader].buffer = D3D9CSConstantBuffer(m_dxvkDevice,
       DxsoProgramType::PixelShader,
       DxsoConstantBuffers::PSConstantBuffer,
       DefaultConstantBufferSize,
@@ -6109,9 +6101,52 @@ namespace dxvk {
 
     constSet.dirty = false;
 
+    // Copy all changed constants to the constants owned by the CS thread
+
+    if (likely(constSet.drawMaxChangedConstF > constSet.drawMinChangedConstF)) {
+      DxvkCsDataBlock* csData = EmitCsWithData<Vector4, false>(constSet.drawMaxChangedConstF - constSet.drawMinChangedConstF, [
+        &cCsConsts     = CsConsts,
+        cStartRegister = constSet.drawMinChangedConstF
+      ] (DxvkContext* ctx, const Vector4* data, size_t count) {
+        memcpy(cCsConsts.fConsts + cStartRegister, data, count * sizeof(Vector4));
+      });
+
+      memcpy(csData->first(), Src.fConsts + constSet.drawMinChangedConstF, csData->count() * sizeof(Vector4));
+    }
+
+    if (unlikely(constSet.drawMaxChangedConstI > constSet.drawMinChangedConstI)) {
+      DxvkCsDataBlock* csData = EmitCsWithData<Vector4i, false>(constSet.drawMaxChangedConstI - constSet.drawMinChangedConstI, [
+        &cCsConsts     = CsConsts,
+        cStartRegister = constSet.drawMinChangedConstI
+      ] (DxvkContext* ctx, const Vector4i* data, size_t count) {
+        memcpy(cCsConsts.iConsts + cStartRegister, data, count * sizeof(Vector4i));
+      });
+
+      memcpy(csData->first(), Src.iConsts + constSet.drawMinChangedConstI, csData->count() * sizeof(Vector4i));
+    }
+
+    if (unlikely(constSet.drawMaxChangedConstB > constSet.drawMinChangedConstB)) {
+      uint32_t bitmaskCount = divCeil(constSet.drawMaxChangedConstB, 32u) - constSet.drawMinChangedConstB / 32;
+      DxvkCsDataBlock* csData = EmitCsWithData<uint32_t, false>(bitmaskCount, [
+        &cCsConsts     = CsConsts,
+        cStartRegister = constSet.drawMinChangedConstB
+      ] (DxvkContext* ctx, const uint32_t* data, size_t count) {
+        memcpy(cCsConsts.bConsts + cStartRegister / 32, data, count * sizeof(uint32_t));
+      });
+
+      memcpy(csData->first(), Src.bConsts + constSet.drawMinChangedConstB / 32, csData->count() * sizeof(uint32_t));
+    }
+
     constSet.maxChangedConstF = std::max(constSet.maxChangedConstF, constSet.drawMaxChangedConstF);
     constSet.maxChangedConstI = std::max(constSet.maxChangedConstI, constSet.drawMaxChangedConstI);
     constSet.maxChangedConstB = std::max(constSet.maxChangedConstB, constSet.drawMaxChangedConstB);
+
+    constSet.drawMaxChangedConstF = 0;
+    constSet.drawMaxChangedConstI = 0;
+    constSet.drawMaxChangedConstB = 0;
+    constSet.drawMinChangedConstF = DetermineSoftwareRegCount<DxsoProgramType::VertexShader, D3D9ConstantType::Float>();
+    constSet.drawMinChangedConstI = caps::MaxOtherConstantsSoftware;
+    constSet.drawMinChangedConstB = caps::MaxOtherConstantsSoftware;
 
     uint32_t floatCount = constSet.maxChangedConstF;
     if (constSet.meta.needsConstantCopies) {
@@ -6123,46 +6158,55 @@ namespace dxvk {
     // If we statically know which is the last float constant accessed by the shader, we don't need to copy the rest.
     floatCount = std::min(floatCount, constSet.meta.maxConstIndexF);
 
-    // Calculate data sizes for each constant type.
-    const uint32_t floatDataSize = floatCount * sizeof(Vector4);
-    const uint32_t intDataSize   = std::min(constSet.meta.maxConstIndexI, constSet.maxChangedConstI) * sizeof(Vector4i);
-    const uint32_t boolDataSize  = divCeil(std::min(constSet.meta.maxConstIndexB, constSet.maxChangedConstB), 32u) * uint32_t(sizeof(uint32_t));
+    EmitCs<false>([
+      cFloatCount       = floatCount,
+      cIntCount         = constSet.maxChangedConstI,
+      cBoolCunt         = constSet.maxChangedConstB,
+      &cBuffer          = constSet.buffer,
+      &cSwvpBuffers     = constSet.swvp,
+      &cCsConsts        = CsConsts,
+      cMaxConstIndexF   = constSet.meta.maxConstIndexF,
+      cMaxConstIndexI   = constSet.meta.maxConstIndexI,
+      cMaxConstIndexB   = constSet.meta.maxConstIndexB,
+      cDefinedConstants = constSet.meta.needsConstantCopies ? GetCommonShader(m_state.vertexShader)->GetConstants() : DxsoDefinedConstants()
+    ] (DxvkContext* ctx) {
+      // Calculate data sizes for each constant type.
+      const uint32_t floatDataSize = cFloatCount * sizeof(Vector4);
+      const uint32_t intDataSize   = std::min(cMaxConstIndexI, cIntCount) * sizeof(Vector4i);
+      const uint32_t boolDataSize  = divCeil(std::min(cMaxConstIndexB, cBoolCunt), 32u) * uint32_t(sizeof(uint32_t));
 
-    // Max copy source size is 8192 * 16 => always aligned to any plausible value
-    // => we won't copy out of bounds
-    if (likely(constSet.meta.maxConstIndexF != 0)) {
-      auto mapPtr = CopySoftwareConstants(constSet.buffer, Src.fConsts, floatDataSize);
+      // Max copy source size is 8192 * 16 => always aligned to any plausible value
+      // => we won't copy out of bounds
+      if (likely(cMaxConstIndexF != 0)) {
+        auto mapPtr = CopySoftwareConstants(cBuffer, cCsConsts.fConsts, floatDataSize, ctx);
 
-      if (constSet.meta.needsConstantCopies) {
         // Copy shader defined constants over so they can be accessed
         // with relative addressing.
         Vector4* data = reinterpret_cast<Vector4*>(mapPtr);
 
-        auto& shaderConsts = GetCommonShader(m_state.vertexShader)->GetConstants();
-
-        for (const auto& constant : shaderConsts) {
-          if (constant.uboIdx < constSet.meta.maxConstIndexF)
+        for (const auto& constant : cDefinedConstants) {
+          if (constant.uboIdx < cMaxConstIndexF)
             data[constant.uboIdx] = *reinterpret_cast<const Vector4*>(constant.float32);
         }
       }
-    }
 
-    // Max copy source size is 2048 * 16 => always aligned to any plausible value
-    // => we won't copy out of bounds
-    if (likely(constSet.meta.maxConstIndexI != 0))
-      CopySoftwareConstants(constSet.swvp.intBuffer, Src.iConsts, intDataSize);
+      // Max copy source size is 2048 * 16 => always aligned to any plausible value
+      // => we won't copy out of bounds
+      if (likely(cMaxConstIndexI != 0))
+        CopySoftwareConstants(cSwvpBuffers.intBuffer, cCsConsts.iConsts, intDataSize, ctx);
 
-    if (likely(constSet.meta.maxConstIndexB != 0))
-      CopySoftwareConstants(constSet.swvp.boolBuffer, Src.bConsts, boolDataSize);
+      if (likely(cMaxConstIndexB != 0))
+        CopySoftwareConstants(cSwvpBuffers.boolBuffer, cCsConsts.bConsts, boolDataSize, ctx);
+    });
   }
 
 
-  inline void* D3D9DeviceEx::CopySoftwareConstants(D3D9ConstantBuffer& dstBuffer, const void* src, uint32_t size) {
+  inline void* D3D9DeviceEx::CopySoftwareConstants(D3D9CSConstantBuffer& dstBuffer, const void* src, uint32_t size, DxvkContext* ctx) {
     uint32_t alignment = dstBuffer.GetAlignment();
     size = std::max(size, alignment);
     size = align(size, alignment);
 
-    auto mapPtr = dstBuffer.Alloc(size);
+    auto mapPtr = dstBuffer.Alloc(ctx, size);
     std::memcpy(mapPtr, src, size);
     return mapPtr;
   }
@@ -6226,7 +6270,7 @@ namespace dxvk {
 
     EmitCs<false>([
       cFloatCount       = floatCount,
-      &cBuffer          = constSet.csBuffer,
+      &cBuffer          = constSet.buffer,
       &cCsConsts        = CsConsts,
       cMaxConstIndexF   = constSet.meta.maxConstIndexF,
       cMaxConstIndexI   = constSet.meta.maxConstIndexI,

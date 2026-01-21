@@ -39,15 +39,14 @@ namespace dxvk {
   };
 
   struct D3D9SwvpConstantBuffers {
-    D3D9ConstantBuffer        intBuffer;
-    D3D9ConstantBuffer        boolBuffer;
+    D3D9CSConstantBuffer      intBuffer;
+    D3D9CSConstantBuffer      boolBuffer;
   };
 
   struct D3D9ConstantSets {
     D3D9ConstantLayout        layout;
     D3D9SwvpConstantBuffers   swvp;
-    D3D9ConstantBuffer        buffer;
-    D3D9CSConstantBuffer      csBuffer;
+    D3D9CSConstantBuffer      buffer;
     DxsoShaderMetaInfo        meta  = {};
     bool                      dirty = true;
     uint32_t                  maxChangedConstF = 0;

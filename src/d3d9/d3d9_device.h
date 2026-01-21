@@ -1030,7 +1030,7 @@ namespace dxvk {
 
     inline void UploadSoftwareConstantSet(const D3D9ShaderConstantsVSSoftware& Src, D3D9ShaderConstantsVSSoftware& CsConsts, const D3D9ConstantLayout& Layout);
 
-    inline void* CopySoftwareConstants(D3D9ConstantBuffer& dstBuffer, const void* src, uint32_t size);
+    inline static void* CopySoftwareConstants(D3D9CSConstantBuffer& dstBuffer, const void* src, uint32_t size, DxvkContext* ctx);
 
     template <DxsoProgramType ShaderStage, typename HardwareLayoutType, typename SoftwareLayoutType, typename ShaderType>
     inline void UploadConstantSet(const SoftwareLayoutType& Src, SoftwareLayoutType& CsConsts, const D3D9ConstantLayout& Layout, const ShaderType& Shader);
