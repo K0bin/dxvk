@@ -40,6 +40,8 @@
 #include "../util/util_flush.h"
 #include "../util/util_lru.h"
 
+#include <sm3/sm3_types.h>
+
 namespace dxvk {
 
   class D3D9InterfaceEx;
@@ -1330,12 +1332,11 @@ namespace dxvk {
 
     DxvkStagingBufferStats GetStagingMemoryStatistics() const;
 
-    HRESULT               CreateShaderModule(
-            D3D9CommonShader*     pShaderModule,
-            uint32_t*             pLength,
-            VkShaderStageFlagBits ShaderStage,
-      const DWORD*                pShaderBytecode,
-      const DxsoModuleInfo*       pModuleInfo);
+    HRESULT CreateShaderModule(
+            D3D9CommonShader*       pShaderModule,
+            size_t*                 pBytecodeLength,
+            VkShaderStageFlagBits   ShaderStage,
+      const DWORD*                  pShaderBytecode);
 
     inline uint32_t GetUPDataSize(uint32_t vertexCount, uint32_t stride) {
       return vertexCount * stride;
@@ -1464,6 +1465,8 @@ namespace dxvk {
         ? GetHelper(m_state.vsConsts)
         : GetHelper(m_state.psConsts);
     }
+
+    void CreateFixedFunctionInputSignature();
 
     void UpdateFixedFunctionVS();
 
@@ -1606,6 +1609,8 @@ namespace dxvk {
     D3D9FFShaderModuleSet           m_ffModules;
     D3D9SWVPEmulator                m_swvpEmulator;
 
+    small_vector<dxbc_spv::sm3::Semantic, 4u> m_ffInputSignature;
+
     Com<D3D9StateBlock, false>      m_recorder;
 
     Rc<D3D9ShaderModuleSet>         m_shaderModules;
@@ -1635,7 +1640,9 @@ namespace dxvk {
 
     Com<D3D9SwapChainEx, false>     m_implicitSwapchain;
 
-    DxsoOptions                     m_dxsoOptions;
+    const D3D9Options               m_d3d9Options;
+
+    DxvkShaderOptions               m_shaderOptions = { };
 
     std::unordered_map<
       DWORD,

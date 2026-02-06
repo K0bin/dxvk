@@ -17,6 +17,9 @@
 #include "d3d9_names.h"
 #include "d3d9_format_helpers.h"
 
+#include <sm3/sm3_parser.h>
+#include <sm3/sm3_prepass.h>
+
 #include "../dxvk/dxvk_adapter.h"
 #include "../dxvk/dxvk_instance.h"
 
@@ -27,6 +30,9 @@
 
 #include <algorithm>
 #include <cfloat>
+
+#include "../../subprojects/dxbc-spirv/sm3/sm3_parser.h"
+
 #ifdef MSC_VER
 #pragma fenv_access (on)
 #endif
@@ -64,6 +70,8 @@ namespace dxvk {
     , m_d3d9On12Args       ( pAdapter->Get9On12Args() )
     , m_d3d9On12           ( this )
     , m_d3d8Bridge         ( this ) {
+
+    CreateFixedFunctionInputSignature();
 
     // If we can SWVP, then we use an extended constant set
     // as SWVP has many more slots available than HWVP.
@@ -7444,7 +7452,7 @@ namespace dxvk {
   void D3D9DeviceEx::BindSampler(DWORD Sampler) {
     auto samplerInfo = RemapStateSamplerShader(Sampler);
 
-    const uint32_t slot = computeResourceSlotId(
+    const uint32_t slot = D3D9ShaderResourceMapping::computeTextureBinding(
       samplerInfo.first, DxsoBindingType::Image,
       samplerInfo.second);
 
@@ -7459,6 +7467,7 @@ namespace dxvk {
       imageView = tex->GetSampleView(srgb);
 
     EmitCs([this,
+      cShaderType = samplerInfo.first,
       cSlot       = slot,
       cState      = D3D9SamplerInfo(m_state.samplerStates[Sampler]),
       cIsCube     = tex && tex->IsCube(),
@@ -7519,8 +7528,7 @@ namespace dxvk {
           key.setViewProperties(cView->info().unpackSwizzle(), cView->info().format);
       }
 
-      VkShaderStageFlags stage = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-      ctx->bindResourceSampler(stage, cSlot, m_dxvkDevice->createSampler(key));
+      ctx->bindResourceSampler(GetShaderStage(cShaderType), cSlot, m_dxvkDevice->createSampler(key));
 
       // Let the main thread know about current sampler stats
       uint64_t liveCount = m_dxvkDevice->getSamplerStats().liveCount;
@@ -7532,7 +7540,7 @@ namespace dxvk {
   void D3D9DeviceEx::BindTexture(DWORD StateSampler) {
     auto shaderSampler = RemapStateSamplerShader(StateSampler);
 
-    uint32_t slot = computeResourceSlotId(shaderSampler.first,
+    uint32_t slot = D3D9ShaderResourceMapping::computeTextureBinding(shaderSampler.first,
       DxsoBindingType::Image, uint32_t(shaderSampler.second));
 
     const bool srgb =
@@ -7544,11 +7552,11 @@ namespace dxvk {
     Rc<DxvkImageView> imageView = commonTex->GetSampleView(srgb);
 
     EmitCs([
-      cSlot = slot,
+      cShaderType = shaderSampler.first,
+      cSlot  = slot,
       cImageView = std::move(imageView)
     ](DxvkContext* ctx) mutable {
-      VkShaderStageFlags stage = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-      ctx->bindResourceImageView(stage, cSlot, std::move(cImageView));
+      ctx->bindResourceImageView(GetShaderStage(cShaderType), cSlot, std::move(cImageView));
     });
   }
 
@@ -7560,11 +7568,10 @@ namespace dxvk {
       for (uint32_t i : bit::BitMask(cMask)) {
         auto shaderSampler = RemapStateSamplerShader(i);
 
-        uint32_t slot = computeResourceSlotId(shaderSampler.first,
+        uint32_t slot = D3D9ShaderResourceMapping::computeTextureBinding(shaderSampler.first,
           DxsoBindingType::Image, uint32_t(shaderSampler.second));
 
-        VkShaderStageFlags stage = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-        ctx->bindResourceImageView(stage, slot, nullptr);
+        ctx->bindResourceImageView(GetShaderStage(shaderSampler.first), slot, nullptr);
       }
     });
   }
@@ -7968,12 +7975,12 @@ namespace dxvk {
         uint32_t attrMask = 0;
         uint32_t bindMask = 0;
 
-        const auto& isgn = cVertexShader != nullptr
-          ? GetCommonShader(cVertexShader)->GetIsgn()
-          : GetFixedFunctionIsgn();
+        const auto& inputSignature = cVertexShader != nullptr
+          ? GetCommonShader(cVertexShader)->GetInputSignature()
+          : m_ffInputSignature;
 
-        for (uint32_t i = 0; i < isgn.elemCount; i++) {
-          const auto& decl = isgn.elems[i];
+        for (uint32_t i = 0; i < inputSignature.size(); i++) {
+          const auto& decl = inputSignature[i];
 
           DxvkVertexAttribute attrib = { };
           attrib.location = i;
@@ -7982,9 +7989,9 @@ namespace dxvk {
           attrib.offset   = 0;
 
           for (const auto& element : elements) {
-            DxsoSemantic elementSemantic = { static_cast<DxsoUsage>(element.Usage), element.UsageIndex };
-            if (elementSemantic.usage == DxsoUsage::PositionT)
-              elementSemantic.usage = DxsoUsage::Position;
+            dxbc_spv::sm3::Semantic elementSemantic = { static_cast<dxbc_spv::sm3::SemanticUsage>(element.Usage), element.UsageIndex };
+            if (elementSemantic.usage == dxbc_spv::sm3::SemanticUsage::ePositionT)
+              elementSemantic.usage = dxbc_spv::sm3::SemanticUsage::ePosition;
 
             if (elementSemantic == decl.semantic) {
               attrib.binding = uint32_t(element.Stream);
@@ -8112,21 +8119,148 @@ namespace dxvk {
 
 
   HRESULT D3D9DeviceEx::CreateShaderModule(
-        D3D9CommonShader*     pShaderModule,
-        uint32_t*             pLength,
-        VkShaderStageFlagBits ShaderStage,
-  const DWORD*                pShaderBytecode,
-  const DxsoModuleInfo*       pModuleInfo) {
-    try {
-      m_shaderModules->GetShaderModule(this, pShaderModule,
-        pLength, ShaderStage, pModuleInfo, pShaderBytecode);
+          D3D9CommonShader*       pShaderModule,
+          size_t*                 pBytecodeLength,
+          VkShaderStageFlagBits   ShaderStage,
+    const DWORD*                  pShaderBytecode) {
 
-      return D3D_OK;
-    }
-    catch (const DxvkError& e) {
-      Logger::err(e.message());
+    if (!pShaderBytecode)
+      return D3DERR_INVALIDCALL;
+
+    dxbc_spv::util::ByteReader reader(pShaderBytecode, std::numeric_limits<size_t>::max());
+
+    dxbc_spv::sm3::Parser parser(reader);
+
+    // Pre-conversion checks
+    const uint32_t majorVersion = parser.getShaderInfo().getVersion().first;
+    const uint32_t minorVersion = parser.getShaderInfo().getVersion().second;
+
+    // Vertex shader version checks
+    if (ShaderStage == VK_SHADER_STAGE_VERTEX_BIT) {
+      // Late fixed-function capable hardware exposed support for VS 1.1
+      const uint32_t shaderModelVS = IsD3D8Compatible() ? 1u : std::max(1u, m_d3d9Options->shaderModel);
+
+      if (unlikely(majorVersion > shaderModelVS
+               || (majorVersion == 1 && minorVersion > 1)
+               // Skip checking the SM2 minor version, as it has a 2_x mode apparently
+               || (majorVersion == 3 && minorVersion != 0))) {
+        Logger::err(str::format("GetShaderModule: Unsupported VS version ", majorVersion, ".", minorVersion));
+        return D3DERR_INVALIDCALL;
+      }
+    // Pixel shader version checks
+    } else if (ShaderStage == VK_SHADER_STAGE_FRAGMENT_BIT) {
+      const uint32_t shaderModelPS = IsD3D8Compatible() ? std::min(1u, m_d3d9Options->shaderModel) : m_d3d9Options->shaderModel;
+
+      if (unlikely(majorVersion > shaderModelPS
+               || (majorVersion == 1 && minorVersion > 4)
+               // Skip checking the SM2 minor version, as it has a 2_x mode apparently
+               || (majorVersion == 3 && minorVersion != 0))) {
+        Logger::err(str::format("GetShaderModule: Unsupported PS version ", majorVersion, ".", minorVersion));
+        return D3DERR_INVALIDCALL;
+      }
+    } else {
+      Logger::err("GetShaderModule: Unsupported shader stage");
       return D3DERR_INVALIDCALL;
     }
+
+    if (unlikely(
+        (ShaderStage == VK_SHADER_STAGE_VERTEX_BIT && parser.getShaderInfo().getType() != dxbc_spv::sm3::ShaderType::eVertex)
+        || (ShaderStage == VK_SHADER_STAGE_FRAGMENT_BIT && parser.getShaderInfo().getType() != dxbc_spv::sm3::ShaderType::ePixel)
+    )) {
+      Logger::err("GetShaderModule: Bytecode does not match shader stage");
+      return D3DERR_INVALIDCALL;
+    }
+
+    dxbc_spv::sm3::Prepass prepass = dxbc_spv::sm3::Prepass(parser);
+    prepass.runPrepass();
+
+    // Initialize the actual shader
+    D3D9CommonShader commonShader = { };
+
+    HRESULT hr m_shaderModules->GetShaderModule(this,
+      hash, m_shaderOptions, prepass, pShaderBytecode,
+      &commonShader);
+
+    if (FAILED(hr))
+      return result;
+
+
+    // Post-conversion checks
+    const int32_t maxFloatConstantIndex = commonShader.GetMaxDefinedFloatConstant();
+    const int32_t maxIntConstantIndex = commonShader.GetMaxDefinedIntConstant();
+    const int32_t maxBoolConstantIndex = commonShader.GetMaxDefinedBoolConstant();
+
+    // Vertex shader specific validations. These validations are not
+    // performed on SWVP devices or on MIXED devices, even if
+    // SetSoftwareVertexProcessing(FALSE) is used to disable SWVP mode.
+    if (!CanSWVP() && ShaderKey.stage() == VK_SHADER_STAGE_VERTEX_BIT) {
+
+      // Validate the float constant value advertised in pCaps->MaxFloatConstantsVS for HWVP.
+      if (unlikely(maxFloatConstantIndex > static_cast<int32_t>(caps::MaxFloatConstantsVS - 1))) {
+        Logger::err(str::format("GetShaderModule: Invalid VS float constant index ", maxFloatConstantIndex));
+        return D3DERR_INVALIDCALL;
+      }
+
+      // Validate the integer constant value advertised in pCaps->MaxOtherConstants for HWVP.
+      if (unlikely(maxIntConstantIndex > static_cast<int32_t>(caps::MaxOtherConstants - 1))) {
+        Logger::err(str::format("GetShaderModule: Invalid VS int constant index ", maxIntConstantIndex));
+        return D3DERR_INVALIDCALL;
+      }
+
+      // Validate the bool constant value advertised in pCaps->MaxOtherConstants for HWVP.
+      if (unlikely(maxBoolConstantIndex > static_cast<int32_t>(caps::MaxOtherConstants - 1))) {
+        Logger::err(str::format("GetShaderModule: Invalid VS bool constant index ", maxBoolConstantIndex));
+        return D3DERR_INVALIDCALL;
+      }
+
+    // Pixel shader specific validations.
+    } else if (ShaderKey.stage() == VK_SHADER_STAGE_FRAGMENT_BIT) {
+
+      uint32_t majorVersion = *pShader->GetInfo()->GetVersion().first;
+      uint32_t minorVersion = *pShader->GetInfo()->GetVersion().second;
+
+      const bool isSM2XOrNewer = majorVersion == 3 || (majorVersion == 2 && minorVersion != 0);
+      // Pixel shader model version 2_x has the same limits here as version 2_0
+      const uint32_t maxFloatConstantsPS = majorVersion == 3 ? caps::MaxSM3FloatConstantsPS :
+                                           majorVersion == 2 ? caps::MaxSM2FloatConstantsPS :
+                                           caps::MaxSM1FloatConstantsPS;
+
+      // Validate the float constant value coresponding to the supported shader model version.
+      if (unlikely(!pDevice->CanSWVP() && maxFloatConstantIndex > static_cast<int32_t>(maxFloatConstantsPS - 1))) {
+        Logger::err(str::format("GetShaderModule: Invalid PS float constant index ", maxFloatConstantIndex));
+        return D3DERR_INVALIDCALL;
+      }
+
+      // Pixel shaders below version 2_x can not use integer constants, not even in SWVP/MIXED mode
+      if (unlikely(!isSM2XOrNewer && maxIntConstantIndex != -1)) {
+        Logger::err("GetShaderModule: Invalid use of PS int constant");
+        return D3DERR_INVALIDCALL;
+      }
+
+      // Validate the integer constant value advertised in pCaps->MaxOtherConstants for HWVP.
+      if (unlikely(isSM2XOrNewer && !pDevice->CanSWVP() &&
+                        maxIntConstantIndex > static_cast<int32_t>(caps::MaxOtherConstants - 1))) {
+        Logger::err(str::format("GetShaderModule: Invalid PS int constant index ", maxIntConstantIndex));
+        return D3DERR_INVALIDCALL;
+      }
+
+      // Pixel shaders below version 2_x can not use bool constants, not even in SWVP/MIXED mode
+      if (unlikely(!isSM2XOrNewer && maxBoolConstantIndex != -1)) {
+        Logger::err("GetShaderModule: Invalid use of PS bool constant");
+        return D3DERR_INVALIDCALL;
+      }
+
+      // Validate the bool constant value advertised in pCaps->MaxOtherConstants for HWVP.
+      if (unlikely(isSM2XOrNewer && !pDevice->CanSWVP() &&
+                        maxBoolConstantIndex > static_cast<int32_t>(caps::MaxOtherConstants - 1))) {
+        Logger::err(str::format("GetShaderModule: Invalid PS bool constant index ", maxBoolConstantIndex));
+        return D3DERR_INVALIDCALL;
+      }
+    }
+
+    *pShaderModule = std::move(commonShader);
+    *pBytecodeLength = prepass.getLength();
+    return D3D_OK;
   }
 
 
@@ -8269,7 +8403,25 @@ namespace dxvk {
   }
 
 
-   void D3D9DeviceEx::UpdateFixedFunctionVS() {
+  void D3D9DeviceEx::CreateFixedFunctionInputSignature() {
+    m_ffInputSignature.reserve(12u);
+
+    m_ffInputSignature.push_back(dxbc_spv::sm3::Semantic{ DxsoUsage::Position, 0 });
+    m_ffInputSignature.push_back(dxbc_spv::sm3::Semantic{ DxsoUsage::Normal, 0 });
+    m_ffInputSignature.push_back(dxbc_spv::sm3::Semantic{ DxsoUsage::Position, 1 });
+    m_ffInputSignature.push_back(dxbc_spv::sm3::Semantic{ DxsoUsage::Normal, 1 });
+    for (uint32_t i = 0; i < 8; i++)
+      m_ffInputSignature.push_back(dxbc_spv::sm3::Semantic{ DxsoUsage::Texcoord, i });
+    m_ffInputSignature.push_back(dxbc_spv::sm3::Semantic{ DxsoUsage::Color, 0 });
+    m_ffInputSignature.push_back(dxbc_spv::sm3::Semantic{ DxsoUsage::Color, 1 });
+    m_ffInputSignature.push_back(dxbc_spv::sm3::Semantic{ DxsoUsage::Fog, 0 });
+    m_ffInputSignature.push_back(dxbc_spv::sm3::Semantic{ DxsoUsage::PointSize, 0 });
+    m_ffInputSignature.push_back(dxbc_spv::sm3::Semantic{ DxsoUsage::BlendWeight, 0 });
+    m_ffInputSignature.push_back(dxbc_spv::sm3::Semantic{ DxsoUsage::BlendIndices, 0 });
+  }
+
+
+  void D3D9DeviceEx::UpdateFixedFunctionVS() {
     bool hasPositionT    = m_state.vertexDecl != nullptr && m_state.vertexDecl->TestFlag(D3D9VertexDeclFlag::HasPositionT);
     bool hasBlendWeight  = m_state.vertexDecl != nullptr && m_state.vertexDecl->TestFlag(D3D9VertexDeclFlag::HasBlendWeight);
     bool hasBlendIndices = m_state.vertexDecl != nullptr && m_state.vertexDecl->TestFlag(D3D9VertexDeclFlag::HasBlendIndices);
@@ -8893,12 +9045,10 @@ namespace dxvk {
     EmitCs([
       cSize = m_state.textures->size()
     ](DxvkContext* ctx) {
-      VkShaderStageFlags stage = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-
       for (uint32_t i = 0; i < cSize; i++) {
         auto samplerInfo = RemapStateSamplerShader(DWORD(i));
-        uint32_t slot = computeResourceSlotId(samplerInfo.first, DxsoBindingType::Image, uint32_t(samplerInfo.second));
-        ctx->bindResourceImageView(stage, slot, nullptr);
+        uint32_t slot = D3D9ShaderResourceMapping::computeTextureBinding(samplerInfo.first, DxsoBindingType::Image, uint32_t(samplerInfo.second));
+        ctx->bindResourceImageView(GetShaderStage(samplerInfo.first), slot, nullptr);
       }
     });
 

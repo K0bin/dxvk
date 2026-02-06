@@ -207,11 +207,4 @@ namespace dxvk {
 
   };
 
-
-  inline const DxsoIsgn& GetFixedFunctionIsgn() {
-    extern DxsoIsgn g_ffIsgn;
-
-    return g_ffIsgn;
-  }
-
 }

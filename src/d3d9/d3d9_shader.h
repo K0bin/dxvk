@@ -2,16 +2,77 @@
 
 #include "../dxso/dxso_module.h"
 
+#include <sm3/sm3_parser.h>
+#include <sm3/sm3_prepass.h>
+#include <sm3/sm3_types.h>
+
 #include "../dxvk/dxvk_shader.h"
+#include "../dxvk/dxvk_shader_ir.h"
 #include "../dxvk/dxvk_shader_key.h"
 
 #include "d3d9_resource.h"
 #include "d3d9_util.h"
 #include "d3d9_mem.h"
 
+#include "../util/util_small_vector.h"
+
 #include <array>
 
 namespace dxvk {
+
+
+  /**
+   * \brief Shader resource mapping
+   *
+   * Helper class to compute backend resource
+   * indices for D3D11 binding slots.
+   */
+  struct D3D9ShaderResourceMapping {
+    enum ConstantBuffers : uint32_t {
+      VSConstantBuffer = 0,
+      VSFloatConstantBuffer = 0,
+      VSIntConstantBuffer = 1,
+      VSBoolConstantBuffer = 2,
+      VSClipPlanes     = 3,
+      VSFixedFunction  = 4,
+      VSVertexBlendData = 5,
+      VSCount,
+
+      PSConstantBuffer = 0,
+      PSFixedFunction  = 1,
+      PSShared         = 2,
+      PSCount
+    };
+
+    template<typename T>
+    static uint32_t computeCbvBinding(T stage, uint32_t index) {
+      const uint32_t stageOffset = (ConstantBuffers::VSCount + caps::MaxTexturesVS) * computeStageIndex(stage);
+      return index + stageOffset;
+    }
+
+    template<typename T>
+    static uint32_t computeTextureBinding(T stage, uint32_t index) {
+      const uint32_t stageIndex = computeStageIndex(stage);
+      const uint32_t stageOffset = (ConstantBuffers::VSCount + caps::MaxTexturesVS) * stageIndex;
+      return index + stageOffset
+        + (stageIndex == 1u
+          ? ConstantBuffers::PSCount
+          : ConstantBuffers::VSCount);
+    }
+
+    static constexpr uint32_t computeStageIndex(dxbc_spv::ir::ShaderStage stage) {
+      switch (stage) {
+        case dxbc_spv::ir::ShaderStage::eVertex:    return 0u;
+        case dxbc_spv::ir::ShaderStage::ePixel:     return 1u;
+        default:                                    return -1u;
+      }
+    }
+
+    static constexpr uint32_t computeStageIndex(D3D9ShaderType stage) {
+      return uint32_t(stage);
+    }
+
+  };
 
 
   /**
@@ -28,13 +89,13 @@ namespace dxvk {
     D3D9CommonShader();
 
     D3D9CommonShader(
-            D3D9DeviceEx*         pDevice,
-            VkShaderStageFlagBits ShaderStage,
-      const DxvkShaderKey&        Key,
-      const DxsoModuleInfo*       pDxbcModuleInfo,
-      const void*                 pShaderBytecode,
-      const DxsoAnalysisInfo&     AnalysisInfo,
-            DxsoModule*           pModule);
+            D3D9DeviceEx*           pDevice,
+            VkShaderStageFlagBits   ShaderStage,
+      const DxvkShaderKey&          Key,
+      const DxvkIrShaderCreateInfo& ModuleInfo,
+      const dxbc_spv::sm3::Prepass& Prepass,
+      const void*                   pShaderBytecode,
+            size_t                  BytecodeLength);
 
 
     Rc<DxvkShader> GetShader() const {
@@ -45,8 +106,8 @@ namespace dxvk {
       return m_shader->debugName();
     }
 
-    const DxsoIsgn& GetIsgn() const {
-      return m_isgn;
+    const small_vector<dxbc_spv::sm3::Semantic, 4u>& GetInputSingature() const {
+      return m_inputSignature;
     }
 
     const DxsoShaderMetaInfo& GetMeta() const { return m_meta; }
@@ -54,7 +115,7 @@ namespace dxvk {
 
     D3D9ShaderMasks GetShaderMask() const { return D3D9ShaderMasks{ m_usedSamplers, m_usedRTs }; }
 
-    const DxsoProgramInfo& GetInfo() const { return m_info; }
+    const dxbc_spv::sm3::ShaderInfo& GetInfo() const { return m_info; }
 
     int32_t GetMaxDefinedFloatConstant() const { return m_maxDefinedFloatConst; }
 
@@ -63,26 +124,33 @@ namespace dxvk {
     int32_t GetMaxDefinedBoolConstant() const { return m_maxDefinedBoolConst; }
 
     VkImageViewType GetImageViewType(uint32_t samplerSlot) const {
-      const uint32_t offset = samplerSlot * 2;
-      const uint32_t mask = 0b11;
-      return static_cast<VkImageViewType>((m_textureTypes >> offset) & mask);
+      return m_textureTypes[samplerSlot];
     }
 
   private:
 
-    DxsoIsgn              m_isgn;
+    void CreateIrShader(
+            D3D9DeviceEx*          pDevice,
+      const DxvkShaderHash&         ShaderKey,
+      const DxvkIrShaderCreateInfo& ModuleInfo,
+      const void*                   pShaderBytecode,
+            size_t                  BytecodeLength);
+
+    small_vector<dxbc_spv::sm3::Semantic, 4u> m_inputSignature;
     uint32_t              m_usedSamplers;
     uint32_t              m_usedRTs;
-    uint32_t              m_textureTypes;
 
-    DxsoProgramInfo       m_info;
-    DxsoShaderMetaInfo    m_meta;
-    DxsoDefinedConstants  m_constants;
-    int32_t               m_maxDefinedFloatConst = -1;
-    int32_t               m_maxDefinedIntConst = -1;
-    int32_t               m_maxDefinedBoolConst = -1;
+    std::array<VkImageViewType, 16u> m_textureTypes;
 
-    Rc<DxvkShader>        m_shader;
+    dxbc_spv::sm3::ShaderInfo       m_info;
+    dxbc_spv::sm3::PrepassConstants m_meta;
+
+    dxbc_spv::sm3::ImmediateFloatConstants m_constants;
+    int32_t                                m_maxDefinedFloatConst = -1;
+    int32_t                                m_maxDefinedIntConst = -1;
+    int32_t                                m_maxDefinedBoolConst = -1;
+
+    Rc<DxvkShader> m_shader;
 
   };
 
@@ -205,20 +273,20 @@ namespace dxvk {
     
   public:
     
-    void GetShaderModule(
-            D3D9DeviceEx*         pDevice,
-            D3D9CommonShader*     pShaderModule,
-            uint32_t*             pLength,
-            VkShaderStageFlagBits ShaderStage,
-      const DxsoModuleInfo*       pDxbcModuleInfo,
-      const void*                 pShaderBytecode);
+    HRESULT GetShaderModule(
+            D3D9DeviceEx*      pDevice,
+      const DxvkShaderHash&    ShaderKey,
+      const DxvkShaderOptions& Options,
+      const dxbc_spv::sm3::Prepass& Prepass,
+      const void*              pShaderBytecode,
+            D3D9CommonShader*  pShader);
     
   private:
     
     dxvk::mutex m_mutex;
     
     std::unordered_map<
-      DxvkShaderKey,
+      DxvkShaderHash,
       D3D9CommonShader,
       DxvkHash, DxvkEq> m_modules;
     

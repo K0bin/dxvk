@@ -4,6 +4,8 @@
 #include "d3d9_constant_buffer.h"
 #include "d3d9_constant_layout.h"
 
+#include <sm3/sm3_prepass.h>
+
 
 #include "../dxso/dxso_isgn.h"
 
@@ -44,14 +46,14 @@ namespace dxvk {
   };
 
   struct D3D9ConstantSets {
-    D3D9ConstantLayout        layout;
-    D3D9SwvpConstantBuffers   swvp;
-    D3D9ConstantBuffer        buffer;
-    DxsoShaderMetaInfo        meta  = {};
-    bool                      dirty = true;
-    uint32_t                  maxChangedConstF = 0;
-    uint32_t                  maxChangedConstI = 0;
-    uint32_t                  maxChangedConstB = 0;
+    D3D9ConstantLayout              layout;
+    D3D9SwvpConstantBuffers         swvp;
+    D3D9ConstantBuffer              buffer;
+    dxbc_spv::sm3::PrepassConstants meta  = {};
+    bool                            dirty = true;
+    uint32_t                        maxChangedConstF = 0;
+    uint32_t                        maxChangedConstI = 0;
+    uint32_t                        maxChangedConstB = 0;
   };
 
 }

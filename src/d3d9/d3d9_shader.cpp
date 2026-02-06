@@ -1,22 +1,118 @@
 #include "d3d9_shader.h"
 
+#include <sm3/sm3_interface.h>
+#include <sm3/sm3_parser.h>
+#include <sm3/sm3_prepass.h>
+
 #include "d3d9_caps.h"
 #include "d3d9_device.h"
 #include "d3d9_util.h"
 
 namespace dxvk {
 
+  class D3D9ShaderConverter : public DxvkIrShaderConverter {
+
+  public:
+
+    D3D9ShaderConverter(
+      const DxvkShaderHash&         ShaderKey,
+      const DxvkIrShaderCreateInfo& ModuleInfo,
+      const void*                   pShaderBytecode,
+            size_t                  BytecodeLength,
+            bool                    FastFloatEmulation,
+            bool                    SWVP)
+    : m_key(ShaderKey), m_info(ModuleInfo), m_fastFloatEmulation(FastFloatEmulation), m_SWVP(SWVP) {
+      m_dxbc.resize(BytecodeLength);
+      std::memcpy(m_dxbc.data(), pShaderBytecode, BytecodeLength);
+    }
+
+    ~D3D9ShaderConverter() { }
+
+    void convertShader(
+            dxbc_spv::ir::Builder&    builder) {
+      auto debugName = m_key.toString();
+
+      dxbc_spv::sm3::Converter::Options options = { };
+      options.name = debugName.c_str();
+      options.includeDebugNames = true;
+      options.fastFloatEmulation = m_fastFloatEmulation;
+      options.isSWVP = m_SWVP;
+
+      dxbc_spv::util::ByteReader reader(m_dxbc.data(), m_dxbc.size());
+
+      dxbc_spv::sm3::Converter converter(reader, TODO, options);
+
+      if (!converter.convertShader(builder))
+        throw DxvkError(str::format("Failed to convert shader: ", m_key.toString()));
+    }
+
+    uint32_t determineResourceIndex(
+            dxbc_spv::ir::ShaderStage stage,
+            dxbc_spv::ir::ScalarType  type,
+            uint32_t                  regSpace,
+            uint32_t                  regIndex) const {
+
+      switch (regSpace) {
+        case dxbc_spv::sm3::TextureBindingsRegSpace:
+
+
+
+
+          break;
+
+      }
+
+      if (regSpace == dxbc_spv::sm3::ConstantBufferRegSpace) {
+
+      }
+
+      switch (type) {
+        case dxbc_spv::ir::ScalarType::eSampler:
+          return D3D11ShaderResourceMapping::computeSamplerBinding(stage, regIndex);
+        case dxbc_spv::ir::ScalarType::eCbv:
+          return D3D11ShaderResourceMapping::computeCbvBinding(stage, regIndex);
+        case dxbc_spv::ir::ScalarType::eSrv:
+          return D3D11ShaderResourceMapping::computeSrvBinding(stage, regIndex);
+        case dxbc_spv::ir::ScalarType::eUav:
+          return D3D11ShaderResourceMapping::computeUavBinding(stage, regIndex);
+        case dxbc_spv::ir::ScalarType::eUavCounter:
+          return D3D11ShaderResourceMapping::computeUavCounterBinding(stage, regIndex);
+        default:
+          return -1u;
+      }
+    }
+
+    void dumpSource(const std::string& path) const {
+      std::ofstream file(str::topath(str::format(path, "/", m_key.toString(), ".sm3_dxbc").c_str()).c_str(), std::ios_base::trunc | std::ios_base::binary);
+      file.write(reinterpret_cast<const char*>(m_dxbc.data()), m_dxbc.size());
+    }
+
+    std::string getDebugName() const {
+      return m_key.toString();
+    }
+
+  private:
+
+    std::vector<uint8_t> m_dxbc;
+
+    DxvkShaderHash          m_key;
+    DxvkIrShaderCreateInfo  m_info;
+
+    bool                    m_fastFloatEmulation = false;
+    bool                    m_SWVP               = false;
+
+  };
+
   D3D9CommonShader::D3D9CommonShader() {}
 
   D3D9CommonShader::D3D9CommonShader(
-            D3D9DeviceEx*         pDevice,
-            VkShaderStageFlagBits ShaderStage,
-      const DxvkShaderKey&        Key,
-      const DxsoModuleInfo*       pDxsoModuleInfo,
-      const void*                 pShaderBytecode,
-      const DxsoAnalysisInfo&     AnalysisInfo,
-            DxsoModule*           pModule) {
-    const uint32_t bytecodeLength = AnalysisInfo.bytecodeByteLength;
+            D3D9DeviceEx*           pDevice,
+            VkShaderStageFlagBits   ShaderStage,
+      const DxvkShaderKey&          Key,
+      const DxvkIrShaderCreateInfo& ModuleInfo,
+      const dxbc_spv::sm3::Prepass& Prepass,
+      const void*                   pShaderBytecode,
+            size_t                  BytecodeLength) {
 
     const std::string name = Key.toString();
     Logger::debug(str::format("Compiling shader ", name));
@@ -30,7 +126,7 @@ namespace dxvk {
         reinterpret_cast<const char*>(pShaderBytecode));
 
       reader.store(std::ofstream(str::topath(str::format(dumpPath, "/", name, ".dxso").c_str()).c_str(),
-        std::ios_base::binary | std::ios_base::trunc), bytecodeLength);
+        std::ios_base::binary | std::ios_base::trunc), BytecodeLength);
 
       char comment[2048];
       Com<ID3DBlob> blob;
@@ -55,9 +151,27 @@ namespace dxvk {
       ? pDevice->GetVertexConstantLayout()
       : pDevice->GetPixelConstantLayout();
     m_shader       = pModule->compile(*pDxsoModuleInfo, name, AnalysisInfo, constantLayout);
-    m_isgn         = pModule->isgn();
-    m_usedSamplers = pModule->usedSamplers();
-    m_textureTypes = pModule->textureTypes();
+    m_usedSamplers = Prepass.getSamplerMask();
+
+    m_inputSignature.reserve(Prepass.getInputSignatureSize());
+    for (uint32_t i = 0; i < Prepass.getInputSignatureSize(); i++) {
+      m_inputSignature.push_back(Prepass.getInputSignatureElement(i));
+    }
+
+    for (uint32_t i = 0u; i < m_textureTypes.size(); i++) {
+      auto textureType = Prepass.getTextureType(i);
+      switch (textureType) {
+        case dxbc_spv::sm3::TextureType::eTexture2D:
+          m_textureTypes[i] = VK_IMAGE_VIEW_TYPE_2D;
+          break;
+        case dxbc_spv::sm3::TextureType::eTexture3D:
+          m_textureTypes[i] = VK_IMAGE_VIEW_TYPE_3D;
+          break;
+        case dxbc_spv::sm3::TextureType::eTextureCube:
+          m_textureTypes[i] = VK_IMAGE_VIEW_TYPE_CUBE;
+          break;
+      }
+    }
 
     // Shift up these sampler bits so we can just
     // do an or per-draw in the device.
@@ -65,14 +179,14 @@ namespace dxvk {
     if (ShaderStage == VK_SHADER_STAGE_VERTEX_BIT)
       m_usedSamplers <<= FirstVSSamplerSlot;
 
-    m_usedRTs              = pModule->usedRTs();
+    m_usedRTs              = Prepass.getRenderTargetMask();
 
-    m_info                 = pModule->info();
-    m_meta                 = pModule->meta();
-    m_constants            = pModule->constants();
-    m_maxDefinedFloatConst = pModule->maxDefinedFloatConstant();
-    m_maxDefinedIntConst   = pModule->maxDefinedIntConstant();
-    m_maxDefinedBoolConst  = pModule->maxDefinedBoolConstant();
+    m_info                 = Prepass.getShaderInfo();
+    m_meta                 = Prepass.getConstantsInfo();
+    m_constants            = Prepass.getImmediateConstants().floats;
+    m_maxDefinedFloatConst = Prepass.getImmediateConstants().maxFloatIndex;
+    m_maxDefinedIntConst   = Prepass.getImmediateConstants().maxIntIndex;
+    m_maxDefinedBoolConst  = Prepass.getImmediateConstants().maxBoolIndex;
 
     if (dumpPath.size() != 0) {
       std::ofstream dumpStream(
@@ -86,129 +200,42 @@ namespace dxvk {
   }
 
 
-  void D3D9ShaderModuleSet::GetShaderModule(
-            D3D9DeviceEx*         pDevice,
-            D3D9CommonShader*     pShaderModule,
-            uint32_t*             pLength,
-            VkShaderStageFlagBits ShaderStage,
-      const DxsoModuleInfo*       pDxbcModuleInfo,
-      const void*                 pShaderBytecode) {
-    DxsoReader reader(
-      reinterpret_cast<const char*>(pShaderBytecode));
-
-    DxsoModule module(reader);
-
-    if (unlikely(module.info().shaderStage() != ShaderStage))
-      throw DxvkError("GetShaderModule: Bytecode does not match shader stage");
-
-    auto* options = pDevice->GetOptions();
-
-    const uint32_t majorVersion = module.info().majorVersion();
-    const uint32_t minorVersion = module.info().minorVersion();
-
-    // Vertex shader version checks
-    if (ShaderStage == VK_SHADER_STAGE_VERTEX_BIT) {
-      // Late fixed-function capable hardware exposed support for VS 1.1
-      const uint32_t shaderModelVS = pDevice->IsD3D8Compatible() ? 1u : std::max(1u, options->shaderModel);
-
-      if (unlikely(majorVersion > shaderModelVS
-               || (majorVersion == 1 && minorVersion > 1)
-               // Skip checking the SM2 minor version, as it has a 2_x mode apparently
-               || (majorVersion == 3 && minorVersion != 0))) {
-        throw DxvkError(str::format("GetShaderModule: Unsupported VS version ", majorVersion, ".", minorVersion));
-      }
-    // Pixel shader version checks
-    } else if (ShaderStage == VK_SHADER_STAGE_FRAGMENT_BIT) {
-      const uint32_t shaderModelPS = pDevice->IsD3D8Compatible() ? std::min(1u, options->shaderModel) : options->shaderModel;
-
-      if (unlikely(majorVersion > shaderModelPS
-               || (majorVersion == 1 && minorVersion > 4)
-               // Skip checking the SM2 minor version, as it has a 2_x mode apparently
-               || (majorVersion == 3 && minorVersion != 0))) {
-        throw DxvkError(str::format("GetShaderModule: Unsupported PS version ", majorVersion, ".", minorVersion));
-      }
-    } else {
-      throw DxvkError("GetShaderModule: Unsupported shader stage");
-    }
-
-    DxsoAnalysisInfo info = module.analyze();
-    *pLength = info.bytecodeByteLength;
-
-    DxvkShaderKey lookupKey = DxvkShaderKey(
-      ShaderStage,
-      Sha1Hash::compute(pShaderBytecode, info.bytecodeByteLength));
+  HRESULT D3D9ShaderModuleSet::GetShaderModule(
+          D3D9DeviceEx*      pDevice,
+    const DxvkShaderHash&    ShaderKey,
+    const DxvkShaderOptions& Options,
+    const dxbc_spv::sm3::Prepass& Prepass,
+    const void*              pShaderBytecode,
+          D3D9CommonShader*  pShader) {
 
     // Use the shader's unique key for the lookup
     { std::unique_lock<dxvk::mutex> lock(m_mutex);
       
-      auto entry = m_modules.find(lookupKey);
+      auto entry = m_modules.find(ShaderKey);
       if (entry != m_modules.end()) {
-        *pShaderModule = entry->second;
-        return;
+        *pShader = entry->second;
+        return D3D_OK;
       }
     }
     
     // This shader has not been compiled yet, so we have to create a
     // new module. This takes a while, so we won't lock the structure.
-    *pShaderModule = D3D9CommonShader(
-      pDevice, ShaderStage, lookupKey,
+    *pShader = D3D9CommonShader(
+      pDevice, ShaderStage, ShaderKey,
       pDxbcModuleInfo, pShaderBytecode,
       info, &module);
-
-    const int32_t maxFloatConstantIndex = pShaderModule->GetMaxDefinedFloatConstant();
-    const int32_t maxIntConstantIndex = pShaderModule->GetMaxDefinedIntConstant();
-    const int32_t maxBoolConstantIndex = pShaderModule->GetMaxDefinedBoolConstant();
-
-    // Vertex shader specific validations. These validations are not
-    // performed on SWVP devices or on MIXED devices, even if
-    // SetSoftwareVertexProcessing(FALSE) is used to disable SWVP mode.
-    if (!pDevice->CanSWVP() && ShaderStage == VK_SHADER_STAGE_VERTEX_BIT) {
-      // Validate the float constant value advertised in pCaps->MaxFloatConstantsVS for HWVP.
-      if (unlikely(maxFloatConstantIndex > static_cast<int32_t>(caps::MaxFloatConstantsVS - 1)))
-        throw DxvkError(str::format("GetShaderModule: Invalid VS float constant index ", maxFloatConstantIndex));
-      // Validate the integer constant value advertised in pCaps->MaxOtherConstants for HWVP.
-      if (unlikely(maxIntConstantIndex > static_cast<int32_t>(caps::MaxOtherConstants - 1)))
-        throw DxvkError(str::format("GetShaderModule: Invalid VS int constant index ", maxIntConstantIndex));
-      // Validate the bool constant value advertised in pCaps->MaxOtherConstants for HWVP.
-      if (unlikely(maxBoolConstantIndex > static_cast<int32_t>(caps::MaxOtherConstants - 1)))
-        throw DxvkError(str::format("GetShaderModule: Invalid VS bool constant index ", maxBoolConstantIndex));
-    // Pixel shader specific validations.
-    } else if (ShaderStage == VK_SHADER_STAGE_FRAGMENT_BIT) {
-      const bool isSM2XOrNewer = majorVersion == 3 || (majorVersion == 2 && minorVersion != 0);
-      // Pixel shader model version 2_x has the same limits here as version 2_0
-      const uint32_t maxFloatConstantsPS = majorVersion == 3 ? caps::MaxSM3FloatConstantsPS :
-                                           majorVersion == 2 ? caps::MaxSM2FloatConstantsPS :
-                                           caps::MaxSM1FloatConstantsPS;
-      // Validate the float constant value coresponding to the supported shader model version.
-      if (unlikely(!pDevice->CanSWVP() && maxFloatConstantIndex > static_cast<int32_t>(maxFloatConstantsPS - 1)))
-        throw DxvkError(str::format("GetShaderModule: Invalid PS float constant index ", maxFloatConstantIndex));
-      // Pixel shaders below version 2_x can not use integer constants, not even in SWVP/MIXED mode
-      if (unlikely(!isSM2XOrNewer && maxIntConstantIndex != -1))
-        throw DxvkError("GetShaderModule: Invalid use of PS int constant");
-      // Validate the integer constant value advertised in pCaps->MaxOtherConstants for HWVP.
-      else if (unlikely(isSM2XOrNewer && !pDevice->CanSWVP() &&
-                        maxIntConstantIndex > static_cast<int32_t>(caps::MaxOtherConstants - 1)))
-        throw DxvkError(str::format("GetShaderModule: Invalid PS int constant index ", maxIntConstantIndex));
-      // Pixel shaders below version 2_x can not use bool constants, not even in SWVP/MIXED mode
-      if (unlikely(!isSM2XOrNewer && maxBoolConstantIndex != -1))
-        throw DxvkError("GetShaderModule: Invalid use of PS bool constant");
-      // Validate the bool constant value advertised in pCaps->MaxOtherConstants for HWVP.
-      else if (unlikely(isSM2XOrNewer && !pDevice->CanSWVP() &&
-                        maxBoolConstantIndex > static_cast<int32_t>(caps::MaxOtherConstants - 1)))
-        throw DxvkError(str::format("GetShaderModule: Invalid PS bool constant index ", maxBoolConstantIndex));
-    }
     
     // Insert the new module into the lookup table. If another thread
     // has compiled the same shader in the meantime, we should return
     // that object instead and discard the newly created module.
-    { std::unique_lock<dxvk::mutex> lock(m_mutex);
-      
-      auto status = m_modules.insert({ lookupKey, *pShaderModule });
-      if (!status.second) {
-        *pShaderModule = status.first->second;
-        return;
-      }
+    std::unique_lock<dxvk::mutex> lock(m_mutex);
+
+    auto status = m_modules.insert({ ShaderKey, *pShader });
+    if (!status.second) {
+      *pShader = status.first->second;
     }
+
+    return D3D_OK;
   }
 
 }
