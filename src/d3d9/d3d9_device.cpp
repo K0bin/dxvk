@@ -102,19 +102,21 @@ namespace dxvk {
     if (!(BehaviorFlags & D3DCREATE_FPU_PRESERVE))
       SetupFPU();
 
-    m_dxsoOptions = DxsoOptions(this, m_d3d9Options);
-
     // Check if VK_EXT_robustness2 is supported, so we can optimize the number of constants we need to copy.
     // Also check the required alignments.
     const bool supportsRobustness2 = m_dxvkDevice->features().extRobustness2.robustBufferAccess2;
     bool useRobustConstantAccess = supportsRobustness2;
-    D3D9ConstantSets& vsConstSet = m_consts[DxsoProgramType::VertexShader];
-    D3D9ConstantSets& psConstSet = m_consts[DxsoProgramType::PixelShader];
+    D3D9ConstantSets& vsConstSet = m_consts[D3D9ShaderType::VertexShader];
+    D3D9ConstantSets& psConstSet = m_consts[D3D9ShaderType::PixelShader];
+
+    m_vertexFloatConstantBufferAsSSBO = GetVertexConstantLayout().floatSize() > m_adapter->GetDXVKAdapter()->deviceProperties()
+      .core.properties.limits.maxUniformBufferRange;
+
     if (useRobustConstantAccess) {
       m_robustSSBOAlignment = m_dxvkDevice->properties().extRobustness2.robustStorageBufferAccessSizeAlignment;
       m_robustUBOAlignment  = m_dxvkDevice->properties().extRobustness2.robustUniformBufferAccessSizeAlignment;
       if (canSWVP) {
-        const uint32_t floatBufferAlignment = m_dxsoOptions.vertexFloatConstantBufferAsSSBO ? m_robustSSBOAlignment : m_robustUBOAlignment;
+        const uint32_t floatBufferAlignment = m_vertexFloatConstantBufferAsSSBO ? m_robustSSBOAlignment : m_robustUBOAlignment;
 
         useRobustConstantAccess &= vsConstSet.layout.floatSize() % floatBufferAlignment == 0;
         useRobustConstantAccess &= vsConstSet.layout.intSize() % m_robustUBOAlignment == 0;
@@ -201,8 +203,8 @@ namespace dxvk {
 
     m_specInfo.set<SpecDrefScaling, uint32_t>(m_d3d9Options.drefScaling);
 
-    BindFFUbershader<DxsoProgramType::VertexShader>();
-    BindFFUbershader<DxsoProgramType::PixelShader>();
+    BindFFUbershader<D3D9ShaderType::VertexShader>();
+    BindFFUbershader<D3D9ShaderType::PixelShader>();
 
     m_unlockAdditionalFormats = m_parent->HasFormatsUnlocked();
   }
@@ -3300,9 +3302,9 @@ namespace dxvk {
     // When vertex shader 3.0 or above is set as the current vertex shader,
     // the output vertex declaration must be present.
     if (UseProgrammableVS()) {
-      const auto& programInfo = GetCommonShader(m_state.vertexShader)->GetInfo();
+      const auto& shaderInfo = GetCommonShader(m_state.vertexShader)->GetInfo();
 
-      if (unlikely(programInfo.majorVersion() >= 3) && (pVertexDecl == nullptr))
+      if (unlikely(shaderInfo.getVersion().first >= 3) && (pVertexDecl == nullptr))
         return D3DERR_INVALIDCALL;
     }
 
@@ -3408,11 +3410,11 @@ namespace dxvk {
     // We unbound the pixel shader before,
     // let's make sure that gets rebound.
     if (m_state.pixelShader != nullptr) {
-      BindShader<DxsoProgramTypes::PixelShader>(
+      BindShader<D3D9ShaderType::PixelShader>(
         GetCommonShader(m_state.pixelShader));
     } else {
       m_dirty.set(D3D9DeviceDirtyFlag::FFPixelShader);
-      BindFFUbershader<DxsoProgramType::PixelShader>();
+      BindFFUbershader<D3D9ShaderType::PixelShader>();
     }
 
     if (dst->GetMapMode() == D3D9_COMMON_BUFFER_MAP_MODE_BUFFER) {
@@ -3488,10 +3490,10 @@ namespace dxvk {
 
     if (unlikely(usesProgrammableVS != wasUsingProgrammableVS)) {
       if (usesProgrammableVS) {
-        BindShader<DxsoProgramType::VertexShader>(GetCommonShader(m_state.vertexShader));
+        BindShader<D3D9ShaderType::VertexShader>(GetCommonShader(m_state.vertexShader));
       } else {
         m_dirty.set(D3D9DeviceDirtyFlag::FFVertexShader);
-        BindFFUbershader<DxsoProgramType::VertexShader>();
+        BindFFUbershader<D3D9ShaderType::VertexShader>();
       }
     }
 
@@ -3562,24 +3564,20 @@ namespace dxvk {
     if (unlikely(ppShader == nullptr))
       return D3DERR_INVALIDCALL;
 
-    DxsoModuleInfo moduleInfo;
-    moduleInfo.options = m_dxsoOptions;
-
     D3D9CommonShader module;
-    uint32_t bytecodeLength;
+    size_t bytecodeLength;
 
     if (FAILED(this->CreateShaderModule(&module,
       &bytecodeLength,
       VK_SHADER_STAGE_VERTEX_BIT,
-      pFunction,
-      &moduleInfo)))
+      pFunction)))
       return D3DERR_INVALIDCALL;
 
     *ppShader = ref(new D3D9VertexShader(this,
       &m_shaderAllocator,
       module,
       pFunction,
-      bytecodeLength));
+      uint32_t(bytecodeLength)));
 
     return D3D_OK;
   }
@@ -3599,17 +3597,17 @@ namespace dxvk {
     auto* oldShader = GetCommonShader(m_state.vertexShader);
     auto* newShader = GetCommonShader(shader);
 
-    bool oldCopies = oldShader && oldShader->GetMeta().needsConstantCopies;
-    bool newCopies = newShader && newShader->GetMeta().needsConstantCopies;
+    bool oldCopies = oldShader && oldShader->GetMeta().floatsAccessedDynamically;
+    bool newCopies = newShader && newShader->GetMeta().floatsAccessedDynamically;
 
-    m_consts[DxsoProgramTypes::VertexShader].dirty |= oldCopies || newCopies || !oldShader;
-    m_consts[DxsoProgramTypes::VertexShader].meta  = newShader ? newShader->GetMeta() : DxsoShaderMetaInfo();
+    m_consts[D3D9ShaderType::VertexShader].dirty |= oldCopies || newCopies || !oldShader;
+    m_consts[D3D9ShaderType::VertexShader].meta  = newShader ? newShader->GetMeta() : dxbc_spv::sm3::PrepassConstants { };
 
     if (newShader && oldShader) {
-      m_consts[DxsoProgramTypes::VertexShader].dirty
-        |= newShader->GetMeta().maxConstIndexF > oldShader->GetMeta().maxConstIndexF
-        || newShader->GetMeta().maxConstIndexI > oldShader->GetMeta().maxConstIndexI
-        || newShader->GetMeta().maxConstIndexB > oldShader->GetMeta().maxConstIndexB;
+      m_consts[D3D9ShaderType::VertexShader].dirty
+        |= newShader->GetMeta().maxFloatIndex > oldShader->GetMeta().maxFloatIndex
+        || newShader->GetMeta().maxIntIndex   > oldShader->GetMeta().maxIntIndex
+        || newShader->GetMeta().maxBoolIndex  > oldShader->GetMeta().maxBoolIndex;
     }
 
     const bool wasUsingProgrammableVS = UseProgrammableVS();
@@ -3619,12 +3617,12 @@ namespace dxvk {
     const bool usesProgrammableVS = UseProgrammableVS();
 
     if (usesProgrammableVS) {
-      BindShader<DxsoProgramTypes::VertexShader>(GetCommonShader(shader));
+      BindShader<D3D9ShaderType::VertexShader>(GetCommonShader(shader));
 
       UpdateTextureTypeMismatchesForShader(newShader, VSShaderMasks().samplerMask, FirstVSSamplerSlot);
     } else if (wasUsingProgrammableVS) {
       m_dirty.set(D3D9DeviceDirtyFlag::FFVertexShader);
-      BindFFUbershader<DxsoProgramType::VertexShader>();
+      BindFFUbershader<D3D9ShaderType::VertexShader>();
     }
 
     m_dirty.set(D3D9DeviceDirtyFlag::InputLayout);
@@ -3654,7 +3652,7 @@ namespace dxvk {
     D3D9DeviceLock lock = LockDevice();
 
     return SetShaderConstants<
-      DxsoProgramTypes::VertexShader,
+      D3D9ShaderType::VertexShader,
       D3D9ConstantType::Float>(
         StartRegister,
         pConstantData,
@@ -3669,7 +3667,7 @@ namespace dxvk {
     D3D9DeviceLock lock = LockDevice();
 
     return GetShaderConstants<
-      DxsoProgramTypes::VertexShader,
+      D3D9ShaderType::VertexShader,
       D3D9ConstantType::Float>(
         StartRegister,
         pConstantData,
@@ -3684,7 +3682,7 @@ namespace dxvk {
     D3D9DeviceLock lock = LockDevice();
 
     return SetShaderConstants<
-      DxsoProgramTypes::VertexShader,
+      D3D9ShaderType::VertexShader,
       D3D9ConstantType::Int>(
         StartRegister,
         pConstantData,
@@ -3699,7 +3697,7 @@ namespace dxvk {
     D3D9DeviceLock lock = LockDevice();
 
     return GetShaderConstants<
-      DxsoProgramTypes::VertexShader,
+      D3D9ShaderType::VertexShader,
       D3D9ConstantType::Int>(
         StartRegister,
         pConstantData,
@@ -3714,7 +3712,7 @@ namespace dxvk {
     D3D9DeviceLock lock = LockDevice();
 
     return SetShaderConstants<
-      DxsoProgramTypes::VertexShader,
+      D3D9ShaderType::VertexShader,
       D3D9ConstantType::Bool>(
         StartRegister,
         pConstantData,
@@ -3729,7 +3727,7 @@ namespace dxvk {
     D3D9DeviceLock lock = LockDevice();
 
     return GetShaderConstants<
-      DxsoProgramTypes::VertexShader,
+      D3D9ShaderType::VertexShader,
       D3D9ConstantType::Bool>(
         StartRegister,
         pConstantData,
@@ -3921,24 +3919,20 @@ namespace dxvk {
     if (unlikely(ppShader == nullptr))
       return D3DERR_INVALIDCALL;
 
-    DxsoModuleInfo moduleInfo;
-    moduleInfo.options = m_dxsoOptions;
-
     D3D9CommonShader module;
-    uint32_t bytecodeLength;
+    size_t bytecodeLength;
 
     if (FAILED(this->CreateShaderModule(&module,
       &bytecodeLength,
       VK_SHADER_STAGE_FRAGMENT_BIT,
-      pFunction,
-      &moduleInfo)))
+      pFunction)))
       return D3DERR_INVALIDCALL;
 
     *ppShader = ref(new D3D9PixelShader(this,
       &m_shaderAllocator,
       module,
       pFunction,
-      bytecodeLength));
+      uint32_t(bytecodeLength)));
 
     return D3D_OK;
   }
@@ -3958,17 +3952,17 @@ namespace dxvk {
     auto* oldShader = GetCommonShader(m_state.pixelShader);
     auto* newShader = GetCommonShader(shader);
 
-    bool oldCopies = oldShader && oldShader->GetMeta().needsConstantCopies;
-    bool newCopies = newShader && newShader->GetMeta().needsConstantCopies;
+    bool oldCopies = oldShader && oldShader->GetMeta().floatsAccessedDynamically;
+    bool newCopies = newShader && newShader->GetMeta().floatsAccessedDynamically;
 
-    m_consts[DxsoProgramTypes::PixelShader].dirty |= oldCopies || newCopies || !oldShader;
-    m_consts[DxsoProgramTypes::PixelShader].meta  = newShader ? newShader->GetMeta() : DxsoShaderMetaInfo();
+    m_consts[D3D9ShaderType::PixelShader].dirty |= oldCopies || newCopies || !oldShader;
+    m_consts[D3D9ShaderType::PixelShader].meta  = newShader ? newShader->GetMeta() : dxbc_spv::sm3::PrepassConstants { };
 
     if (newShader && oldShader) {
-      m_consts[DxsoProgramTypes::PixelShader].dirty
-        |= newShader->GetMeta().maxConstIndexF > oldShader->GetMeta().maxConstIndexF
-        || newShader->GetMeta().maxConstIndexI > oldShader->GetMeta().maxConstIndexI
-        || newShader->GetMeta().maxConstIndexB > oldShader->GetMeta().maxConstIndexB;
+      m_consts[D3D9ShaderType::PixelShader].dirty
+        |= newShader->GetMeta().maxFloatIndex > oldShader->GetMeta().maxFloatIndex
+        || newShader->GetMeta().maxIntIndex > oldShader->GetMeta().maxIntIndex
+        || newShader->GetMeta().maxBoolIndex > oldShader->GetMeta().maxBoolIndex;
     }
 
     const D3D9ShaderMasks oldShaderMasks = PSShaderMasks();
@@ -3976,7 +3970,7 @@ namespace dxvk {
     const D3D9ShaderMasks newShaderMasks = PSShaderMasks();
 
     if (shader != nullptr) {
-      BindShader<DxsoProgramTypes::PixelShader>(newShader);
+      BindShader<D3D9ShaderType::PixelShader>(newShader);
 
       UpdateTextureTypeMismatchesForShader(newShader, newShaderMasks.samplerMask, 0);
 
@@ -4001,7 +3995,7 @@ namespace dxvk {
     }
     else {
       m_dirty.set(D3D9DeviceDirtyFlag::FFPixelShader);
-      BindFFUbershader<DxsoProgramType::PixelShader>();
+      BindFFUbershader<D3D9ShaderType::PixelShader>();
 
       // TODO: What fixed function textures are in use?
       // Currently we are making all 8 of them as in use here.
@@ -4044,7 +4038,7 @@ namespace dxvk {
     D3D9DeviceLock lock = LockDevice();
 
     return SetShaderConstants <
-      DxsoProgramTypes::PixelShader,
+      D3D9ShaderType::PixelShader,
       D3D9ConstantType::Float>(
         StartRegister,
         pConstantData,
@@ -4059,7 +4053,7 @@ namespace dxvk {
     D3D9DeviceLock lock = LockDevice();
 
     return GetShaderConstants<
-      DxsoProgramTypes::PixelShader,
+      D3D9ShaderType::PixelShader,
       D3D9ConstantType::Float>(
         StartRegister,
         pConstantData,
@@ -4074,7 +4068,7 @@ namespace dxvk {
     D3D9DeviceLock lock = LockDevice();
 
     return SetShaderConstants<
-      DxsoProgramTypes::PixelShader,
+      D3D9ShaderType::PixelShader,
       D3D9ConstantType::Int>(
         StartRegister,
         pConstantData,
@@ -4089,7 +4083,7 @@ namespace dxvk {
     D3D9DeviceLock lock = LockDevice();
 
     return GetShaderConstants<
-      DxsoProgramTypes::PixelShader,
+      D3D9ShaderType::PixelShader,
       D3D9ConstantType::Int>(
         StartRegister,
         pConstantData,
@@ -4104,7 +4098,7 @@ namespace dxvk {
     D3D9DeviceLock lock = LockDevice();
 
     return SetShaderConstants<
-      DxsoProgramTypes::PixelShader,
+      D3D9ShaderType::PixelShader,
       D3D9ConstantType::Bool>(
         StartRegister,
         pConstantData,
@@ -4119,7 +4113,7 @@ namespace dxvk {
     D3D9DeviceLock lock = LockDevice();
 
     return GetShaderConstants<
-      DxsoProgramTypes::PixelShader,
+      D3D9ShaderType::PixelShader,
       D3D9ConstantType::Bool>(
         StartRegister,
         pConstantData,
@@ -4802,13 +4796,13 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::DetermineConstantLayouts(bool canSWVP) {
-    D3D9ConstantSets& vsConstSet    = m_consts[DxsoProgramType::VertexShader];
+    D3D9ConstantSets& vsConstSet    = m_consts[D3D9ShaderType::VertexShader];
     vsConstSet.layout.floatCount    = canSWVP ? caps::MaxFloatConstantsSoftware : caps::MaxFloatConstantsVS;
     vsConstSet.layout.intCount      = canSWVP ? caps::MaxOtherConstantsSoftware : caps::MaxOtherConstants;
     vsConstSet.layout.boolCount     = canSWVP ? caps::MaxOtherConstantsSoftware : caps::MaxOtherConstants;
     vsConstSet.layout.bitmaskCount  = align(vsConstSet.layout.boolCount, 32) / 32;
 
-    D3D9ConstantSets& psConstSet   = m_consts[DxsoProgramType::PixelShader];
+    D3D9ConstantSets& psConstSet   = m_consts[D3D9ShaderType::PixelShader];
     psConstSet.layout.floatCount   = caps::MaxSM3FloatConstantsPS;
     psConstSet.layout.intCount     = caps::MaxOtherConstants;
     psConstSet.layout.boolCount    = caps::MaxOtherConstants;
@@ -6026,49 +6020,49 @@ namespace dxvk {
     constexpr VkDeviceSize DefaultConstantBufferSize  = 1024ull << 10;
     constexpr VkDeviceSize SmallConstantBufferSize    =   64ull << 10;
 
-    m_consts[DxsoProgramTypes::VertexShader].buffer = D3D9ConstantBuffer(this,
-      DxsoProgramType::VertexShader,
-      DxsoConstantBuffers::VSConstantBuffer,
+    m_consts[D3D9ShaderType::VertexShader].buffer = D3D9ConstantBuffer(this,
+      D3D9ShaderType::VertexShader,
+      D3D9ShaderResourceMapping::ConstantBuffers::VSConstantBuffer,
       DefaultConstantBufferSize);
 
-    m_consts[DxsoProgramTypes::VertexShader].swvp.intBuffer = D3D9ConstantBuffer(this,
-      DxsoProgramType::VertexShader,
-      DxsoConstantBuffers::VSIntConstantBuffer,
+    m_consts[D3D9ShaderType::VertexShader].swvp.intBuffer = D3D9ConstantBuffer(this,
+      D3D9ShaderType::VertexShader,
+      D3D9ShaderResourceMapping::ConstantBuffers::VSIntConstantBuffer,
       SmallConstantBufferSize);
 
-    m_consts[DxsoProgramTypes::VertexShader].swvp.boolBuffer = D3D9ConstantBuffer(this,
-      DxsoProgramType::VertexShader,
-      DxsoConstantBuffers::VSBoolConstantBuffer,
+    m_consts[D3D9ShaderType::VertexShader].swvp.boolBuffer = D3D9ConstantBuffer(this,
+      D3D9ShaderType::VertexShader,
+      D3D9ShaderResourceMapping::ConstantBuffers::VSBoolConstantBuffer,
       SmallConstantBufferSize);
 
-    m_consts[DxsoProgramTypes::PixelShader].buffer = D3D9ConstantBuffer(this,
-      DxsoProgramType::PixelShader,
-      DxsoConstantBuffers::PSConstantBuffer,
+    m_consts[D3D9ShaderType::PixelShader].buffer = D3D9ConstantBuffer(this,
+      D3D9ShaderType::PixelShader,
+      D3D9ShaderResourceMapping::ConstantBuffers::PSConstantBuffer,
       DefaultConstantBufferSize);
 
     m_vsClipPlanes = D3D9ConstantBuffer(this,
-      DxsoProgramType::VertexShader,
-      DxsoConstantBuffers::VSClipPlanes,
+      D3D9ShaderType::VertexShader,
+      D3D9ShaderResourceMapping::ConstantBuffers::VSClipPlanes,
       caps::MaxClipPlanes * sizeof(D3D9ClipPlane));
 
     m_vsFixedFunction = D3D9ConstantBuffer(this,
-      DxsoProgramType::VertexShader,
-      DxsoConstantBuffers::VSFixedFunction,
+      D3D9ShaderType::VertexShader,
+      D3D9ShaderResourceMapping::ConstantBuffers::VSFixedFunction,
       sizeof(D3D9FixedFunctionVS));
 
     m_psFixedFunction = D3D9ConstantBuffer(this,
-      DxsoProgramType::PixelShader,
-      DxsoConstantBuffers::PSFixedFunction,
+      D3D9ShaderType::PixelShader,
+      D3D9ShaderResourceMapping::ConstantBuffers::PSFixedFunction,
       sizeof(D3D9FixedFunctionPS));
 
     m_psShared = D3D9ConstantBuffer(this,
-      DxsoProgramType::PixelShader,
-      DxsoConstantBuffers::PSShared,
+      D3D9ShaderType::PixelShader,
+      D3D9ShaderResourceMapping::ConstantBuffers::PSShared,
       sizeof(D3D9SharedPS));
 
     m_vsVertexBlend = D3D9ConstantBuffer(this,
-      DxsoProgramType::VertexShader,
-      DxsoConstantBuffers::VSVertexBlendData,
+      D3D9ShaderType::VertexShader,
+      D3D9ShaderResourceMapping::ConstantBuffers::VSVertexBlendData,
       CanSWVP()
         ? sizeof(D3D9FixedFunctionVertexBlendDataSW)
         : sizeof(D3D9FixedFunctionVertexBlendDataHW));
@@ -6092,7 +6086,7 @@ namespace dxvk {
      * to fit that. We rely on robustness to return 0 for OOB reads.
     */
 
-    D3D9ConstantSets& constSet = m_consts[DxsoProgramType::VertexShader];
+    D3D9ConstantSets& constSet = m_consts[D3D9ShaderType::VertexShader];
 
     if (!constSet.dirty)
       return;
@@ -6100,26 +6094,26 @@ namespace dxvk {
     constSet.dirty = false;
 
     uint32_t floatCount = constSet.maxChangedConstF;
-    if (constSet.meta.needsConstantCopies) {
+    if (constSet.meta.floatsAccessedDynamically) {
       // If the shader requires us to preserve shader defined constants,
       // we copy those over. We need to adjust the amount of used floats accordingly.
       auto shader = GetCommonShader(m_state.vertexShader);
       floatCount = std::max(floatCount, static_cast<uint32_t>(shader->GetMaxDefinedFloatConstant() + 1));
     }
     // If we statically know which is the last float constant accessed by the shader, we don't need to copy the rest.
-    floatCount = std::min(floatCount, constSet.meta.maxConstIndexF);
+    floatCount = std::min(floatCount, constSet.meta.maxFloatIndex);
 
     // Calculate data sizes for each constant type.
     const uint32_t floatDataSize = floatCount * sizeof(Vector4);
-    const uint32_t intDataSize   = std::min(constSet.meta.maxConstIndexI, constSet.maxChangedConstI) * sizeof(Vector4i);
-    const uint32_t boolDataSize  = divCeil(std::min(constSet.meta.maxConstIndexB, constSet.maxChangedConstB), 32u) * uint32_t(sizeof(uint32_t));
+    const uint32_t intDataSize   = std::min(constSet.meta.maxIntIndex, constSet.maxChangedConstI) * sizeof(Vector4i);
+    const uint32_t boolDataSize  = divCeil(std::min(constSet.meta.maxBoolIndex, constSet.maxChangedConstB), 32u) * uint32_t(sizeof(uint32_t));
 
     // Max copy source size is 8192 * 16 => always aligned to any plausible value
     // => we won't copy out of bounds
-    if (likely(constSet.meta.maxConstIndexF != 0)) {
+    if (likely(constSet.meta.maxFloatIndex != 0)) {
       auto mapPtr = CopySoftwareConstants(constSet.buffer, Src.fConsts, floatDataSize);
 
-      if (constSet.meta.needsConstantCopies) {
+      if (constSet.meta.floatsAccessedDynamically) {
         // Copy shader defined constants over so they can be accessed
         // with relative addressing.
         Vector4* data = reinterpret_cast<Vector4*>(mapPtr);
@@ -6127,18 +6121,18 @@ namespace dxvk {
         auto& shaderConsts = GetCommonShader(m_state.vertexShader)->GetConstants();
 
         for (const auto& constant : shaderConsts) {
-          if (constant.uboIdx < constSet.meta.maxConstIndexF)
-            data[constant.uboIdx] = *reinterpret_cast<const Vector4*>(constant.float32);
+          if (constant.index < constSet.meta.maxFloatIndex)
+            data[constant.index] = { constant.value.x, constant.value.y, constant.value.z, constant.value.w };
         }
       }
     }
 
     // Max copy source size is 2048 * 16 => always aligned to any plausible value
     // => we won't copy out of bounds
-    if (likely(constSet.meta.maxConstIndexI != 0))
+    if (likely(constSet.meta.maxIntIndex != 0))
       CopySoftwareConstants(constSet.swvp.intBuffer, Src.iConsts, intDataSize);
 
-    if (likely(constSet.meta.maxConstIndexB != 0))
+    if (likely(constSet.meta.maxBoolIndex != 0))
       CopySoftwareConstants(constSet.swvp.boolBuffer, Src.bConsts, boolDataSize);
   }
 
@@ -6154,7 +6148,7 @@ namespace dxvk {
   }
 
 
-  template <DxsoProgramType ShaderStage, typename HardwareLayoutType, typename SoftwareLayoutType, typename ShaderType>
+  template <D3D9ShaderType ShaderStage, typename HardwareLayoutType, typename SoftwareLayoutType, typename ShaderType>
   inline void D3D9DeviceEx::UploadConstantSet(const SoftwareLayoutType& Src, const D3D9ConstantLayout& Layout, const ShaderType& Shader) {
     /*
      * We just copy the float constants that have been set by the application and rely on robustness
@@ -6168,14 +6162,14 @@ namespace dxvk {
     constSet.dirty = false;
 
     uint32_t floatCount = constSet.maxChangedConstF;
-    if (constSet.meta.needsConstantCopies) {
+    if (constSet.meta.floatsAccessedDynamically) {
       // If the shader requires us to preserve shader defined constants,
       // we copy those over. We need to adjust the amount of used floats accordingly.
       auto shader = GetCommonShader(Shader);
       floatCount = std::max(floatCount, static_cast<uint32_t>(shader->GetMaxDefinedFloatConstant() + 1));
     }
     // If we statically know which is the last float constant accessed by the shader, we don't need to copy the rest.
-    floatCount = std::min(constSet.meta.maxConstIndexF, floatCount);
+    floatCount = std::min(constSet.meta.maxFloatIndex, floatCount);
 
     // There are very few int constants, so we put those into the same buffer at the start.
     // We always allocate memory for all possible int constants to make sure alignment works out.
@@ -6189,13 +6183,13 @@ namespace dxvk {
     void* mapPtr = constSet.buffer.Alloc(bufferSize);
     auto* dst = reinterpret_cast<HardwareLayoutType*>(mapPtr);
 
-    const uint32_t intDataSize = constSet.meta.maxConstIndexI * sizeof(Vector4i);
-    if (constSet.meta.maxConstIndexI != 0)
+    const uint32_t intDataSize = constSet.meta.maxIntIndex * sizeof(Vector4i);
+    if (constSet.meta.maxIntIndex != 0)
       std::memcpy(dst->iConsts, Src.iConsts, intDataSize);
-    if (constSet.meta.maxConstIndexF != 0)
+    if (constSet.meta.maxFloatIndex != 0)
       std::memcpy(dst->fConsts, Src.fConsts, floatDataSize);
 
-    if (constSet.meta.needsConstantCopies) {
+    if (constSet.meta.floatsAccessedDynamically) {
       // Copy shader defined constants over so they can be accessed
       // with relative addressing.
       Vector4* data = reinterpret_cast<Vector4*>(dst->fConsts);
@@ -6203,16 +6197,16 @@ namespace dxvk {
       auto& shaderConsts = GetCommonShader(Shader)->GetConstants();
 
       for (const auto& constant : shaderConsts) {
-        if (constant.uboIdx < constSet.meta.maxConstIndexF)
-          data[constant.uboIdx] = *reinterpret_cast<const Vector4*>(constant.float32);
+        if (constant.index < constSet.meta.maxFloatIndex)
+          data[constant.index] = { constant.value.x, constant.value.y, constant.value.z, constant.value.w };
       }
     }
   }
 
 
-  template <DxsoProgramType ShaderStage>
+  template <D3D9ShaderType ShaderStage>
   void D3D9DeviceEx::UploadConstants() {
-    if constexpr (ShaderStage == DxsoProgramTypes::VertexShader) {
+    if constexpr (ShaderStage == D3D9ShaderType::VertexShader) {
       if (CanSWVP())
         return UploadSoftwareConstantSet(m_state.vsConsts.get(), m_consts[ShaderStage].layout);
       else
@@ -6721,7 +6715,7 @@ namespace dxvk {
 
   void D3D9DeviceEx::UpdateTextureTypeMismatchesForShader(const D3D9CommonShader* shader, uint32_t shaderSamplerMask, uint32_t shaderSamplerOffset) {
     const uint32_t stageCorrectedShaderSamplerMask = shaderSamplerMask << shaderSamplerOffset;
-    if (unlikely(shader->GetInfo().majorVersion() < 2 || m_d3d9Options.forceSamplerTypeSpecConstants)) {
+    if (unlikely(shader->GetInfo().getVersion().first < 2 || m_d3d9Options.forceSamplerTypeSpecConstants)) {
       // SM 1 shaders don't define the texture type in the shader.
       // We always use spec constants for those.
       m_textureSlotTracking.textureDirty |= stageCorrectedShaderSamplerMask & m_textureSlotTracking.mismatchingTextureType;
@@ -6766,7 +6760,7 @@ namespace dxvk {
       return;
     }
 
-    if (unlikely(shader == nullptr || shader->GetInfo().majorVersion() < 2 || m_d3d9Options.forceSamplerTypeSpecConstants)) {
+    if (unlikely(shader == nullptr || shader->GetInfo().getVersion().first < 2 || m_d3d9Options.forceSamplerTypeSpecConstants)) {
       // This function only gets called by UpdateTextureBitmasks
       // which clears the dirty and mismatching bits for the texture before anyway.
       return;
@@ -7453,8 +7447,7 @@ namespace dxvk {
     auto samplerInfo = RemapStateSamplerShader(Sampler);
 
     const uint32_t slot = D3D9ShaderResourceMapping::computeTextureBinding(
-      samplerInfo.first, DxsoBindingType::Image,
-      samplerInfo.second);
+      samplerInfo.first, samplerInfo.second);
 
     m_samplerBindCount++;
 
@@ -7541,7 +7534,7 @@ namespace dxvk {
     auto shaderSampler = RemapStateSamplerShader(StateSampler);
 
     uint32_t slot = D3D9ShaderResourceMapping::computeTextureBinding(shaderSampler.first,
-      DxsoBindingType::Image, uint32_t(shaderSampler.second));
+      uint32_t(shaderSampler.second));
 
     const bool srgb =
       m_state.samplerStates[StateSampler][D3DSAMP_SRGBTEXTURE] & 0x1;
@@ -7569,7 +7562,7 @@ namespace dxvk {
         auto shaderSampler = RemapStateSamplerShader(i);
 
         uint32_t slot = D3D9ShaderResourceMapping::computeTextureBinding(shaderSampler.first,
-          DxsoBindingType::Image, uint32_t(shaderSampler.second));
+          uint32_t(shaderSampler.second));
 
         ctx->bindResourceImageView(GetShaderStage(shaderSampler.first), slot, nullptr);
       }
@@ -7707,12 +7700,12 @@ namespace dxvk {
     UpdatePointMode(PrimitiveType == D3DPT_POINTLIST);
 
     if (likely(UseProgrammableVS())) {
-      UploadConstants<DxsoProgramTypes::VertexShader>();
+      UploadConstants<D3D9ShaderType::VertexShader>();
 
       if (likely(!CanSWVP())) {
         UpdateVertexBoolSpec(
           m_state.vsConsts->bConsts[0] &
-          m_consts[DxsoProgramType::VertexShader].meta.boolConstantMask);
+          m_consts[D3D9ShaderType::VertexShader].meta.boolMask);
       } else
         UpdateVertexBoolSpec(0);
     }
@@ -7726,7 +7719,7 @@ namespace dxvk {
 
     uint32_t projected = m_textureSlotTracking.projected;
     if (likely(UseProgrammablePS())) {
-      UploadConstants<DxsoProgramTypes::PixelShader>();
+      UploadConstants<D3D9ShaderType::PixelShader>();
 
       const uint32_t psTextureMask = usedTextureMask & ((1u << caps::MaxTexturesPS) - 1u);
       const uint32_t fetch4        = m_textureSlotTracking.fetch4    & psTextureMask;
@@ -7736,7 +7729,7 @@ namespace dxvk {
       const bool useProgrammableVS = UseProgrammableVS();
 
       // Fixed function shaders use the projected spec constant too.
-      if (likely(useProgrammableVS && (programInfo.majorVersion() > 2 || programInfo.minorVersion() > 3))) {
+      if (likely(useProgrammableVS && (programInfo.getVersion().first > 2 || programInfo.getVersion().second > 3))) {
         projected = 0u;
       } else if (useProgrammableVS) {
         // Programmable shaders can only sample textures in SM3 which doesn't use the projected state anymore.
@@ -7744,7 +7737,7 @@ namespace dxvk {
         projected &= psTextureMask;
       }
 
-      if (likely(programInfo.majorVersion() >= 2 && !m_d3d9Options.forceSamplerTypeSpecConstants)) {
+      if (likely(programInfo.getVersion().first >= 2 && !m_d3d9Options.forceSamplerTypeSpecConstants)) {
         // SM2 and up need to declare the sampler type in the shader.
         textureTypes = 0u;
       }
@@ -7753,7 +7746,7 @@ namespace dxvk {
 
       UpdatePixelBoolSpec(
         m_state.psConsts->bConsts[0] &
-        m_consts[DxsoProgramType::PixelShader].meta.boolConstantMask);
+        m_consts[D3D9ShaderType::PixelShader].meta.boolMask);
     }
     else {
       // Fixed function shaders use the projected spec constant too.
@@ -7898,7 +7891,7 @@ namespace dxvk {
   }
 
 
-  template <DxsoProgramType ShaderStage>
+  template <D3D9ShaderType ShaderStage>
   void D3D9DeviceEx::BindShader(
   const D3D9CommonShader*                 pShaderModule) {
     auto shader = pShaderModule->GetShader();
@@ -7915,9 +7908,9 @@ namespace dxvk {
   }
 
 
-  template <DxsoProgramType ShaderStage>
+  template <D3D9ShaderType ShaderStage>
   void D3D9DeviceEx::BindFFUbershader() {
-    if (ShaderStage == DxsoProgramType::VertexShader) {
+    if (ShaderStage == D3D9ShaderType::VertexShader) {
       EmitCs([
        &cShaders = m_ffModules
       ](DxvkContext* ctx) {
@@ -7961,7 +7954,8 @@ namespace dxvk {
         cVertexDecl       = std::move(vertexDecl),
         cVertexShader     = std::move(vertexShader),
         cStreamsInstanced = m_vbSlotTracking.instanced,
-        cStreamFreq       = streamFreq
+        cStreamFreq       = streamFreq,
+        &cFFInputSignature = m_ffInputSignature
       ] (DxvkContext* ctx) {
         cIaState.streamsInstanced = cStreamsInstanced;
         cIaState.streamsUsed      = 0;
@@ -7977,10 +7971,10 @@ namespace dxvk {
 
         const auto& inputSignature = cVertexShader != nullptr
           ? GetCommonShader(cVertexShader)->GetInputSignature()
-          : m_ffInputSignature;
+          : cFFInputSignature;
 
         for (uint32_t i = 0; i < inputSignature.size(); i++) {
-          const auto& decl = inputSignature[i];
+          const auto& semantic = inputSignature[i];
 
           DxvkVertexAttribute attrib = { };
           attrib.location = i;
@@ -7989,11 +7983,11 @@ namespace dxvk {
           attrib.offset   = 0;
 
           for (const auto& element : elements) {
-            dxbc_spv::sm3::Semantic elementSemantic = { static_cast<dxbc_spv::sm3::SemanticUsage>(element.Usage), element.UsageIndex };
-            if (elementSemantic.usage == dxbc_spv::sm3::SemanticUsage::ePositionT)
-              elementSemantic.usage = dxbc_spv::sm3::SemanticUsage::ePosition;
+            D3D9Semantic elementSemantic = { static_cast<D3D9SemanticUsage>(element.Usage), element.UsageIndex };
+            if (elementSemantic.usage == D3D9SemanticUsage::ePositionT)
+              elementSemantic.usage = D3D9SemanticUsage::ePosition;
 
-            if (elementSemantic == decl.semantic) {
+            if (elementSemantic == semantic) {
               attrib.binding = uint32_t(element.Stream);
               attrib.format  = DecodeDecltype(D3DDECLTYPE(element.Type));
               attrib.offset  = element.Offset;
@@ -8106,7 +8100,7 @@ namespace dxvk {
     m_state.vsConsts->bConsts[idx] &= ~mask;
     m_state.vsConsts->bConsts[idx] |= bits & mask;
 
-    m_consts[DxsoProgramTypes::VertexShader].dirty = true;
+    m_consts[D3D9ShaderType::VertexShader].dirty = true;
   }
 
 
@@ -8114,7 +8108,7 @@ namespace dxvk {
     m_state.psConsts->bConsts[idx] &= ~mask;
     m_state.psConsts->bConsts[idx] |= bits & mask;
 
-    m_consts[DxsoProgramTypes::PixelShader].dirty = true;
+    m_consts[D3D9ShaderType::PixelShader].dirty = true;
   }
 
 
@@ -8129,16 +8123,17 @@ namespace dxvk {
 
     dxbc_spv::util::ByteReader reader(pShaderBytecode, std::numeric_limits<size_t>::max());
 
-    dxbc_spv::sm3::Parser parser(reader);
+    dxbc_spv::sm3::Prepass prepass = dxbc_spv::sm3::Prepass(reader, CanSWVP());
+    prepass.runPrepass();
 
     // Pre-conversion checks
-    const uint32_t majorVersion = parser.getShaderInfo().getVersion().first;
-    const uint32_t minorVersion = parser.getShaderInfo().getVersion().second;
+    const uint32_t majorVersion = prepass.getShaderInfo().getVersion().first;
+    const uint32_t minorVersion = prepass.getShaderInfo().getVersion().second;
 
     // Vertex shader version checks
     if (ShaderStage == VK_SHADER_STAGE_VERTEX_BIT) {
       // Late fixed-function capable hardware exposed support for VS 1.1
-      const uint32_t shaderModelVS = IsD3D8Compatible() ? 1u : std::max(1u, m_d3d9Options->shaderModel);
+      const uint32_t shaderModelVS = IsD3D8Compatible() ? 1u : std::max(1u, m_d3d9Options.shaderModel);
 
       if (unlikely(majorVersion > shaderModelVS
                || (majorVersion == 1 && minorVersion > 1)
@@ -8149,7 +8144,7 @@ namespace dxvk {
       }
     // Pixel shader version checks
     } else if (ShaderStage == VK_SHADER_STAGE_FRAGMENT_BIT) {
-      const uint32_t shaderModelPS = IsD3D8Compatible() ? std::min(1u, m_d3d9Options->shaderModel) : m_d3d9Options->shaderModel;
+      const uint32_t shaderModelPS = IsD3D8Compatible() ? std::min(1u, m_d3d9Options.shaderModel) : m_d3d9Options.shaderModel;
 
       if (unlikely(majorVersion > shaderModelPS
                || (majorVersion == 1 && minorVersion > 4)
@@ -8164,25 +8159,25 @@ namespace dxvk {
     }
 
     if (unlikely(
-        (ShaderStage == VK_SHADER_STAGE_VERTEX_BIT && parser.getShaderInfo().getType() != dxbc_spv::sm3::ShaderType::eVertex)
-        || (ShaderStage == VK_SHADER_STAGE_FRAGMENT_BIT && parser.getShaderInfo().getType() != dxbc_spv::sm3::ShaderType::ePixel)
+        (ShaderStage == VK_SHADER_STAGE_VERTEX_BIT && prepass.getShaderInfo().getType() != dxbc_spv::sm3::ShaderType::eVertex)
+        || (ShaderStage == VK_SHADER_STAGE_FRAGMENT_BIT && prepass.getShaderInfo().getType() != dxbc_spv::sm3::ShaderType::ePixel)
     )) {
       Logger::err("GetShaderModule: Bytecode does not match shader stage");
       return D3DERR_INVALIDCALL;
     }
 
-    dxbc_spv::sm3::Prepass prepass = dxbc_spv::sm3::Prepass(parser);
-    prepass.runPrepass();
-
     // Initialize the actual shader
     D3D9CommonShader commonShader = { };
 
-    HRESULT hr m_shaderModules->GetShaderModule(this,
-      hash, m_shaderOptions, prepass, pShaderBytecode,
+    Sha1Hash hash = Sha1Hash::compute(pShaderBytecode, prepass.getLength());
+    DxvkShaderHash key(ShaderStage, prepass.getLength(), hash.digest(), hash.digestLength());
+
+    HRESULT hr = m_shaderModules->GetShaderModule(this,
+      key, prepass, pShaderBytecode,
       &commonShader);
 
     if (FAILED(hr))
-      return result;
+      return hr;
 
 
     // Post-conversion checks
@@ -8193,7 +8188,7 @@ namespace dxvk {
     // Vertex shader specific validations. These validations are not
     // performed on SWVP devices or on MIXED devices, even if
     // SetSoftwareVertexProcessing(FALSE) is used to disable SWVP mode.
-    if (!CanSWVP() && ShaderKey.stage() == VK_SHADER_STAGE_VERTEX_BIT) {
+    if (!CanSWVP() && key.stage() == VK_SHADER_STAGE_VERTEX_BIT) {
 
       // Validate the float constant value advertised in pCaps->MaxFloatConstantsVS for HWVP.
       if (unlikely(maxFloatConstantIndex > static_cast<int32_t>(caps::MaxFloatConstantsVS - 1))) {
@@ -8214,10 +8209,10 @@ namespace dxvk {
       }
 
     // Pixel shader specific validations.
-    } else if (ShaderKey.stage() == VK_SHADER_STAGE_FRAGMENT_BIT) {
+    } else if (key.stage() == VK_SHADER_STAGE_FRAGMENT_BIT) {
 
-      uint32_t majorVersion = *pShader->GetInfo()->GetVersion().first;
-      uint32_t minorVersion = *pShader->GetInfo()->GetVersion().second;
+      uint32_t majorVersion = commonShader.GetInfo().getVersion().first;
+      uint32_t minorVersion = commonShader.GetInfo().getVersion().second;
 
       const bool isSM2XOrNewer = majorVersion == 3 || (majorVersion == 2 && minorVersion != 0);
       // Pixel shader model version 2_x has the same limits here as version 2_0
@@ -8226,7 +8221,7 @@ namespace dxvk {
                                            caps::MaxSM1FloatConstantsPS;
 
       // Validate the float constant value coresponding to the supported shader model version.
-      if (unlikely(!pDevice->CanSWVP() && maxFloatConstantIndex > static_cast<int32_t>(maxFloatConstantsPS - 1))) {
+      if (unlikely(!CanSWVP() && maxFloatConstantIndex > static_cast<int32_t>(maxFloatConstantsPS - 1))) {
         Logger::err(str::format("GetShaderModule: Invalid PS float constant index ", maxFloatConstantIndex));
         return D3DERR_INVALIDCALL;
       }
@@ -8238,7 +8233,7 @@ namespace dxvk {
       }
 
       // Validate the integer constant value advertised in pCaps->MaxOtherConstants for HWVP.
-      if (unlikely(isSM2XOrNewer && !pDevice->CanSWVP() &&
+      if (unlikely(isSM2XOrNewer && !CanSWVP() &&
                         maxIntConstantIndex > static_cast<int32_t>(caps::MaxOtherConstants - 1))) {
         Logger::err(str::format("GetShaderModule: Invalid PS int constant index ", maxIntConstantIndex));
         return D3DERR_INVALIDCALL;
@@ -8251,7 +8246,7 @@ namespace dxvk {
       }
 
       // Validate the bool constant value advertised in pCaps->MaxOtherConstants for HWVP.
-      if (unlikely(isSM2XOrNewer && !pDevice->CanSWVP() &&
+      if (unlikely(isSM2XOrNewer && !CanSWVP() &&
                         maxBoolConstantIndex > static_cast<int32_t>(caps::MaxOtherConstants - 1))) {
         Logger::err(str::format("GetShaderModule: Invalid PS bool constant index ", maxBoolConstantIndex));
         return D3DERR_INVALIDCALL;
@@ -8265,15 +8260,15 @@ namespace dxvk {
 
 
   template <
-    DxsoProgramType  ProgramType,
+    D3D9ShaderType   ShaderType,
     D3D9ConstantType ConstantType,
     typename         T>
     HRESULT D3D9DeviceEx::SetShaderConstants(
             UINT  StartRegister,
       const T*    pConstantData,
             UINT  Count) {
-    const     uint32_t regCountHardware = DetermineHardwareRegCount<ProgramType, ConstantType>();
-    constexpr uint32_t regCountSoftware = DetermineSoftwareRegCount<ProgramType, ConstantType>();
+    const     uint32_t regCountHardware = DetermineHardwareRegCount<ShaderType, ConstantType>();
+    constexpr uint32_t regCountSoftware = DetermineSoftwareRegCount<ShaderType, ConstantType>();
 
     // Error out in case of StartRegister + Count overflow
     if (unlikely(StartRegister > std::numeric_limits<uint32_t>::max() - Count))
@@ -8294,20 +8289,20 @@ namespace dxvk {
       return D3DERR_INVALIDCALL;
 
     if (unlikely(ShouldRecord()))
-      return m_recorder->SetShaderConstants<ProgramType, ConstantType, T>(
+      return m_recorder->SetShaderConstants<ShaderType, ConstantType, T>(
         StartRegister,
         pConstantData,
         Count);
 
-    D3D9ConstantSets& constSet = m_consts[ProgramType];
+    D3D9ConstantSets& constSet = m_consts[ShaderType];
 
     if constexpr (ConstantType == D3D9ConstantType::Float) {
       constSet.maxChangedConstF = std::max(constSet.maxChangedConstF, StartRegister + Count);
-    } else if constexpr (ConstantType == D3D9ConstantType::Int && ProgramType == DxsoProgramType::VertexShader) {
+    } else if constexpr (ConstantType == D3D9ConstantType::Int && ShaderType == D3D9ShaderType::VertexShader) {
       // We only track changed int constants for vertex shaders (and it's only used when the device uses the SWVP UBO layout).
       // Pixel shaders (and vertex shaders on HWVP devices) always copy all int constants into the same UBO as the float constants
       constSet.maxChangedConstI = std::max(constSet.maxChangedConstI, StartRegister + Count);
-    } else  if constexpr (ConstantType == D3D9ConstantType::Bool && ProgramType == DxsoProgramType::VertexShader) {
+    } else  if constexpr (ConstantType == D3D9ConstantType::Bool && ShaderType == D3D9ShaderType::VertexShader) {
       // We only track changed bool constants for vertex shaders (and it's only used when the device uses the SWVP UBO layout).
       // Pixel shaders (and vertex shaders on HWVP devices) always put all bool constants into a single spec constant.
       constSet.maxChangedConstB = std::max(constSet.maxChangedConstB, StartRegister + Count);
@@ -8315,17 +8310,17 @@ namespace dxvk {
 
     if constexpr (ConstantType != D3D9ConstantType::Bool) {
       uint32_t maxCount = ConstantType == D3D9ConstantType::Float
-        ? constSet.meta.maxConstIndexF
-        : constSet.meta.maxConstIndexI;
+        ? constSet.meta.maxFloatIndex
+        : constSet.meta.maxIntIndex;
 
       constSet.dirty |= StartRegister < maxCount;
-    } else if constexpr (ProgramType == DxsoProgramType::VertexShader) {
+    } else if constexpr (ShaderType == D3D9ShaderType::VertexShader) {
       if (unlikely(CanSWVP())) {
-        constSet.dirty |= StartRegister < constSet.meta.maxConstIndexB;
+        constSet.dirty |= StartRegister < constSet.meta.maxBoolIndex;
       }
     }
 
-    UpdateStateConstants<ProgramType, ConstantType, T>(
+    UpdateStateConstants<ShaderType, ConstantType, T>(
       &m_state,
       StartRegister,
       pConstantData,
@@ -8406,18 +8401,18 @@ namespace dxvk {
   void D3D9DeviceEx::CreateFixedFunctionInputSignature() {
     m_ffInputSignature.reserve(12u);
 
-    m_ffInputSignature.push_back(dxbc_spv::sm3::Semantic{ DxsoUsage::Position, 0 });
-    m_ffInputSignature.push_back(dxbc_spv::sm3::Semantic{ DxsoUsage::Normal, 0 });
-    m_ffInputSignature.push_back(dxbc_spv::sm3::Semantic{ DxsoUsage::Position, 1 });
-    m_ffInputSignature.push_back(dxbc_spv::sm3::Semantic{ DxsoUsage::Normal, 1 });
+    m_ffInputSignature.push_back(D3D9Semantic { D3D9SemanticUsage::ePosition, 0 });
+    m_ffInputSignature.push_back(D3D9Semantic { D3D9SemanticUsage::eNormal, 0 });
+    m_ffInputSignature.push_back(D3D9Semantic { D3D9SemanticUsage::ePosition, 1 });
+    m_ffInputSignature.push_back(D3D9Semantic { D3D9SemanticUsage::eNormal, 1 });
     for (uint32_t i = 0; i < 8; i++)
-      m_ffInputSignature.push_back(dxbc_spv::sm3::Semantic{ DxsoUsage::Texcoord, i });
-    m_ffInputSignature.push_back(dxbc_spv::sm3::Semantic{ DxsoUsage::Color, 0 });
-    m_ffInputSignature.push_back(dxbc_spv::sm3::Semantic{ DxsoUsage::Color, 1 });
-    m_ffInputSignature.push_back(dxbc_spv::sm3::Semantic{ DxsoUsage::Fog, 0 });
-    m_ffInputSignature.push_back(dxbc_spv::sm3::Semantic{ DxsoUsage::PointSize, 0 });
-    m_ffInputSignature.push_back(dxbc_spv::sm3::Semantic{ DxsoUsage::BlendWeight, 0 });
-    m_ffInputSignature.push_back(dxbc_spv::sm3::Semantic{ DxsoUsage::BlendIndices, 0 });
+      m_ffInputSignature.push_back(D3D9Semantic { D3D9SemanticUsage::eTexCoord, i });
+    m_ffInputSignature.push_back(D3D9Semantic { D3D9SemanticUsage::eColor, 0 });
+    m_ffInputSignature.push_back(D3D9Semantic { D3D9SemanticUsage::eColor, 1 });
+    m_ffInputSignature.push_back(D3D9Semantic { D3D9SemanticUsage::eFog, 0 });
+    m_ffInputSignature.push_back(D3D9Semantic { D3D9SemanticUsage::ePointSize, 0 });
+    m_ffInputSignature.push_back(D3D9Semantic { D3D9SemanticUsage::eBlendWeight, 0 });
+    m_ffInputSignature.push_back(D3D9Semantic { D3D9SemanticUsage::eBlendIndices, 0 });
   }
 
 
@@ -9047,7 +9042,7 @@ namespace dxvk {
     ](DxvkContext* ctx) {
       for (uint32_t i = 0; i < cSize; i++) {
         auto samplerInfo = RemapStateSamplerShader(DWORD(i));
-        uint32_t slot = D3D9ShaderResourceMapping::computeTextureBinding(samplerInfo.first, DxsoBindingType::Image, uint32_t(samplerInfo.second));
+        uint32_t slot = D3D9ShaderResourceMapping::computeTextureBinding(samplerInfo.first, uint32_t(samplerInfo.second));
         ctx->bindResourceImageView(GetShaderStage(samplerInfo.first), slot, nullptr);
       }
     });

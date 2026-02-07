@@ -10,6 +10,7 @@
 #include "../dxvk/dxvk_shader_ir.h"
 #include "../dxvk/dxvk_shader_key.h"
 
+#include "d3d9_vertex_declaration.h"
 #include "d3d9_resource.h"
 #include "d3d9_util.h"
 #include "d3d9_mem.h"
@@ -20,6 +21,14 @@
 
 namespace dxvk {
 
+  using D3D9Semantic      = dxbc_spv::sm3::Semantic;
+  using D3D9SemanticUsage = dxbc_spv::sm3::SemanticUsage;
+
+  struct D3D9ShaderOptions {
+    bool swvp;
+    bool vertexFloatConstantBufferAsSSBO;
+    bool fastFloatEmulation;
+  };
 
   /**
    * \brief Shader resource mapping
@@ -90,9 +99,7 @@ namespace dxvk {
 
     D3D9CommonShader(
             D3D9DeviceEx*           pDevice,
-            VkShaderStageFlagBits   ShaderStage,
-      const DxvkShaderKey&          Key,
-      const DxvkIrShaderCreateInfo& ModuleInfo,
+      const DxvkShaderHash&         Key,
       const dxbc_spv::sm3::Prepass& Prepass,
       const void*                   pShaderBytecode,
             size_t                  BytecodeLength);
@@ -106,12 +113,12 @@ namespace dxvk {
       return m_shader->debugName();
     }
 
-    const small_vector<dxbc_spv::sm3::Semantic, 4u>& GetInputSingature() const {
+    const small_vector<D3D9Semantic, 4u>& GetInputSignature() const {
       return m_inputSignature;
     }
 
-    const DxsoShaderMetaInfo& GetMeta() const { return m_meta; }
-    const DxsoDefinedConstants& GetConstants() const { return m_constants; }
+    const dxbc_spv::sm3::PrepassConstants& GetMeta() const { return m_meta; }
+    const dxbc_spv::sm3::ImmediateFloatConstants& GetConstants() const { return m_constants; }
 
     D3D9ShaderMasks GetShaderMask() const { return D3D9ShaderMasks{ m_usedSamplers, m_usedRTs }; }
 
@@ -130,9 +137,10 @@ namespace dxvk {
   private:
 
     void CreateIrShader(
-            D3D9DeviceEx*          pDevice,
+            D3D9DeviceEx*           pDevice,
       const DxvkShaderHash&         ShaderKey,
       const DxvkIrShaderCreateInfo& ModuleInfo,
+      const D3D9ShaderOptions&      Options,
       const void*                   pShaderBytecode,
             size_t                  BytecodeLength);
 
@@ -276,7 +284,6 @@ namespace dxvk {
     HRESULT GetShaderModule(
             D3D9DeviceEx*      pDevice,
       const DxvkShaderHash&    ShaderKey,
-      const DxvkShaderOptions& Options,
       const dxbc_spv::sm3::Prepass& Prepass,
       const void*              pShaderBytecode,
             D3D9CommonShader*  pShader);

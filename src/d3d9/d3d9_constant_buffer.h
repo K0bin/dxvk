@@ -7,6 +7,7 @@
 #include "../util/util_math.h"
 
 #include "d3d9_include.h"
+#include "d3d9_shader.h"
 
 namespace dxvk {
 
@@ -23,8 +24,8 @@ namespace dxvk {
 
     D3D9ConstantBuffer(
             D3D9DeviceEx*         pDevice,
-            DxsoProgramType       ShaderStage,
-            DxsoConstantBuffers   BufferType,
+            D3D9ShaderType        ShaderStage,
+            D3D9ShaderResourceMapping::ConstantBuffers BufferType,
             VkDeviceSize          Size);
 
     D3D9ConstantBuffer(
