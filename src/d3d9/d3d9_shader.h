@@ -81,6 +81,14 @@ namespace dxvk {
       return uint32_t(stage);
     }
 
+    static constexpr uint32_t getSWVPBufferSlot() {
+      return ConstantBuffers::VSCount + caps::MaxTexturesVS + ConstantBuffers::PSCount + caps::MaxTexturesPS + 1; // From last pixel shader slot, above.
+    }
+
+    static constexpr uint32_t getSpecConstantBufferSlot() {
+      return getSWVPBufferSlot() + 1;
+    }
+
   };
 
 

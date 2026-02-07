@@ -3,6 +3,7 @@
 #include <sm3/sm3_parser.h>
 #include <sm3/sm3_converter.h>
 #include <sm3/sm3_prepass.h>
+#include <sm3/sm3_types.h>
 
 #include "d3d9_caps.h"
 #include "d3d9_device.h"
@@ -75,6 +76,46 @@ namespace dxvk {
             dxbc_spv::ir::ScalarType  type,
             uint32_t                  regSpace,
             uint32_t                  regIndex) const {
+
+      switch (regSpace) {
+        case dxbc_spv::sm3::SpecialBindingsRegSpace:
+          switch (regIndex) {
+            case dxbc_spv::sm3::FastSpecConstCbvRegIdx:
+              return D3D9ShaderResourceMapping::getSpecConstantBufferSlot();
+
+            case dxbc_spv::sm3::PSSharedDataCbvRegIdx:
+              return D3D9ShaderResourceMapping::computeCbvBinding(stage,
+                D3D9ShaderResourceMapping::ConstantBuffers::PSShared);
+
+            /* TODO: Not implemented in the compiler
+             case dxbc_spv::sm3::VSClipPlanesCbvRegIdx:
+              return D3D9ShaderResourceMapping::computeCbvBinding(stage,
+                D3D9ShaderResourceMapping::ConstantBuffers::VSClipPlanes);*/
+          }
+          break;
+
+        case dxbc_spv::sm3::ConstantBufferRegSpace:
+          switch (regIndex) {
+            case dxbc_spv::sm3::FloatIntHWVPCbvRegIdx:
+              return D3D9ShaderResourceMapping::computeCbvBinding(stage,
+                D3D9ShaderResourceMapping::ConstantBuffers::VSConstantBuffer);
+
+            case dxbc_spv::sm3::IntSWVPCbvRegIdx:
+              return D3D9ShaderResourceMapping::computeCbvBinding(stage,
+              D3D9ShaderResourceMapping::ConstantBuffers::VSIntConstantBuffer);
+
+            case dxbc_spv::sm3::BoolSWVPCbvRegIdx:
+              return D3D9ShaderResourceMapping::computeCbvBinding(stage,
+                D3D9ShaderResourceMapping::ConstantBuffers::VSBoolConstantBuffer);
+          }
+          break;
+
+        case dxbc_spv::sm3::SamplerBindingsRegSpace:
+        case dxbc_spv::sm3::TextureBindingsRegSpace:
+          return D3D9ShaderResourceMapping::computeTextureBinding(stage, regIndex);
+      }
+
+      Logger::err(str::format("Missing Resource index. Stage: ", stage, ", regSpace: ", regSpace, ", regIndex: ", regIndex));
       return -1u;
     }
 

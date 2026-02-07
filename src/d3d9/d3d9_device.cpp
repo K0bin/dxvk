@@ -3400,10 +3400,10 @@ namespace dxvk {
       uint32_t byteOffset = cBufferOffset;
 
       ctx->bindShader<VK_SHADER_STAGE_GEOMETRY_BIT>(std::move(shader));
-      ctx->bindResourceBufferView(VK_SHADER_STAGE_GEOMETRY_BIT, getSWVPBufferSlot(), std::move(bufferView));
+      ctx->bindResourceBufferView(VK_SHADER_STAGE_GEOMETRY_BIT, D3D9ShaderResourceMapping::getSWVPBufferSlot(), std::move(bufferView));
       ctx->pushData(VK_SHADER_STAGE_GEOMETRY_BIT, 0u, sizeof(byteOffset), &byteOffset);
       ctx->draw(1u, &draw);
-      ctx->bindResourceBufferView(VK_SHADER_STAGE_GEOMETRY_BIT, getSWVPBufferSlot(), nullptr);
+      ctx->bindResourceBufferView(VK_SHADER_STAGE_GEOMETRY_BIT, D3D9ShaderResourceMapping::getSWVPBufferSlot(), nullptr);
       ctx->bindShader<VK_SHADER_STAGE_GEOMETRY_BIT>(nullptr);
     });
 
@@ -6072,7 +6072,7 @@ namespace dxvk {
       m_specBuffer = D3D9ConstantBuffer(this,
         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
         VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-        getSpecConstantBufferSlot(),
+        D3D9ShaderResourceMapping::getSpecConstantBufferSlot(),
         D3D9SpecializationInfo::UBOSize);
     }
   }

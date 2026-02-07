@@ -481,12 +481,12 @@ namespace dxvk {
 
     spvModule.setDebugName         (specBlock, "spec_state");
     spvModule.decorateDescriptorSet(specBlock, 0);
-    spvModule.decorateBinding      (specBlock, getSpecConstantBufferSlot());
+    spvModule.decorateBinding      (specBlock, D3D9ShaderResourceMapping::getSpecConstantBufferSlot());
 
     auto& binding = bindings.emplace_back();
     binding.set             = 0u;
-    binding.binding         = getSpecConstantBufferSlot();
-    binding.resourceIndex   = getSpecConstantBufferSlot();
+    binding.binding         = D3D9ShaderResourceMapping::getSpecConstantBufferSlot();
+    binding.resourceIndex   = D3D9ShaderResourceMapping::getSpecConstantBufferSlot();
     binding.descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     binding.access          = VK_ACCESS_UNIFORM_READ_BIT;
     binding.flags.set(DxvkDescriptorFlag::UniformBuffer);
@@ -2745,7 +2745,7 @@ namespace dxvk {
     if (isVS) {
       std::array<DxvkBindingInfo, 4> bindings;
 
-      constexpr uint32_t specConstantBufferBindingId = getSpecConstantBufferSlot();
+      constexpr uint32_t specConstantBufferBindingId = D3D9ShaderResourceMapping::getSpecConstantBufferSlot();
       auto& specConstantBufferBinding = bindings[0];
       specConstantBufferBinding.set = 0u;
       specConstantBufferBinding.binding        = specConstantBufferBindingId;
@@ -2800,7 +2800,7 @@ namespace dxvk {
     } else {
       std::vector<DxvkBindingInfo> bindings;
 
-      constexpr uint32_t specConstantBufferBindingId = getSpecConstantBufferSlot();
+      constexpr uint32_t specConstantBufferBindingId = D3D9ShaderResourceMapping::getSpecConstantBufferSlot();
       auto& specConstantBufferBinding = bindings.emplace_back();
       specConstantBufferBinding.set = 0u;
       specConstantBufferBinding.binding        = specConstantBufferBindingId;
