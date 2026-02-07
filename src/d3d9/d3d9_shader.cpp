@@ -183,7 +183,7 @@ namespace dxvk {
     options.fastFloatEmulation = pDevice->GetOptions()->d3d9FloatEmulation == D3D9FloatEmulation::Enabled;
     options.vertexFloatConstantBufferAsSSBO = pDevice->VertexFloatConstantBufferAsSSBO();
 
-    DxvkShaderOptions dxvkOptions = { };
+    DxvkShaderOptions dxvkOptions = pDevice->GetDXVKDevice()->getShaderCompileOptions();
     dxvkOptions.flags.set(DxvkShaderCompileFlag::SemanticIo);
 
     DxvkIrShaderCreateInfo createInfo;
