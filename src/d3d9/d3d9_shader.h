@@ -28,6 +28,7 @@ namespace dxvk {
     bool swvp;
     bool vertexFloatConstantBufferAsSSBO;
     bool fastFloatEmulation;
+    bool useFP16;
   };
 
   /**

@@ -81,6 +81,9 @@ namespace dxvk {
     /// D3D9 Floating Point Emulation (anything * 0 = 0)
     D3D9FloatEmulation d3d9FloatEmulation;
 
+    /// Whether shaders use FP16 for partial precision instructions
+    bool useFP16;
+
     /// Support the DF16 & DF24 texture format
     bool supportDFFormats;
 

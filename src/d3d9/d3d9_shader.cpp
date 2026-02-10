@@ -60,6 +60,7 @@ namespace dxvk {
       options.includeDebugNames = true;
       options.fastFloatEmulation = m_options.fastFloatEmulation;
       options.isSWVP = m_options.swvp;
+      options.useFP16 = m_options.useFP16;
 
       dxbc_spv::util::ByteReader reader(m_dxbc.data(), m_dxbc.size());
 
@@ -182,6 +183,7 @@ namespace dxvk {
     options.swvp = pDevice->CanSWVP();
     options.fastFloatEmulation = pDevice->GetOptions()->d3d9FloatEmulation == D3D9FloatEmulation::Enabled;
     options.vertexFloatConstantBufferAsSSBO = pDevice->VertexFloatConstantBufferAsSSBO();
+    options.useFP16 = pDevice->GetOptions()->useFP16;
 
     DxvkShaderOptions dxvkOptions = pDevice->GetDXVKDevice()->getShaderCompileOptions();
     dxvkOptions.flags.set(DxvkShaderCompileFlag::SemanticIo);
