@@ -6098,19 +6098,19 @@ namespace dxvk {
       // If the shader requires us to preserve shader defined constants,
       // we copy those over. We need to adjust the amount of used floats accordingly.
       auto shader = GetCommonShader(m_state.vertexShader);
-      floatCount = std::max(floatCount, static_cast<uint32_t>(shader->GetMaxDefinedFloatConstant() + 1));
+      floatCount = std::max(floatCount, uint32_t(shader->GetMaxDefinedFloatConstant() + 1));
     }
     // If we statically know which is the last float constant accessed by the shader, we don't need to copy the rest.
-    floatCount = std::min(floatCount, constSet.meta.maxFloatIndex);
+    floatCount = std::min(floatCount, uint32_t(constSet.meta.maxFloatIndex + 1));
 
     // Calculate data sizes for each constant type.
     const uint32_t floatDataSize = floatCount * sizeof(Vector4);
-    const uint32_t intDataSize   = std::min(constSet.meta.maxIntIndex, constSet.maxChangedConstI) * sizeof(Vector4i);
-    const uint32_t boolDataSize  = divCeil(std::min(constSet.meta.maxBoolIndex, constSet.maxChangedConstB), 32u) * uint32_t(sizeof(uint32_t));
+    const uint32_t intDataSize   = std::min(uint32_t(constSet.meta.maxIntIndex + 1), constSet.maxChangedConstI) * sizeof(Vector4i);
+    const uint32_t boolDataSize  = divCeil(std::min(uint32_t(constSet.meta.maxBoolIndex + 1), constSet.maxChangedConstB), 32u) * uint32_t(sizeof(uint32_t));
 
     // Max copy source size is 8192 * 16 => always aligned to any plausible value
     // => we won't copy out of bounds
-    if (likely(constSet.meta.maxFloatIndex != 0)) {
+    if (likely(constSet.meta.maxFloatIndex != -1)) {
       auto mapPtr = CopySoftwareConstants(constSet.buffer, Src.fConsts, floatDataSize);
 
       if (constSet.meta.floatsAccessedDynamically) {
@@ -6121,7 +6121,7 @@ namespace dxvk {
         auto& shaderConsts = GetCommonShader(m_state.vertexShader)->GetConstants();
 
         for (const auto& constant : shaderConsts) {
-          if (constant.index < constSet.meta.maxFloatIndex)
+          if (int32_t(constant.index) <= constSet.meta.maxFloatIndex)
             data[constant.index] = { constant.value.x, constant.value.y, constant.value.z, constant.value.w };
         }
       }
@@ -6129,10 +6129,10 @@ namespace dxvk {
 
     // Max copy source size is 2048 * 16 => always aligned to any plausible value
     // => we won't copy out of bounds
-    if (likely(constSet.meta.maxIntIndex != 0))
+    if (likely(constSet.meta.maxIntIndex != -1))
       CopySoftwareConstants(constSet.swvp.intBuffer, Src.iConsts, intDataSize);
 
-    if (likely(constSet.meta.maxBoolIndex != 0))
+    if (likely(constSet.meta.maxBoolIndex != -1))
       CopySoftwareConstants(constSet.swvp.boolBuffer, Src.bConsts, boolDataSize);
   }
 
@@ -6166,10 +6166,10 @@ namespace dxvk {
       // If the shader requires us to preserve shader defined constants,
       // we copy those over. We need to adjust the amount of used floats accordingly.
       auto shader = GetCommonShader(Shader);
-      floatCount = std::max(floatCount, static_cast<uint32_t>(shader->GetMaxDefinedFloatConstant() + 1));
+      floatCount = std::max(floatCount, uint32_t(shader->GetMaxDefinedFloatConstant() + 1));
     }
     // If we statically know which is the last float constant accessed by the shader, we don't need to copy the rest.
-    floatCount = std::min(constSet.meta.maxFloatIndex, floatCount);
+    floatCount = std::min(floatCount, uint32_t(constSet.meta.maxFloatIndex + 1));
 
     // There are very few int constants, so we put those into the same buffer at the start.
     // We always allocate memory for all possible int constants to make sure alignment works out.
@@ -6183,10 +6183,10 @@ namespace dxvk {
     void* mapPtr = constSet.buffer.Alloc(bufferSize);
     auto* dst = reinterpret_cast<HardwareLayoutType*>(mapPtr);
 
-    const uint32_t intDataSize = constSet.meta.maxIntIndex * sizeof(Vector4i);
-    if (constSet.meta.maxIntIndex != 0)
+    const uint32_t intDataSize = uint32_t(constSet.meta.maxIntIndex + 1) * sizeof(Vector4i);
+    if (constSet.meta.maxIntIndex != -1)
       std::memcpy(dst->iConsts, Src.iConsts, intDataSize);
-    if (constSet.meta.maxFloatIndex != 0)
+    if (constSet.meta.maxFloatIndex != -1)
       std::memcpy(dst->fConsts, Src.fConsts, floatDataSize);
 
     if (constSet.meta.floatsAccessedDynamically) {
@@ -6197,7 +6197,7 @@ namespace dxvk {
       auto& shaderConsts = GetCommonShader(Shader)->GetConstants();
 
       for (const auto& constant : shaderConsts) {
-        if (constant.index < constSet.meta.maxFloatIndex)
+        if (int32_t(constant.index) <= constSet.meta.maxFloatIndex)
           data[constant.index] = { constant.value.x, constant.value.y, constant.value.z, constant.value.w };
       }
     }
@@ -8228,7 +8228,7 @@ namespace dxvk {
 
       // Pixel shaders below version 2_x can not use integer constants, not even in SWVP/MIXED mode
       if (unlikely(!isSM2XOrNewer && maxIntConstantIndex != -1)) {
-        Logger::err("GetShaderModule: Invalid use of PS int constant");
+        Logger::err(str::format("GetShaderModule: Invalid use of PS int constant: ", maxIntConstantIndex));
         return D3DERR_INVALIDCALL;
       }
 
@@ -8309,14 +8309,14 @@ namespace dxvk {
     }
 
     if constexpr (ConstantType != D3D9ConstantType::Bool) {
-      uint32_t maxCount = ConstantType == D3D9ConstantType::Float
+      int32_t maxIndex = ConstantType == D3D9ConstantType::Float
         ? constSet.meta.maxFloatIndex
         : constSet.meta.maxIntIndex;
 
-      constSet.dirty |= StartRegister < maxCount;
+      constSet.dirty |= int32_t(StartRegister) <= maxIndex;
     } else if constexpr (ShaderType == D3D9ShaderType::VertexShader) {
       if (unlikely(CanSWVP())) {
-        constSet.dirty |= StartRegister < constSet.meta.maxBoolIndex;
+        constSet.dirty |= int32_t(StartRegister) <= constSet.meta.maxBoolIndex;
       }
     }
 
