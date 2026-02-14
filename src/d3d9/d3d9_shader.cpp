@@ -77,8 +77,8 @@ namespace dxvk {
             uint32_t                  regSpace,
             uint32_t                  regIndex) const {
 
-      switch (regSpace) {
-        case dxbc_spv::sm3::SpecialBindingsRegSpace:
+      switch (type) {
+        case dxbc_spv::ir::ScalarType::eCbv:
           switch (regIndex) {
             case dxbc_spv::sm3::FastSpecConstCbvRegIdx:
               return D3D9ShaderResourceMapping::getSpecConstantBufferSlot();
@@ -91,28 +91,28 @@ namespace dxvk {
              case dxbc_spv::sm3::VSClipPlanesCbvRegIdx:
               return D3D9ShaderResourceMapping::computeCbvBinding(stage,
                 D3D9ShaderResourceMapping::ConstantBuffers::VSClipPlanes);*/
+
+            case dxbc_spv::sm3::FloatIntCbvRegIdx:
+                return D3D9ShaderResourceMapping::computeCbvBinding(stage,
+                  D3D9ShaderResourceMapping::ConstantBuffers::VSConstantBuffer);
+
+            case dxbc_spv::sm3::SWVPIntCbvRegIdx:
+                return D3D9ShaderResourceMapping::computeCbvBinding(stage,
+                D3D9ShaderResourceMapping::ConstantBuffers::VSIntConstantBuffer);
+
+            case dxbc_spv::sm3::SWVPBoolCbvRegIdx:
+                return D3D9ShaderResourceMapping::computeCbvBinding(stage,
+                  D3D9ShaderResourceMapping::ConstantBuffers::VSBoolConstantBuffer);
+
+            default: break;
           }
           break;
 
-        case dxbc_spv::sm3::ConstantBufferRegSpace:
-          switch (regIndex) {
-            case dxbc_spv::sm3::FloatIntHWVPCbvRegIdx:
-              return D3D9ShaderResourceMapping::computeCbvBinding(stage,
-                D3D9ShaderResourceMapping::ConstantBuffers::VSConstantBuffer);
-
-            case dxbc_spv::sm3::IntSWVPCbvRegIdx:
-              return D3D9ShaderResourceMapping::computeCbvBinding(stage,
-              D3D9ShaderResourceMapping::ConstantBuffers::VSIntConstantBuffer);
-
-            case dxbc_spv::sm3::BoolSWVPCbvRegIdx:
-              return D3D9ShaderResourceMapping::computeCbvBinding(stage,
-                D3D9ShaderResourceMapping::ConstantBuffers::VSBoolConstantBuffer);
-          }
-          break;
-
-        case dxbc_spv::sm3::SamplerBindingsRegSpace:
-        case dxbc_spv::sm3::TextureBindingsRegSpace:
+        case dxbc_spv::ir::ScalarType::eSrv:
+        case dxbc_spv::ir::ScalarType::eSampler:
           return D3D9ShaderResourceMapping::computeTextureBinding(stage, regIndex);
+
+        default: break;
       }
 
       Logger::err(str::format("Missing Resource index. Stage: ", stage, ", regSpace: ", regSpace, ", regIndex: ", regIndex));
