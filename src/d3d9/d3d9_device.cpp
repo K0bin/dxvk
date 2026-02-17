@@ -7974,10 +7974,10 @@ namespace dxvk {
           : cFFInputSignature;
 
         for (uint32_t i = 0; i < inputSignature.size(); i++) {
-          const auto& semantic = inputSignature[i];
+          const auto& shaderInput = inputSignature[i];
 
           DxvkVertexAttribute attrib = { };
-          attrib.location = i;
+          attrib.location = shaderInput.location;
           attrib.binding  = NullStreamIdx;
           attrib.format   = VK_FORMAT_R32G32B32A32_SFLOAT;
           attrib.offset   = 0;
@@ -7987,7 +7987,7 @@ namespace dxvk {
             if (elementSemantic.usage == D3D9SemanticUsage::ePositionT)
               elementSemantic.usage = D3D9SemanticUsage::ePosition;
 
-            if (elementSemantic == semantic) {
+            if (elementSemantic == shaderInput.semantic) {
               attrib.binding = uint32_t(element.Stream);
               attrib.format  = DecodeDecltype(D3DDECLTYPE(element.Type));
               attrib.offset  = element.Offset;
@@ -8401,18 +8401,19 @@ namespace dxvk {
   void D3D9DeviceEx::CreateFixedFunctionInputSignature() {
     m_ffInputSignature.reserve(12u);
 
-    m_ffInputSignature.push_back(D3D9Semantic { D3D9SemanticUsage::ePosition, 0 });
-    m_ffInputSignature.push_back(D3D9Semantic { D3D9SemanticUsage::eNormal, 0 });
-    m_ffInputSignature.push_back(D3D9Semantic { D3D9SemanticUsage::ePosition, 1 });
-    m_ffInputSignature.push_back(D3D9Semantic { D3D9SemanticUsage::eNormal, 1 });
+    m_ffInputSignature.push_back({ 0, { D3D9SemanticUsage::ePosition, 0 } });
+    m_ffInputSignature.push_back({ 1, { D3D9SemanticUsage::eNormal, 0 } });
+    m_ffInputSignature.push_back({ 2, { D3D9SemanticUsage::ePosition, 1 } });
+    m_ffInputSignature.push_back({ 3, { D3D9SemanticUsage::eNormal, 1 } });
     for (uint32_t i = 0; i < 8; i++)
-      m_ffInputSignature.push_back(D3D9Semantic { D3D9SemanticUsage::eTexCoord, i });
-    m_ffInputSignature.push_back(D3D9Semantic { D3D9SemanticUsage::eColor, 0 });
-    m_ffInputSignature.push_back(D3D9Semantic { D3D9SemanticUsage::eColor, 1 });
-    m_ffInputSignature.push_back(D3D9Semantic { D3D9SemanticUsage::eFog, 0 });
-    m_ffInputSignature.push_back(D3D9Semantic { D3D9SemanticUsage::ePointSize, 0 });
-    m_ffInputSignature.push_back(D3D9Semantic { D3D9SemanticUsage::eBlendWeight, 0 });
-    m_ffInputSignature.push_back(D3D9Semantic { D3D9SemanticUsage::eBlendIndices, 0 });
+      m_ffInputSignature.push_back({ 4 + i, { D3D9SemanticUsage::eTexCoord, i } });
+
+    m_ffInputSignature.push_back({ 12, { D3D9SemanticUsage::eColor, 0 } });
+    m_ffInputSignature.push_back({ 13, { D3D9SemanticUsage::eColor, 1 } });
+    m_ffInputSignature.push_back({ 14, { D3D9SemanticUsage::eFog, 0 }});
+    m_ffInputSignature.push_back({ 15, { D3D9SemanticUsage::ePointSize, 0 } });
+    m_ffInputSignature.push_back({ 16, { D3D9SemanticUsage::eBlendWeight, 0 } });
+    m_ffInputSignature.push_back({ 17, { D3D9SemanticUsage::eBlendIndices, 0 } });
   }
 
 

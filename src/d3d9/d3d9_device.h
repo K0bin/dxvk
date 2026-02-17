@@ -1612,7 +1612,7 @@ namespace dxvk {
     D3D9FFShaderModuleSet           m_ffModules;
     D3D9SWVPEmulator                m_swvpEmulator;
 
-    small_vector<D3D9Semantic, 4u>  m_ffInputSignature;
+    small_vector<D3D9ShaderInputElement, 16u>  m_ffInputSignature;
 
     Com<D3D9StateBlock, false>      m_recorder;
 

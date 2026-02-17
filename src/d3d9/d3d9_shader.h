@@ -21,6 +21,7 @@
 
 namespace dxvk {
 
+  using D3D9ShaderInputElement = dxbc_spv::sm3::InputSignatureElement;
   using D3D9Semantic      = dxbc_spv::sm3::Semantic;
   using D3D9SemanticUsage = dxbc_spv::sm3::SemanticUsage;
 
@@ -121,7 +122,7 @@ namespace dxvk {
       return m_shader->debugName();
     }
 
-    const small_vector<D3D9Semantic, 4u>& GetInputSignature() const {
+    const small_vector<D3D9ShaderInputElement, 16u>& GetInputSignature() const {
       return m_inputSignature;
     }
 
@@ -152,7 +153,7 @@ namespace dxvk {
       const void*                   pShaderBytecode,
             size_t                  BytecodeLength);
 
-    small_vector<dxbc_spv::sm3::Semantic, 4u> m_inputSignature;
+    small_vector<D3D9ShaderInputElement, 16u> m_inputSignature;
     uint32_t              m_usedSamplers;
     uint32_t              m_usedRTs;
 
