@@ -186,8 +186,8 @@ namespace dxvk {
     DxvkShaderOptions dxvkOptions = pDevice->GetDXVKDevice()->getShaderCompileOptions();
     dxvkOptions.flags.set(DxvkShaderCompileFlag::SemanticIo);
 
-    if (!pDevice->GetOptions()->useFP16)
-      dxvkOptions.flags.clr(DxvkShaderCompileFlag::Supports16BitArithmetic);
+    //if (!pDevice->GetOptions()->useFP16)
+    dxvkOptions.flags.clr(DxvkShaderCompileFlag::Supports16BitArithmetic);
 
     DxvkIrShaderCreateInfo createInfo;
     createInfo.options = dxvkOptions;
