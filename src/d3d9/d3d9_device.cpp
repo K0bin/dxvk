@@ -6122,7 +6122,7 @@ namespace dxvk {
 
         for (const auto& constant : shaderConsts) {
           if (int32_t(constant.index) <= constSet.meta.maxFloatIndex)
-            data[constant.index] = { constant.value.x, constant.value.y, constant.value.z, constant.value.w };
+            data[constant.index] = { constant.value[0u], constant.value[1u], constant.value[2u], constant.value[3u] };
         }
       }
     }
@@ -6198,7 +6198,7 @@ namespace dxvk {
 
       for (const auto& constant : shaderConsts) {
         if (int32_t(constant.index) <= constSet.meta.maxFloatIndex)
-          data[constant.index] = { constant.value.x, constant.value.y, constant.value.z, constant.value.w };
+          data[constant.index] = { constant.value[0u], constant.value[1u], constant.value[2u], constant.value[3u] };
       }
     }
   }
