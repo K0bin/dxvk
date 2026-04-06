@@ -179,7 +179,7 @@ namespace dxvk {
     }
 
     D3D9ShaderOptions options = { };
-    options.swvp = pDevice->CanSWVP();
+    options.swvp = Prepass.getShaderInfo().getType() == dxbc_spv::sm3::ShaderType::eVertex && pDevice->CanSWVP();
     options.fastFloatEmulation = pDevice->GetOptions()->d3d9FloatEmulation == D3D9FloatEmulation::Enabled;
     options.vertexFloatConstantBufferAsSSBO = pDevice->VertexFloatConstantBufferAsSSBO();
 
