@@ -23,6 +23,9 @@ namespace dxvk {
     /// Enable graphics pipeline library
     Tristate enableGraphicsPipelineLibrary = Tristate::Auto;
 
+    /// Enable descriptor heap
+    Tristate enableDescriptorHeap = Tristate::Auto;
+
     /// Enable descriptor buffer
     Tristate enableDescriptorBuffer = Tristate::Auto;
 
@@ -71,6 +74,10 @@ namespace dxvk {
 
     /// Whether to use custom sin/cos approximation
     Tristate lowerSinCos = Tristate::Auto;
+
+    /// Enables implicit resolves that are used to
+    /// deal with MSAA-related undefined behaviour.
+    bool enableImplicitResolves = true;
 
     /// Device name
     std::string deviceFilter;

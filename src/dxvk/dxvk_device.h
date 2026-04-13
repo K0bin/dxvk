@@ -44,6 +44,7 @@ namespace dxvk {
     VkBool32 preferRenderPassOps        : 1;
     VkBool32 preferPrimaryCmdBufs       : 1;
     VkBool32 preferComputeMipGen        : 1;
+    VkBool32 preferDescriptorByteOffsets: 1;
   };
   
   /**
@@ -53,9 +54,11 @@ namespace dxvk {
    * queue family that it belongs to.
    */
   struct DxvkDeviceQueue {
-    VkQueue   queueHandle = VK_NULL_HANDLE;
-    uint32_t  queueFamily = 0;
-    uint32_t  queueIndex  = 0;
+    VkQueue       queueHandle = VK_NULL_HANDLE;
+    uint32_t      queueFamily = 0u;
+    uint32_t      queueIndex  = 0u;
+
+    DxvkDeviceQueueInfo properties = { };
   };
 
   /**
@@ -85,7 +88,7 @@ namespace dxvk {
       const Rc<DxvkInstance>&         instance,
       const Rc<DxvkAdapter>&          adapter,
       const Rc<vk::DeviceFn>&         vkd,
-      const DxvkDeviceFeatures&       features,
+      const DxvkDeviceCapabilities&   caps,
       const DxvkDeviceQueueSet&       queues,
       const DxvkQueueCallback&        queueCallback);
       
@@ -299,11 +302,30 @@ namespace dxvk {
     bool mustTrackPipelineLifetime() const;
 
     /**
+     * \brief Checks whether descriptor heaps can be used
+     * \returns \c true if all required features are supported.
+     */
+    bool canUseDescriptorHeap() const {
+      return m_features.extDescriptorHeap.descriptorHeap;
+    }
+
+    /**
      * \brief Checks whether descriptor buffers can be used
      * \returns \c true if all required features are supported.
      */
     bool canUseDescriptorBuffer() const {
-      return m_features.extDescriptorBuffer.descriptorBuffer;
+      return m_features.extDescriptorBuffer.descriptorBuffer && !canUseDescriptorHeap();
+    }
+
+    /**
+     * \brief Checks whether CUDA interop is enabled
+     *
+     * Relevant for descriptor heap usage since CUDA interop still
+     * needs legacy image view and sampler handles.
+     * \returns \c true if all required features are supported.
+     */
+    bool hasCudaInterop() const {
+      return m_features.nvxImageViewHandle;
     }
 
     /**
@@ -746,6 +768,8 @@ namespace dxvk {
       const Rc<DxvkCommandList>& cmdList);
 
     void determineShaderOptions();
+
+    void logBindingModel();
 
   };
   

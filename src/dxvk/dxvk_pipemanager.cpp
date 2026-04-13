@@ -172,7 +172,7 @@ namespace dxvk {
           DxvkDevice*         device)
   : m_device    (device),
     m_workers   (device) {
-    Logger::info(str::format("DXVK: Graphics pipeline libraries ",
+    Logger::info(str::format("Graphics pipeline libraries ",
       (m_device->canUseGraphicsPipelineLibrary() ? "supported" : "not supported")));
 
     createNullFsPipelineLibrary()->compilePipeline();
@@ -380,7 +380,7 @@ namespace dxvk {
 
     auto iter = m_shaderLibraries.emplace(
       std::piecewise_construct,
-      std::tuple(),
+      std::tuple(key),
       std::tuple(m_device, this, key));
     return &iter.first->second;
   }

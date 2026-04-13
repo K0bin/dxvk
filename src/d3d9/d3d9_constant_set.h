@@ -49,7 +49,7 @@ namespace dxvk {
     D3D9ConstantLayout              layout;
     D3D9SwvpConstantBuffers         swvp;
     D3D9ConstantBuffer              buffer;
-    dxbc_spv::sm3::PrepassConstants meta  = {};
+    dxbc_spv::sm3::PrepassConstants info  = {};
     bool                            dirty = true;
     uint32_t                        maxChangedConstF = 0;
     uint32_t                        maxChangedConstI = 0;

@@ -24,7 +24,7 @@ namespace dxvk {
    * has changed and/or needs to be updated.
    */
   enum class DxvkContextFlag : uint64_t  {
-    GpRenderPassBound,          ///< Render pass is currently bound
+    GpRenderPassActive,         ///< Render pass is currently bound
     GpRenderPassSuspended,      ///< Render pass is currently suspended
     GpRenderPassSecondaryCmd,   ///< Render pass uses secondary command buffer
     GpRenderPassSideEffects,    ///< Render pass has side effects
@@ -62,6 +62,7 @@ namespace dxvk {
     GpHasPushData,              ///< Graphics pipeline uses push data
     GpIndependentSets,          ///< Graphics pipeline layout was created with independent sets
 
+    CpComputePassActive,        ///< Whether we are inside a compute pass
     CpDirtyPipelineState,       ///< Compute pipeline is out of date
     CpDirtySpecConstants,       ///< Compute spec constants are out of date
     CpHasPushData,              ///< Compute pipeline uses push data
@@ -80,6 +81,16 @@ namespace dxvk {
 
 
   /**
+   * \brief Binding model implementation
+   */
+  enum class DxvkBindingModel : uint32_t {
+    Legacy,
+    DescriptorBuffer,
+    DescriptorHeap,
+  };
+
+
+  /**
    * \brief Context feature bits
    */
   enum class DxvkContextFeature : uint32_t {
@@ -88,6 +99,7 @@ namespace dxvk {
     DebugUtils,
     DirectMultiDraw,
     DescriptorBuffer,
+    DescriptorHeap,
     FeatureCount
   };
 
@@ -209,9 +221,10 @@ namespace dxvk {
   
   struct DxvkDeferredResolve {
     Rc<DxvkImageView> imageView;
-    uint32_t layerMask;
-    VkResolveModeFlagBits depthMode;
-    VkResolveModeFlagBits stencilMode;
+    uint32_t layerMask = 0u;
+    VkResolveModeFlagBits depthMode   = { };
+    VkResolveModeFlagBits stencilMode = { };
+    VkRenderingAttachmentFlagsKHR flags = 0u;
   };
 
 

@@ -8,9 +8,6 @@ namespace dxvk {
   struct DxsoAnalysisInfo {
     uint32_t bytecodeByteLength;
 
-    bool usesDerivatives = false;
-    bool usesKill        = false;
-
     std::vector<DxsoInstructionContext> coissues;
   };
 

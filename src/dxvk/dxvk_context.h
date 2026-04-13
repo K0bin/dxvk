@@ -26,6 +26,8 @@ namespace dxvk {
     constexpr static VkDeviceSize MaxDiscardSize     =  16u << 10u;
 
     constexpr static uint32_t DirectMultiDrawBatchSize = 256u;
+
+    constexpr static uint32_t MaxUnsynchronizedDraws = 64u;
   public:
     
     DxvkContext(const Rc<DxvkDevice>& device);
@@ -1336,7 +1338,8 @@ namespace dxvk {
 
     uint64_t                m_trackingId = 0u;
     uint32_t                m_renderPassIndex = 0u;
-    
+    uint32_t                m_unsynchronizedDrawCount = 0u;
+
     Rc<DxvkCommandList>     m_cmd;
     Rc<DxvkBuffer>          m_zeroBuffer;
 
@@ -1650,8 +1653,10 @@ namespace dxvk {
             VkRenderingAttachmentInfo&  attachment,
             DxvkAccess                  access) const;
 
-    void startRenderPass();
-    void spillRenderPass(bool suspend);
+    void beginRenderPass();
+    void endRenderPass(bool suspend);
+
+    void endCurrentPass(bool suspend);
     
     void acquireRenderTargets(
       const DxvkFramebufferInfo&  framebufferInfo,
@@ -1701,8 +1706,9 @@ namespace dxvk {
     template<VkPipelineBindPoint BindPoint, bool AlwaysTrack>
     void updateDescriptorSetsBindings(const DxvkPipelineBindings* layout);
 
-    template<VkPipelineBindPoint BindPoint, bool AlwaysTrack>
-    bool updateDescriptorBufferBindings(const DxvkPipelineBindings* layout);
+
+    template<VkPipelineBindPoint BindPoint, DxvkBindingModel Model, bool AlwaysTrack>
+    bool updateDescriptorHeapBindings(const DxvkPipelineBindings* layout);
 
     template<VkPipelineBindPoint BindPoint, bool AlwaysTrack>
     void updatePushDataBindings(const DxvkPipelineBindings* layout);
@@ -1745,7 +1751,10 @@ namespace dxvk {
 
     template<VkPipelineBindPoint BindPoint>
     void updatePushData();
-    
+
+    void beginComputePass();
+    void endComputePass();
+
     template<bool Indirect, bool Resolve = true>
     bool commitComputeState();
     
@@ -1922,8 +1931,7 @@ namespace dxvk {
 
     void prepareSharedImages();
 
-    void transitionImageLayout(
-            DxvkCmdBuffer             cmdBuffer,
+    bool transitionImageLayout(
             DxvkImage&                image,
       const VkImageSubresourceRange&  subresources,
             VkPipelineStageFlags2     srcStages,
@@ -2133,7 +2141,6 @@ namespace dxvk {
     bool prepareOutOfOrderTransfer(
             DxvkImage&                image,
       const VkImageSubresourceRange&  subresources,
-            VkImageLayout             layout,
             bool                      discard,
             DxvkAccess                access);
 
@@ -2242,6 +2249,10 @@ namespace dxvk {
       m_cmd->track(view.image(), access);
     }
 
+    bool formatsAreImageCopyCompatible(
+            VkFormat                  dstFormat,
+            VkFormat                  srcFormat);
+
     static uint32_t computePushDataBlockOffset(uint32_t index) {
       return index ? MaxSharedPushDataSize + MaxPerStagePushDataSize * (index - 1u) : 0u;
     }
@@ -2250,7 +2261,7 @@ namespace dxvk {
       const DxvkStencilOp&            op,
             bool                      writable);
 
-    static bool formatsAreCopyCompatible(
+    static bool formatsAreBufferCopyCompatible(
             VkFormat                  imageFormat,
             VkFormat                  bufferFormat);
 

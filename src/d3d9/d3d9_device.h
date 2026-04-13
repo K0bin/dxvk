@@ -932,8 +932,6 @@ namespace dxvk {
     void BeginFrame(Rc<DxvkLatencyTracker> LatencyTracker, uint64_t FrameId);
     void EndFrame(Rc<DxvkLatencyTracker> LatencyTracker);
 
-    void UpdateActiveRTs(uint32_t index);
-
     template <uint32_t Index>
     void UpdateAnyColorWrites();
 
@@ -1144,8 +1142,8 @@ namespace dxvk {
             VkImageLayout            OldLayout,
             VkImageLayout            NewLayout);
 
-    const D3D9ConstantLayout& GetVertexConstantLayout() { return m_consts[D3D9ShaderType::VertexShader].layout; }
-    const D3D9ConstantLayout& GetPixelConstantLayout()  { return m_consts[D3D9ShaderType::PixelShader].layout; }
+    const D3D9ConstantLayout& GetVertexConstantLayout() { return m_consts[uint32_t(D3D9ShaderType::VertexShader)].layout; }
+    const D3D9ConstantLayout& GetPixelConstantLayout()  { return m_consts[uint32_t(D3D9ShaderType::PixelShader)].layout; }
 
     void ResetState(D3DPRESENT_PARAMETERS* pPresentationParameters);
     HRESULT ResetSwapChain(D3DPRESENT_PARAMETERS* pPresentationParameters, D3DDISPLAYMODEEX* pFullscreenDisplayMode);
@@ -1278,8 +1276,6 @@ namespace dxvk {
       return m_adapter;
     }
 
-    bool VertexFloatConstantBufferAsSSBO() const { return m_vertexFloatConstantBufferAsSSBO; }
-
   private:
 
     template<bool AllowFlush = true, typename Cmd>
@@ -1336,10 +1332,10 @@ namespace dxvk {
     DxvkStagingBufferStats GetStagingMemoryStatistics() const;
 
     HRESULT CreateShaderModule(
-            D3D9CommonShader*       pShaderModule,
-            size_t*                 pBytecodeLength,
-            VkShaderStageFlagBits   ShaderStage,
-      const DWORD*                  pShaderBytecode);
+            D3D9CommonShader* pShaderModule,
+            size_t*           pLength,
+            D3D9ShaderType    ShaderType,
+      const DWORD*            pShaderBytecode);
 
     inline uint32_t GetUPDataSize(uint32_t vertexCount, uint32_t stride) {
       return vertexCount * stride;
@@ -1387,7 +1383,7 @@ namespace dxvk {
     template <D3D9ShaderType   ShaderType,
               D3D9ConstantType ConstantType>
     inline uint32_t DetermineHardwareRegCount() const {
-      const auto& layout = m_consts[ShaderType].layout;
+      const auto& layout = m_consts[uint32_t(ShaderType)].layout;
 
       switch (ConstantType) {
         default:
@@ -1588,6 +1584,8 @@ namespace dxvk {
 
     bool HasFormatsUnlocked() const { return m_unlockAdditionalFormats; }
 
+    void InitShaderOptions();
+
     Com<D3D9InterfaceEx>            m_parent;
     D3D9Options                     m_d3d9Options;
     D3DDEVTYPE                      m_deviceType;
@@ -1643,6 +1641,9 @@ namespace dxvk {
 
     Com<D3D9SwapChainEx, false>     m_implicitSwapchain;
 
+    D3D9ShaderOptions               m_shaderOptions;
+    DxvkShaderOptions               m_dxvkShaderOptions;
+
     std::unordered_map<
       DWORD,
       Com<D3D9VertexDecl,
@@ -1686,9 +1687,8 @@ namespace dxvk {
 
     uint32_t                        m_robustSSBOAlignment     = 1;
     uint32_t                        m_robustUBOAlignment      = 1;
-    bool                            m_vertexFloatConstantBufferAsSSBO = false;
 
-    D3D9ConstantSets                m_consts[2];
+    D3D9ConstantSets                m_consts[uint32_t(D3D9ShaderType::PixelShader) + 1];
 
     D3D9UserDefinedAnnotation*      m_annotation = nullptr;
 

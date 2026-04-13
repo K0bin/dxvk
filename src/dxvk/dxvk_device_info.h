@@ -29,6 +29,7 @@ namespace dxvk {
     VkPhysicalDeviceConservativeRasterizationPropertiesEXT    extConservativeRasterization    = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CONSERVATIVE_RASTERIZATION_PROPERTIES_EXT };
     VkPhysicalDeviceCustomBorderColorPropertiesEXT            extCustomBorderColor            = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CUSTOM_BORDER_COLOR_PROPERTIES_EXT };
     VkPhysicalDeviceDescriptorBufferPropertiesEXT             extDescriptorBuffer             = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_BUFFER_PROPERTIES_EXT };
+    VkPhysicalDeviceDescriptorHeapPropertiesEXT               extDescriptorHeap               = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_HEAP_PROPERTIES_EXT };
     VkPhysicalDeviceExtendedDynamicState3PropertiesEXT        extExtendedDynamicState3        = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_PROPERTIES_EXT };
     VkPhysicalDeviceGraphicsPipelineLibraryPropertiesEXT      extGraphicsPipelineLibrary      = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GRAPHICS_PIPELINE_LIBRARY_PROPERTIES_EXT };
     VkPhysicalDeviceLineRasterizationPropertiesEXT            extLineRasterization            = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_LINE_RASTERIZATION_PROPERTIES_EXT };
@@ -40,6 +41,8 @@ namespace dxvk {
     VkPhysicalDeviceMaintenance5PropertiesKHR                 khrMaintenance5                 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_5_PROPERTIES_KHR };
     VkPhysicalDeviceMaintenance6PropertiesKHR                 khrMaintenance6                 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_6_PROPERTIES_KHR };
     VkPhysicalDeviceMaintenance7PropertiesKHR                 khrMaintenance7                 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_7_PROPERTIES_KHR };
+    VkPhysicalDeviceMaintenance9PropertiesKHR                 khrMaintenance9                 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_9_PROPERTIES_KHR };
+    VkPhysicalDeviceMaintenance10PropertiesKHR                khrMaintenance10                = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_10_PROPERTIES_KHR };
   };
 
 
@@ -62,6 +65,7 @@ namespace dxvk {
     VkPhysicalDeviceDepthClipEnableFeaturesEXT                extDepthClipEnable              = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_CLIP_ENABLE_FEATURES_EXT };
     VkPhysicalDeviceDepthBiasControlFeaturesEXT               extDepthBiasControl             = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_BIAS_CONTROL_FEATURES_EXT };
     VkPhysicalDeviceDescriptorBufferFeaturesEXT               extDescriptorBuffer             = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_BUFFER_FEATURES_EXT };
+    VkPhysicalDeviceDescriptorHeapFeaturesEXT                 extDescriptorHeap               = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_HEAP_FEATURES_EXT };
     VkPhysicalDeviceExtendedDynamicState3FeaturesEXT          extExtendedDynamicState3        = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_FEATURES_EXT };
     VkPhysicalDeviceFragmentShaderInterlockFeaturesEXT        extFragmentShaderInterlock      = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADER_INTERLOCK_FEATURES_EXT };
     VkBool32                                                  extFullScreenExclusive          = VK_FALSE;
@@ -87,12 +91,17 @@ namespace dxvk {
     VkPhysicalDeviceMaintenance5FeaturesKHR                   khrMaintenance5                 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_5_FEATURES_KHR };
     VkPhysicalDeviceMaintenance6FeaturesKHR                   khrMaintenance6                 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_6_FEATURES_KHR };
     VkPhysicalDeviceMaintenance7FeaturesKHR                   khrMaintenance7                 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_7_FEATURES_KHR };
+    VkPhysicalDeviceMaintenance8FeaturesKHR                   khrMaintenance8                 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_8_FEATURES_KHR };
+    VkPhysicalDeviceMaintenance9FeaturesKHR                   khrMaintenance9                 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_9_FEATURES_KHR };
+    VkPhysicalDeviceMaintenance10FeaturesKHR                  khrMaintenance10                = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_10_FEATURES_KHR };
     VkBool32                                                  khrPipelineLibrary              = VK_FALSE;
     VkPhysicalDevicePresentIdFeaturesKHR                      khrPresentId                    = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR };
     VkPhysicalDevicePresentId2FeaturesKHR                     khrPresentId2                   = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_2_FEATURES_KHR };
     VkPhysicalDevicePresentWaitFeaturesKHR                    khrPresentWait                  = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR };
     VkPhysicalDevicePresentWait2FeaturesKHR                   khrPresentWait2                 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_2_FEATURES_KHR };
     VkPhysicalDeviceShaderFloatControls2FeaturesKHR           khrShaderFloatControls2         = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT_CONTROLS_2_FEATURES_KHR };
+    VkPhysicalDeviceShaderSubgroupUniformControlFlowFeaturesKHR khrShaderSubgroupUniformControlFlow = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_SUBGROUP_UNIFORM_CONTROL_FLOW_FEATURES_KHR };
+    VkPhysicalDeviceShaderUntypedPointersFeaturesKHR          khrShaderUntypedPointers        = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_UNTYPED_POINTERS_FEATURES_KHR };
     VkBool32                                                  khrSwapchain                    = VK_FALSE;
     VkPhysicalDeviceSwapchainMaintenance1FeaturesKHR          khrSwapchainMaintenance1        = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_KHR };
     VkPhysicalDeviceUnifiedImageLayoutsFeaturesKHR            khrUnifiedImageLayouts          = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_UNIFIED_IMAGE_LAYOUTS_FEATURES_KHR };
@@ -125,6 +134,7 @@ namespace dxvk {
     VkExtensionProperties extDepthClipEnable                = vk::makeExtension(VK_EXT_DEPTH_CLIP_ENABLE_EXTENSION_NAME);
     VkExtensionProperties extDepthBiasControl               = vk::makeExtension(VK_EXT_DEPTH_BIAS_CONTROL_EXTENSION_NAME);
     VkExtensionProperties extDescriptorBuffer               = vk::makeExtension(VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME);
+    VkExtensionProperties extDescriptorHeap                 = vk::makeExtension(VK_EXT_DESCRIPTOR_HEAP_EXTENSION_NAME);
     VkExtensionProperties extExtendedDynamicState3          = vk::makeExtension(VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME);
     VkExtensionProperties extFragmentShaderInterlock        = vk::makeExtension(VK_EXT_FRAGMENT_SHADER_INTERLOCK_EXTENSION_NAME);
     VkExtensionProperties extFullScreenExclusive            = vk::makeExtension(VK_EXT_FULL_SCREEN_EXCLUSIVE_EXTENSION_NAME);
@@ -150,12 +160,17 @@ namespace dxvk {
     VkExtensionProperties khrMaintenance5                   = vk::makeExtension(VK_KHR_MAINTENANCE_5_EXTENSION_NAME);
     VkExtensionProperties khrMaintenance6                   = vk::makeExtension(VK_KHR_MAINTENANCE_6_EXTENSION_NAME);
     VkExtensionProperties khrMaintenance7                   = vk::makeExtension(VK_KHR_MAINTENANCE_7_EXTENSION_NAME);
+    VkExtensionProperties khrMaintenance8                   = vk::makeExtension(VK_KHR_MAINTENANCE_8_EXTENSION_NAME);
+    VkExtensionProperties khrMaintenance9                   = vk::makeExtension(VK_KHR_MAINTENANCE_9_EXTENSION_NAME);
+    VkExtensionProperties khrMaintenance10                  = vk::makeExtension(VK_KHR_MAINTENANCE_10_EXTENSION_NAME);
     VkExtensionProperties khrPipelineLibrary                = vk::makeExtension(VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME);
     VkExtensionProperties khrPresentId                      = vk::makeExtension(VK_KHR_PRESENT_ID_EXTENSION_NAME);
     VkExtensionProperties khrPresentId2                     = vk::makeExtension(VK_KHR_PRESENT_ID_2_EXTENSION_NAME);
     VkExtensionProperties khrPresentWait                    = vk::makeExtension(VK_KHR_PRESENT_WAIT_EXTENSION_NAME);
     VkExtensionProperties khrPresentWait2                   = vk::makeExtension(VK_KHR_PRESENT_WAIT_2_EXTENSION_NAME);
     VkExtensionProperties khrShaderFloatControls2           = vk::makeExtension(VK_KHR_SHADER_FLOAT_CONTROLS_2_EXTENSION_NAME);
+    VkExtensionProperties khrShaderSubgroupUniformControlFlow = vk::makeExtension(VK_KHR_SHADER_SUBGROUP_UNIFORM_CONTROL_FLOW_EXTENSION_NAME);
+    VkExtensionProperties khrShaderUntypedPointers          = vk::makeExtension(VK_KHR_SHADER_UNTYPED_POINTERS_EXTENSION_NAME);
     VkExtensionProperties khrSwapchain                      = vk::makeExtension(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
     VkExtensionProperties khrSwapchainMaintenance1          = vk::makeExtension(VK_KHR_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME);
     VkExtensionProperties khrSwapchainMutableFormat         = vk::makeExtension(VK_KHR_SWAPCHAIN_MUTABLE_FORMAT_EXTENSION_NAME);
@@ -165,6 +180,15 @@ namespace dxvk {
     VkExtensionProperties nvRawAccessChains                 = vk::makeExtension(VK_NV_RAW_ACCESS_CHAINS_EXTENSION_NAME);
     VkExtensionProperties nvxBinaryImport                   = vk::makeExtension(VK_NVX_BINARY_IMPORT_EXTENSION_NAME);
     VkExtensionProperties nvxImageViewHandle                = vk::makeExtension(VK_NVX_IMAGE_VIEW_HANDLE_EXTENSION_NAME);
+  };
+
+
+  /**
+   * \brief Queue family properties with extension structs
+   */
+  struct DxvkDeviceQueueInfo {
+    VkQueueFamilyProperties2                    core              = { VK_STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2 };
+    VkQueueFamilyOwnershipTransferPropertiesKHR ownershipTransfer = { VK_STRUCTURE_TYPE_QUEUE_FAMILY_OWNERSHIP_TRANSFER_PROPERTIES_KHR };
   };
 
 
@@ -230,6 +254,19 @@ namespace dxvk {
      */
     const auto& getMemoryInfo() const {
       return m_memory;
+    }
+
+    /**
+     * \brief Queries queue properties for a valid queue family
+     *
+     * Must only be used to query queues that will actually be
+     * used by DXVK, thus no function to query the queue family
+     * count is provided.
+     * \param [in] family Queue family index
+     * \returns Queue properties
+     */
+    const auto& getQueueProperties(uint32_t family) const {
+      return m_queuesAvailable[family];
     }
 
     /**
@@ -306,6 +343,14 @@ namespace dxvk {
      */
     void logDeviceInfo();
 
+    /**
+     * \brief Decodes vendor-specific driver version into something readable
+     *
+     * \param [in] driverId Driver ID
+     * \param [in] version Raw Vulkan driver version
+     */
+    static Version decodeDriverVersion(VkDriverId driverId, uint32_t version);
+
   private:
 
     struct FeatureEntry {
@@ -334,7 +379,7 @@ namespace dxvk {
 
     std::vector<const VkExtensionProperties*> m_extensionList;
 
-    std::vector<VkQueueFamilyProperties2> m_queuesAvailable;
+    std::vector<DxvkDeviceQueueInfo>      m_queuesAvailable;
     std::vector<VkDeviceQueueCreateInfo>  m_queuesEnabled;
     std::vector<float>                    m_queuePriorities;
 
@@ -387,8 +432,6 @@ namespace dxvk {
             DxvkDeviceInfo&             properties);
 
     std::vector<FeatureEntry> getFeatureList();
-
-    static Version decodeDriverVersion(VkDriverId driverId, uint32_t version);
 
     template<typename T>
     static void copyFeature(

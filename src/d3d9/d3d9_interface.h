@@ -135,7 +135,7 @@ namespace dxvk {
 
     D3D9Adapter* GetAdapter(UINT Ordinal) {
       return Ordinal < m_adapters.size()
-        ? &m_adapters[Ordinal]
+        ? m_adapters[Ordinal].ptr()
         : nullptr;
     }
 
@@ -147,6 +147,7 @@ namespace dxvk {
 
     void EnableD3D8CompatibilityMode() {
       m_isD3D8Compatible = true;
+      RefreshAdapterFormatTables();
       Logger::info("The D3D9 interface is now operating in D3D8 compatibility mode.");
     }
 
@@ -155,10 +156,15 @@ namespace dxvk {
     bool HasFormatsUnlocked() const { return m_unlockAdditionalFormats; }
 
     void EnableAdditionalFormats() {
-            m_unlockAdditionalFormats = true;
+      m_unlockAdditionalFormats = true;
     }
 
   private:
+
+    inline void RefreshAdapterFormatTables() {
+      for (auto& adapter : m_adapters)
+        adapter->RefreshFormatsTable();
+    }
 
     Rc<DxvkInstance>              m_instance;
 
@@ -170,7 +176,7 @@ namespace dxvk {
 
     D3D9Options                   m_d3d9Options;
 
-    std::vector<D3D9Adapter>      m_adapters;
+    std::vector<Rc<D3D9Adapter>>  m_adapters;
 
     D3D9VkInteropInterface        m_d3d9Interop;
 

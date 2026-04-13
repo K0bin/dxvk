@@ -23,6 +23,7 @@ namespace dxvk {
     HANDLE_EXT(extDepthClipEnable);                \
     HANDLE_EXT(extDepthBiasControl);               \
     HANDLE_EXT(extDescriptorBuffer);               \
+    HANDLE_EXT(extDescriptorHeap);                 \
     HANDLE_EXT(extExtendedDynamicState3);          \
     HANDLE_EXT(extFragmentShaderInterlock);        \
     HANDLE_EXT(extFullScreenExclusive);            \
@@ -48,12 +49,17 @@ namespace dxvk {
     HANDLE_EXT(khrMaintenance5);                   \
     HANDLE_EXT(khrMaintenance6);                   \
     HANDLE_EXT(khrMaintenance7);                   \
+    HANDLE_EXT(khrMaintenance8);                   \
+    HANDLE_EXT(khrMaintenance9);                   \
+    HANDLE_EXT(khrMaintenance10);                  \
     HANDLE_EXT(khrPipelineLibrary);                \
     HANDLE_EXT(khrPresentId);                      \
     HANDLE_EXT(khrPresentId2);                     \
     HANDLE_EXT(khrPresentWait);                    \
     HANDLE_EXT(khrPresentWait2);                   \
     HANDLE_EXT(khrShaderFloatControls2);           \
+    HANDLE_EXT(khrShaderSubgroupUniformControlFlow);\
+    HANDLE_EXT(khrShaderUntypedPointers);          \
     HANDLE_EXT(khrSwapchain);                      \
     HANDLE_EXT(khrSwapchainMaintenance1);          \
     HANDLE_EXT(khrSwapchainMutableFormat);         \
@@ -68,6 +74,7 @@ namespace dxvk {
     HANDLE_EXT(extConservativeRasterization);      \
     HANDLE_EXT(extCustomBorderColor);              \
     HANDLE_EXT(extDescriptorBuffer);               \
+    HANDLE_EXT(extDescriptorHeap);                 \
     HANDLE_EXT(extExtendedDynamicState3);          \
     HANDLE_EXT(extGraphicsPipelineLibrary);        \
     HANDLE_EXT(extLineRasterization);              \
@@ -78,7 +85,9 @@ namespace dxvk {
     HANDLE_EXT(extVertexAttributeDivisor);         \
     HANDLE_EXT(khrMaintenance5);                   \
     HANDLE_EXT(khrMaintenance6);                   \
-    HANDLE_EXT(khrMaintenance7);
+    HANDLE_EXT(khrMaintenance7);                   \
+    HANDLE_EXT(khrMaintenance9);                   \
+    HANDLE_EXT(khrMaintenance10);
 
 
   DxvkDeviceCapabilities::DxvkDeviceCapabilities(
@@ -420,8 +429,25 @@ namespace dxvk {
     uint32_t queueCount = 0u;
     vk->vkGetPhysicalDeviceQueueFamilyProperties2(adapter, &queueCount, nullptr);
 
-    m_queuesAvailable.resize(queueCount, { VK_STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2 });
-    vk->vkGetPhysicalDeviceQueueFamilyProperties2(adapter, &queueCount, m_queuesAvailable.data());
+    // Use local array of base structures as the API requires,
+    // then copy the base structure back to the metadata array
+    std::vector<VkQueueFamilyProperties2> queueFamilies(queueCount, { VK_STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2 });
+
+    // Chain extension structs directly into the metadata structure
+    m_queuesAvailable.resize(queueCount);
+
+    for (uint32_t i = 0u; i < queueCount; i++) {
+      auto& base = queueFamilies[i];
+      auto& meta = m_queuesAvailable[i];
+
+      if (m_featuresSupported.khrMaintenance9.maintenance9)
+        meta.ownershipTransfer.pNext = std::exchange(base.pNext, &meta.ownershipTransfer);
+    }
+
+    vk->vkGetPhysicalDeviceQueueFamilyProperties2(adapter, &queueCount, queueFamilies.data());
+
+    for (uint32_t i = 0u; i < queueCount; i++)
+      m_queuesAvailable[i].core = queueFamilies[i];
 
     if (deviceInfo) {
       // Only mark queues available that the device has been created with
@@ -433,7 +459,7 @@ namespace dxvk {
             queueCount = deviceInfo->pQueueCreateInfos[j].queueCount;
         }
 
-        m_queuesAvailable[i].queueFamilyProperties.queueCount = queueCount;
+        m_queuesAvailable[i].core.queueFamilyProperties.queueCount = queueCount;
       }
     }
   }
@@ -453,11 +479,28 @@ namespace dxvk {
 
   void DxvkDeviceCapabilities::disableUnusedFeatures(
     const DxvkInstance&               instance) {
+    if (m_featuresSupported.extDescriptorHeap.descriptorHeap) {
+      // Only enable descriptor heaps on drivers that are known to work
+      // and don't have known performance regressions currently.
+      // TODO revisit w.r.t. Nvidia, Intel, Turnip.
+      bool enableDescriptorHeap = m_properties.vk12.driverID == VK_DRIVER_ID_MESA_RADV
+                               || m_properties.vk12.driverID == VK_DRIVER_ID_MESA_LLVMPIPE
+                               || m_properties.vk12.driverID == VK_DRIVER_ID_AMD_PROPRIETARY;
+
+      applyTristate(enableDescriptorHeap, instance.options().enableDescriptorHeap);
+
+      if (!enableDescriptorHeap)
+        m_featuresSupported.extDescriptorHeap.descriptorHeap = VK_FALSE;
+    }
+
+    // Descriptor heap deprecates descriptor buffer
+    if (m_featuresSupported.extDescriptorHeap.descriptorHeap)
+      m_featuresSupported.extDescriptorBuffer.descriptorBuffer = VK_FALSE;
+
     // Descriptor buffers cause perf regressions on some GPUs
     if (m_featuresSupported.extDescriptorBuffer.descriptorBuffer) {
       bool enableDescriptorBuffer = m_properties.vk12.driverID == VK_DRIVER_ID_MESA_RADV
                                  || m_properties.vk12.driverID == VK_DRIVER_ID_MESA_NVK
-                                 || m_properties.vk12.driverID == VK_DRIVER_ID_INTEL_PROPRIETARY_WINDOWS
                                  || m_properties.vk12.driverID == VK_DRIVER_ID_MESA_LLVMPIPE;
 
       // Pascal reportedly sees massive perf drops with descriptor buffer
@@ -530,9 +573,12 @@ namespace dxvk {
       m_featuresSupported.extLineRasterization.smoothLines = VK_FALSE;
     }
 
-    // Ensure we only enable one of present_id or present_id_2
-    if (m_featuresSupported.khrPresentId2.presentId2)
-      m_featuresSupported.khrPresentId.presentId = VK_FALSE;
+    // Ensure we only enable one of present_id or present_id_2. Prefer the
+    // older versions of the present_id/wait extensions since the newer ones
+    // cause issues with external layers and apparently some Wayland setups
+    // on Mesa for unknown reasons.
+    if (m_featuresSupported.khrPresentId.presentId)
+      m_featuresSupported.khrPresentId2.presentId2 = VK_FALSE;
 
     // Sanitize features with other feature dependencies
     if (!m_featuresSupported.core.features.shaderInt16)
@@ -603,7 +649,7 @@ namespace dxvk {
       m_queueMapping.transfer.family = computeQueue;
 
     // Prefer using the graphics queue as a sparse binding queue if possible
-    auto& graphicsQueue = m_queuesAvailable[m_queueMapping.graphics.family];
+    auto& graphicsQueue = m_queuesAvailable[m_queueMapping.graphics.family].core;
 
     if (graphicsQueue.queueFamilyProperties.queueFlags & VK_QUEUE_SPARSE_BINDING_BIT) {
       m_queueMapping.sparse.family = m_queueMapping.graphics.family;
@@ -654,8 +700,8 @@ namespace dxvk {
           VkQueueFlags                mask,
           VkQueueFlags                flags) const {
     for (uint32_t i = 0; i < m_queuesAvailable.size(); i++) {
-      if ((m_queuesAvailable[i].queueFamilyProperties.queueFlags & mask) == flags
-       && (m_queuesAvailable[i].queueFamilyProperties.queueCount))
+      if ((m_queuesAvailable[i].core.queueFamilyProperties.queueFlags & mask) == flags
+       && (m_queuesAvailable[i].core.queueFamilyProperties.queueCount))
         return i;
     }
 
@@ -684,7 +730,7 @@ namespace dxvk {
       }
     }
 
-    if (m_properties.core.properties.limits.maxPushConstantsSize < MaxTotalPushDataSize)
+    if (!m_featuresEnabled.extDescriptorHeap.descriptorHeap && m_properties.core.properties.limits.maxPushConstantsSize < MaxTotalPushDataSize)
       return str::format("Device does not support ", MaxTotalPushDataSize, " of push data");
 
     return std::nullopt;
@@ -819,12 +865,14 @@ namespace dxvk {
       ENABLE_FEATURE(vk12, uniformBufferStandardLayout, true),
       ENABLE_FEATURE(vk12, vulkanMemoryModel, true),
 
+      ENABLE_FEATURE(vk13, computeFullSubgroups, true),
       ENABLE_FEATURE(vk13, dynamicRendering, true),
       ENABLE_FEATURE(vk13, maintenance4, true),
       ENABLE_FEATURE(vk13, robustImageAccess, false),
       ENABLE_FEATURE(vk13, pipelineCreationCacheControl, false),
       ENABLE_FEATURE(vk13, shaderDemoteToHelperInvocation, true),
       ENABLE_FEATURE(vk13, shaderZeroInitializeWorkgroupMemory, true),
+      ENABLE_FEATURE(vk13, subgroupSizeControl, true),
       ENABLE_FEATURE(vk13, synchronization2, true),
 
       /* Allows sampling currently bound render targets for client APIs */
@@ -850,8 +898,11 @@ namespace dxvk {
       ENABLE_EXT_FEATURE(extDepthBiasControl, floatRepresentation, false),
       ENABLE_EXT_FEATURE(extDepthBiasControl, depthBiasExact, false),
 
-      /* Descriptor buffers for a more efficient binding model */
+      /* Deprecated, used when descriptor heap is unavailable */
       ENABLE_EXT_FEATURE(extDescriptorBuffer, descriptorBuffer, false),
+
+      /* Descriptor heaps for a more efficient binding model */
+      ENABLE_EXT_FEATURE(extDescriptorHeap, descriptorHeap, false),
 
       /* Dynamic state to further improve the graphics_pipeline_library experience */
       ENABLE_EXT_FEATURE(extExtendedDynamicState3, extendedDynamicState3AlphaToCoverageEnable, false),
@@ -924,13 +975,17 @@ namespace dxvk {
       ENABLE_EXT(khrExternalMemoryWin32, false),
       ENABLE_EXT(khrExternalSemaphoreWin32, false),
 
-      /* LOAD_OP_NONE for certain tiler optimizations */
-      ENABLE_EXT(khrLoadStoreOpNone, false),
+      /* LOAD_OP_NONE for certain tiler optimizations. Core feature
+       * in Vulkan 1.4, so probably supported by everything we need. */
+      ENABLE_EXT(khrLoadStoreOpNone, true),
 
       /* Maintenance features, relied on in various parts of the code */
       ENABLE_EXT_FEATURE(khrMaintenance5, maintenance5, true),
       ENABLE_EXT_FEATURE(khrMaintenance6, maintenance6, true),
       ENABLE_EXT_FEATURE(khrMaintenance7, maintenance7, false),
+      ENABLE_EXT_FEATURE(khrMaintenance8, maintenance8, false),
+      ENABLE_EXT_FEATURE(khrMaintenance9, maintenance9, false),
+      ENABLE_EXT_FEATURE(khrMaintenance10, maintenance10, false),
 
       /* Dependency for graphics pipeline library */
       ENABLE_EXT(khrPipelineLibrary, true),
@@ -943,6 +998,12 @@ namespace dxvk {
 
       /* Used for shader compilation in addition to regular float_controls features */
       ENABLE_EXT_FEATURE(khrShaderFloatControls2, shaderFloatControls2, false),
+
+      /* Subgroup uniform control flow for some built-in shaders */
+      ENABLE_EXT_FEATURE(khrShaderSubgroupUniformControlFlow, shaderSubgroupUniformControlFlow, false),
+
+      /* Untyped pointers, dependency for descriptor heaps */
+      ENABLE_EXT_FEATURE(khrShaderUntypedPointers, shaderUntypedPointers, false),
 
       /* Swapchain, needed for presentation */
       ENABLE_EXT(khrSwapchain, true),

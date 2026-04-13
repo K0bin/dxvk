@@ -9,6 +9,9 @@
 #include "../dxvk/dxvk_shader.h"
 #include "../dxvk/dxvk_shader_ir.h"
 #include "../dxvk/dxvk_shader_key.h"
+#ifndef DXSO
+#include "../dxvk/dxvk_shader_ir.h"
+#endif
 
 #include "d3d9_vertex_declaration.h"
 #include "d3d9_resource.h"
@@ -25,11 +28,41 @@ namespace dxvk {
   using D3D9Semantic      = dxbc_spv::sm3::Semantic;
   using D3D9SemanticUsage = dxbc_spv::sm3::SemanticUsage;
 
+#ifndef DXSO
+
   struct D3D9ShaderOptions {
-    bool swvp;
-    bool vertexFloatConstantBufferAsSSBO;
-    bool fastFloatEmulation;
+    /** Whether the device is configured to do SWVP.
+     * This must only be true for vertex shaders.
+     * It results in significantly larger amounts of shader constants.
+     */
+    bool isSWVP;
+
+    /** Whether to emulate d3d9 float behaviour using clampps
+     * True:  Perform emulation to emulate behaviour (ie. anything * 0 = 0)
+     * False: Don't do anything.
+     */
+    D3D9FloatEmulation d3d9FloatEmulation;
+
+    /** Always use a spec constant to determine sampler type (instead of just in PS 1.x)
+     * Works around a game bug in Halo CE where it gives cube textures to 2d/volume samplers
+     */
+    bool forceSamplerTypeSpecConstants;
   };
+
+  struct D3D9ShaderCreateInfo {
+    DxvkIrShaderCreateInfo irCreateInfo;
+
+    D3D9ShaderOptions shaderOptions;
+
+    uint32_t bytecodeLength;
+  };
+
+#else
+
+  struct D3D9ShaderOptions {};
+  struct D3D9ShaderCreateInfo {};
+
+#endif
 
   /**
    * \brief Shader resource mapping
@@ -92,7 +125,6 @@ namespace dxvk {
 
   };
 
-
   /**
    * \brief Common shader object
    * 
@@ -108,11 +140,10 @@ namespace dxvk {
 
     D3D9CommonShader(
             D3D9DeviceEx*           pDevice,
-      const DxvkShaderHash&         Key,
+      const DxvkShaderHash&         ShaderKey,
       const dxbc_spv::sm3::Prepass& Prepass,
-      const void*                   pShaderBytecode,
-            size_t                  BytecodeLength);
-
+      const D3D9ShaderCreateInfo&   ModuleInfo,
+      const void*                   pShaderBytecode);
 
     Rc<DxvkShader> GetShader() const {
       return m_shader;
@@ -126,18 +157,12 @@ namespace dxvk {
       return m_inputSignature;
     }
 
-    const dxbc_spv::sm3::PrepassConstants& GetMeta() const { return m_meta; }
-    const dxbc_spv::sm3::ImmediateFloatConstants& GetConstants() const { return m_constants; }
+    const dxbc_spv::sm3::PrepassConstants& GetConstantsInfo() const { return m_constants; }
+    const dxbc_spv::sm3::ImmediateConstants& GetImmediateConstants() const { return m_immediateConstants; }
 
     D3D9ShaderMasks GetShaderMask() const { return D3D9ShaderMasks{ m_usedSamplers, m_usedRTs }; }
 
     const dxbc_spv::sm3::ShaderInfo& GetInfo() const { return m_info; }
-
-    int32_t GetMaxDefinedFloatConstant() const { return m_maxDefinedFloatConst; }
-
-    int32_t GetMaxDefinedIntConstant() const { return m_maxDefinedIntConst; }
-
-    int32_t GetMaxDefinedBoolConstant() const { return m_maxDefinedBoolConst; }
 
     VkImageViewType GetImageViewType(uint32_t samplerSlot) const {
       return m_textureTypes[samplerSlot];
@@ -153,19 +178,22 @@ namespace dxvk {
       const void*                   pShaderBytecode,
             size_t                  BytecodeLength);
 
+    void CreateLegacyShader(
+            D3D9DeviceEx*         pDevice,
+      const DxvkShaderHash&       ShaderKey,
+      const D3D9ShaderCreateInfo& ModuleInfo,
+      const void*                 pShaderBytecode);
+
     small_vector<D3D9ShaderInputElement, 16u> m_inputSignature;
+
     uint32_t              m_usedSamplers;
     uint32_t              m_usedRTs;
 
     std::array<VkImageViewType, 16u> m_textureTypes;
 
-    dxbc_spv::sm3::ShaderInfo       m_info;
-    dxbc_spv::sm3::PrepassConstants m_meta;
-
-    dxbc_spv::sm3::ImmediateFloatConstants m_constants;
-    int32_t                                m_maxDefinedFloatConst = -1;
-    int32_t                                m_maxDefinedIntConst = -1;
-    int32_t                                m_maxDefinedBoolConst = -1;
+    dxbc_spv::sm3::ShaderInfo              m_info;
+    dxbc_spv::sm3::PrepassConstants        m_constants;
+    dxbc_spv::sm3::ImmediateConstants      m_immediateConstants;
 
     Rc<DxvkShader> m_shader;
 
@@ -291,11 +319,12 @@ namespace dxvk {
   public:
     
     HRESULT GetShaderModule(
-            D3D9DeviceEx*      pDevice,
-      const DxvkShaderHash&    ShaderKey,
+            D3D9DeviceEx*           pDevice,
+      const DxvkShaderHash&         ShaderKey,
       const dxbc_spv::sm3::Prepass& Prepass,
-      const void*              pShaderBytecode,
-            D3D9CommonShader*  pShader);
+      const D3D9ShaderCreateInfo&   ModuleInfo,
+      const void*                   pShaderBytecode,
+            D3D9CommonShader*       pShader);
     
   private:
     

@@ -162,9 +162,9 @@ namespace dxvk {
 
   constexpr VkShaderStageFlagBits GetShaderStage(D3D9ShaderType ShaderType) {
     switch (ShaderType) {
-      case D3D9ShaderType::VertexShader:  return VK_SHADER_STAGE_VERTEX_BIT;
-      case D3D9ShaderType::PixelShader:   return VK_SHADER_STAGE_FRAGMENT_BIT;
-      default:                              return VkShaderStageFlagBits(0);
+      case D3D9ShaderType::VertexShader: return VK_SHADER_STAGE_VERTEX_BIT;
+      case D3D9ShaderType::PixelShader:  return VK_SHADER_STAGE_FRAGMENT_BIT;
+      default:                           return VkShaderStageFlagBits(0);
     }
   }
 
