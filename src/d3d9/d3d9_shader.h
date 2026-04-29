@@ -51,6 +51,58 @@ namespace dxvk {
 
 #endif
 
+  /**
+   * \brief Shader resource mapping
+   *
+   * Helper class to compute backend resource
+   * indices for D3D9 binding slots.
+   */
+  struct D3D9ShaderResourceMapping {
+    enum ConstantBuffers : uint32_t {
+      VSConstantBuffer = 0,
+      VSFloatConstantBuffer = 0,
+      VSIntConstantBuffer = 1,
+      VSBoolConstantBuffer = 2,
+      VSClipPlanes     = 3,
+      VSFixedFunction  = 4,
+      VSVertexBlendData = 5,
+      VSCount,
+
+      PSConstantBuffer = 0,
+      PSFixedFunction  = 1,
+      PSShared         = 2,
+      PSCount
+    };
+
+    template<typename T>
+    static constexpr uint32_t computeCbvBinding(T stage, uint32_t index) {
+      const uint32_t stageOffset = (ConstantBuffers::VSCount + caps::MaxTexturesVS) * computeStageIndex(stage);
+      return index + stageOffset;
+    }
+
+    template<typename T>
+    static constexpr uint32_t computeTextureBinding(T stage, uint32_t index) {
+      const uint32_t stageIndex = computeStageIndex(stage);
+      const uint32_t stageOffset = (ConstantBuffers::VSCount + caps::MaxTexturesVS) * stageIndex;
+      return index + stageOffset
+        + (stageIndex == 1u
+          ? ConstantBuffers::PSCount
+          : ConstantBuffers::VSCount);
+    }
+
+    static constexpr uint32_t computeStageIndex(D3D9ShaderType stage) {
+      return uint32_t(stage);
+    }
+
+    static constexpr uint32_t getSWVPBufferSlot() {
+      return ConstantBuffers::VSCount + caps::MaxTexturesVS + ConstantBuffers::PSCount + caps::MaxTexturesPS + 1; // From last pixel shader slot, above.
+    }
+
+    static constexpr uint32_t getSpecConstantBufferSlot() {
+      return getSWVPBufferSlot() + 1;
+    }
+
+  };
 
   /**
    * \brief Common shader object
