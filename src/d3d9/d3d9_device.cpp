@@ -2522,6 +2522,10 @@ namespace dxvk {
         case D3DRS_FOGENABLE:
         case D3DRS_FOGVERTEXMODE:
         case D3DRS_FOGTABLEMODE:
+          if (State == D3DRS_FOGENABLE && !!Value != !!states[D3DRS_FOGENABLE]) {
+            Logger::warn("The game enabled fixed function fog. This is not yet supported with the new shader compiler.");
+          }
+
           m_dirty.set(D3D9DeviceDirtyFlag::FogState);
           break;
 
@@ -7175,6 +7179,10 @@ namespace dxvk {
     if (m_alphaTestEnabled != alphaTestEnabled) {
       m_dirty.set(D3D9DeviceDirtyFlag::AlphaTestState);
       m_alphaTestEnabled = alphaTestEnabled;
+
+      if (alphaTestEnabled) {
+        Logger::warn("The game enabled alpha testing. This is not yet supported with the new compiler.");
+      }
     }
   }
 
