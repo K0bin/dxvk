@@ -1559,6 +1559,8 @@ namespace dxvk {
           return spv::BuiltInPointSize;
         case dxbc_spv::ir::BuiltIn::eTessFactorLimit:
           return std::nullopt;
+        case dxbc_spv::ir::BuiltIn::ePointCoord:
+          return spv::BuiltInPointCoord;
       }
 
       return std::nullopt;
