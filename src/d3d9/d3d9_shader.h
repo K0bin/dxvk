@@ -8,6 +8,8 @@
 #include "../dxvk/dxvk_shader_ir.h"
 #endif
 
+#include <sm3/sm3_parser.h>
+
 #include "d3d9_resource.h"
 #include "d3d9_util.h"
 #include "d3d9_mem.h"
@@ -139,6 +141,7 @@ namespace dxvk {
 
     D3D9ShaderMasks GetShaderMask() const { return D3D9ShaderMasks{ m_usedSamplers, m_usedRTs }; }
 
+    //const dxbc_spv::sm3::ShaderInfo& GetInfo() const { return m_info; }
     const DxsoProgramInfo& GetInfo() const { return m_info; }
 
     int32_t GetMaxDefinedFloatConstant() const { return m_maxDefinedFloatConst; }
@@ -166,6 +169,8 @@ namespace dxvk {
     uint32_t              m_usedRTs;
     uint32_t              m_textureTypes;
 
+
+    //dxbc_spv::sm3::ShaderInfo m_info;
     DxsoProgramInfo       m_info;
     DxsoShaderMetaInfo    m_meta;
     DxsoDefinedConstants  m_constants;
