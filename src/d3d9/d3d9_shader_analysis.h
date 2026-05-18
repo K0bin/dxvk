@@ -14,23 +14,23 @@ using dxbc_spv::util::small_vector;
 
 namespace dxvk {
 
-struct ImmediateFloatConstant {
+struct D3D9ImmediateFloatConstant {
   uint32_t index;
 
   std::array<float, 4u> value;
 };
 
-using ImmediateFloatConstants = std::vector<ImmediateFloatConstant>;
+using D3D9ImmediateFloatConstants = std::vector<D3D9ImmediateFloatConstant>;
 
-struct ImmediateConstants {
+struct D3D9ImmediateConstants {
   int32_t maxFloatIndex = -1;
   int32_t maxIntIndex   = -1;
   int32_t maxBoolIndex  = -1;
 
-  ImmediateFloatConstants floats;
+  D3D9ImmediateFloatConstants floats;
 };
 
-struct ShaderConstantsInfo {
+struct D3D9ShaderConstantsInfo {
   bool floatsAccessedDynamically = false;
 
   int32_t maxFloatIndex = -1;
@@ -40,14 +40,14 @@ struct ShaderConstantsInfo {
   uint32_t boolMask = 0u;
 };
 
-struct InputSignatureElement {
+struct D3D9InputSignatureElement {
   uint32_t location;
   Semantic semantic;
 };
 
-using RenderTargetMask = uint8_t;
-using SamplerMask      = uint32_t;
-using Signature        = small_vector<InputSignatureElement, 16u>;
+using D3D9RenderTargetMask = uint8_t;
+using D3D9SamplerMask      = uint32_t;
+using D3D9InputSignature   = small_vector<D3D9InputSignatureElement, 16u>;
 
 class D3D9ShaderAnalysis {
 
@@ -55,59 +55,63 @@ public:
 
   D3D9ShaderAnalysis(dxbc_spv::util::ByteReader code, bool isSWVP);
 
-  bool runAnalysis();
+  D3D9ShaderAnalysis(D3D9ShaderAnalysis&& other);
 
-  ShaderInfo getShaderInfo() const {
+  bool RunAnalysis();
+
+  ShaderInfo GetShaderInfo() const {
     return m_parser.getShaderInfo();
   }
 
-  size_t getLength() const {
+  size_t GetLength() const {
     return m_length;
   }
 
-  const ShaderConstantsInfo& getConstantsInfo() const {
+  const D3D9ShaderConstantsInfo& GetConstantsInfo() const {
     return m_constants;
   }
 
-  const ImmediateConstants& getImmediateConstants() const {
+  const D3D9ImmediateConstants& GetImmediateConstants() const {
     return m_immediateConstants;
   }
 
-  RenderTargetMask getRenderTargetMask() const {
+  D3D9RenderTargetMask GetRenderTargetMask() const {
     return m_usedRTs;
   }
 
-  SamplerMask getSamplerMask() const {
+  D3D9SamplerMask GetSamplerMask() const {
     return m_usedSamplers;
   }
 
-  TextureType getTextureType(uint32_t index) const {
-    return m_textureTypes[index];
+  VkImageViewType GetImageViewType(uint32_t index) const {
+    return m_imageViewTypes[index];
   }
 
-  bool isSWVP() const {
+  bool IsSWVP() const {
     return m_isSWVP;
   }
 
-  uint32_t getInputSignatureSize() const {
+  uint32_t GetInputSignatureSize() const {
     return m_inputSignature.size();
   }
 
-  InputSignatureElement getInputSignatureElement(uint32_t index) const {
+  D3D9InputSignatureElement GetInputSignatureElement(uint32_t index) const {
     return m_inputSignature[index];
   }
 
+  const D3D9InputSignature& GetInputSignature() const { return m_inputSignature; }
+
 private:
 
-  bool initParser(Parser& parser, dxbc_spv::util::ByteReader reader);
+  bool InitParser(Parser& parser, dxbc_spv::util::ByteReader reader);
 
-  bool handleInstruction(const Instruction& op);
+  bool HandleInstruction(const Instruction& op);
 
-  bool handleDef(const Instruction& op);
+  bool HandleDef(const Instruction& op);
 
-  bool handleTextureSample(const Instruction& op);
+  bool HandleTextureSample(const Instruction& op);
 
-  bool handleDcl(const Instruction& op);
+  bool HandleDcl(const Instruction& op);
 
   dxbc_spv::util::ByteReader m_code;
 
@@ -117,17 +121,17 @@ private:
 
   size_t m_length = 0u;
 
-  ShaderConstantsInfo m_constants;
+  D3D9ShaderConstantsInfo m_constants;
 
-  ImmediateConstants m_immediateConstants;
+  D3D9ImmediateConstants m_immediateConstants;
 
-  RenderTargetMask m_usedRTs = 0u;
+  D3D9RenderTargetMask m_usedRTs = 0u;
 
-  SamplerMask m_usedSamplers = 0u;
+  D3D9SamplerMask m_usedSamplers = 0u;
 
-  std::array<TextureType, 16u> m_textureTypes = {};
+  std::array<VkImageViewType, 16u> m_imageViewTypes = {};
 
-  Signature m_inputSignature    = {};
+  D3D9InputSignature m_inputSignature    = {};
 
 };
 

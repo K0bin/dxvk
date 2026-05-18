@@ -3565,7 +3565,7 @@ namespace dxvk {
 
     if (FAILED(this->CreateShaderModule(&module,
       &bytecodeLength,
-      VK_SHADER_STAGE_VERTEX_BIT,
+      D3D9ShaderType::VertexShader,
       pFunction)))
       return D3DERR_INVALIDCALL;
 
@@ -3593,17 +3593,17 @@ namespace dxvk {
     auto* oldShader = GetCommonShader(m_state.vertexShader);
     auto* newShader = GetCommonShader(shader);
 
-    bool oldCopies = oldShader && oldShader->GetMeta().needsConstantCopies;
-    bool newCopies = newShader && newShader->GetMeta().needsConstantCopies;
+    bool oldCopies = oldShader && oldShader->GetConstantsInfo().floatsAccessedDynamically;
+    bool newCopies = newShader && newShader->GetConstantsInfo().floatsAccessedDynamically;
 
     m_consts[uint32_t(D3D9ShaderType::VertexShader)].dirty |= oldCopies || newCopies || !oldShader;
-    m_consts[uint32_t(D3D9ShaderType::VertexShader)].meta  = newShader ? newShader->GetMeta() : DxsoShaderMetaInfo();
+    m_consts[uint32_t(D3D9ShaderType::VertexShader)].constantInfo  = newShader ? newShader->GetConstantsInfo() : D3D9ShaderConstantsInfo();
 
     if (newShader && oldShader) {
       m_consts[uint32_t(D3D9ShaderType::VertexShader)].dirty
-        |= newShader->GetMeta().maxConstIndexF > oldShader->GetMeta().maxConstIndexF
-        || newShader->GetMeta().maxConstIndexI > oldShader->GetMeta().maxConstIndexI
-        || newShader->GetMeta().maxConstIndexB > oldShader->GetMeta().maxConstIndexB;
+        |= newShader->GetConstantsInfo().maxFloatIndex > oldShader->GetConstantsInfo().maxFloatIndex
+        || newShader->GetConstantsInfo().maxIntIndex > oldShader->GetConstantsInfo().maxIntIndex
+        || newShader->GetConstantsInfo().maxBoolIndex > oldShader->GetConstantsInfo().maxBoolIndex;
     }
 
     const bool wasUsingProgrammableVS = UseProgrammableVS();
@@ -3920,7 +3920,7 @@ namespace dxvk {
 
     if (FAILED(this->CreateShaderModule(&module,
       &bytecodeLength,
-      VK_SHADER_STAGE_FRAGMENT_BIT,
+      D3D9ShaderType::PixelShader,
       pFunction)))
       return D3DERR_INVALIDCALL;
 
@@ -3948,17 +3948,17 @@ namespace dxvk {
     auto* oldShader = GetCommonShader(m_state.pixelShader);
     auto* newShader = GetCommonShader(shader);
 
-    bool oldCopies = oldShader && oldShader->GetMeta().needsConstantCopies;
-    bool newCopies = newShader && newShader->GetMeta().needsConstantCopies;
+    bool oldCopies = oldShader && oldShader->GetConstantsInfo().floatsAccessedDynamically;
+    bool newCopies = newShader && newShader->GetConstantsInfo().floatsAccessedDynamically;
 
     m_consts[uint32_t(D3D9ShaderType::PixelShader)].dirty |= oldCopies || newCopies || !oldShader;
-    m_consts[uint32_t(D3D9ShaderType::PixelShader)].meta  = newShader ? newShader->GetMeta() : DxsoShaderMetaInfo();
+    m_consts[uint32_t(D3D9ShaderType::PixelShader)].constantInfo  = newShader ? newShader->GetConstantsInfo() : D3D9ShaderConstantsInfo();
 
     if (newShader && oldShader) {
       m_consts[uint32_t(D3D9ShaderType::PixelShader)].dirty
-        |= newShader->GetMeta().maxConstIndexF > oldShader->GetMeta().maxConstIndexF
-        || newShader->GetMeta().maxConstIndexI > oldShader->GetMeta().maxConstIndexI
-        || newShader->GetMeta().maxConstIndexB > oldShader->GetMeta().maxConstIndexB;
+        |= newShader->GetConstantsInfo().maxFloatIndex > oldShader->GetConstantsInfo().maxFloatIndex
+        || newShader->GetConstantsInfo().maxIntIndex > oldShader->GetConstantsInfo().maxIntIndex
+        || newShader->GetConstantsInfo().maxBoolIndex > oldShader->GetConstantsInfo().maxBoolIndex;
     }
 
     const D3D9ShaderMasks oldShaderMasks = PSShaderMasks();
@@ -6095,26 +6095,26 @@ namespace dxvk {
     constSet.dirty = false;
 
     uint32_t floatCount = constSet.maxChangedConstF;
-    if (constSet.meta.needsConstantCopies) {
+    if (constSet.constantInfo.floatsAccessedDynamically) {
       // If the shader requires us to preserve shader defined constants,
       // we copy those over. We need to adjust the amount of used floats accordingly.
       auto shader = GetCommonShader(m_state.vertexShader);
       floatCount = std::max(floatCount, static_cast<uint32_t>(shader->GetMaxDefinedFloatConstant() + 1));
     }
     // If we statically know which is the last float constant accessed by the shader, we don't need to copy the rest.
-    floatCount = std::min(floatCount, constSet.meta.maxConstIndexF);
+    floatCount = std::min(floatCount, constSet.constantInfo.maxFloatIndex);
 
     // Calculate data sizes for each constant type.
     const uint32_t floatDataSize = floatCount * sizeof(Vector4);
-    const uint32_t intDataSize   = std::min(constSet.meta.maxConstIndexI, constSet.maxChangedConstI) * sizeof(Vector4i);
-    const uint32_t boolDataSize  = divCeil(std::min(constSet.meta.maxConstIndexB, constSet.maxChangedConstB), 32u) * uint32_t(sizeof(uint32_t));
+    const uint32_t intDataSize   = std::min(constSet.constantInfo.maxIntIndex, constSet.maxChangedConstI) * sizeof(Vector4i);
+    const uint32_t boolDataSize  = divCeil(std::min(constSet.constantInfo.maxBoolIndex, constSet.maxChangedConstB), 32u) * uint32_t(sizeof(uint32_t));
 
     // Max copy source size is 8192 * 16 => always aligned to any plausible value
     // => we won't copy out of bounds
-    if (likely(constSet.meta.maxConstIndexF != 0)) {
+    if (likely(constSet.constantInfo.maxFloatIndex != 0)) {
       auto mapPtr = CopySoftwareConstants(constSet.buffer, Src.fConsts, floatDataSize);
 
-      if (constSet.meta.needsConstantCopies) {
+      if (constSet.constantInfo.floatsAccessedDynamically) {
         // Copy shader defined constants over so they can be accessed
         // with relative addressing.
         Vector4* data = reinterpret_cast<Vector4*>(mapPtr);
@@ -6122,7 +6122,7 @@ namespace dxvk {
         auto& shaderConsts = GetCommonShader(m_state.vertexShader)->GetConstants();
 
         for (const auto& constant : shaderConsts) {
-          if (constant.uboIdx < constSet.meta.maxConstIndexF)
+          if (constant.uboIdx < constSet.constantInfo.maxFloatIndex)
             data[constant.uboIdx] = *reinterpret_cast<const Vector4*>(constant.float32);
         }
       }
@@ -6130,10 +6130,10 @@ namespace dxvk {
 
     // Max copy source size is 2048 * 16 => always aligned to any plausible value
     // => we won't copy out of bounds
-    if (likely(constSet.meta.maxConstIndexI != 0))
+    if (likely(constSet.constantInfo.maxIntIndex != 0))
       CopySoftwareConstants(constSet.swvp.intBuffer, Src.iConsts, intDataSize);
 
-    if (likely(constSet.meta.maxConstIndexB != 0))
+    if (likely(constSet.constantInfo.maxBoolIndex != 0))
       CopySoftwareConstants(constSet.swvp.boolBuffer, Src.bConsts, boolDataSize);
   }
 
@@ -6162,15 +6162,15 @@ namespace dxvk {
 
     constSet.dirty = false;
 
-    uint32_t floatCount = constSet.maxChangedConstF;
-    if (constSet.meta.needsConstantCopies) {
+    uint32_t floatCount = constSet.constantInfo.maxFloatIndex;
+    if (constSet.constantInfo.floatsAccessedDynamically) {
       // If the shader requires us to preserve shader defined constants,
       // we copy those over. We need to adjust the amount of used floats accordingly.
       auto shader = GetCommonShader(Shader);
-      floatCount = std::max(floatCount, static_cast<uint32_t>(shader->GetMaxDefinedFloatConstant() + 1));
+      floatCount = std::max(floatCount, static_cast<uint32_t>(shader->GetImmediateConstants().maxFloatIndex + 1));
     }
     // If we statically know which is the last float constant accessed by the shader, we don't need to copy the rest.
-    floatCount = std::min(constSet.meta.maxConstIndexF, floatCount);
+    floatCount = std::min(constSet.constantInfo.maxFloatIndex, floatCount);
 
     // There are very few int constants, so we put those into the same buffer at the start.
     // We always allocate memory for all possible int constants to make sure alignment works out.
@@ -6184,21 +6184,21 @@ namespace dxvk {
     void* mapPtr = constSet.buffer.Alloc(bufferSize);
     auto* dst = reinterpret_cast<HardwareLayoutType*>(mapPtr);
 
-    const uint32_t intDataSize = constSet.meta.maxConstIndexI * sizeof(Vector4i);
-    if (constSet.meta.maxConstIndexI != 0)
+    const uint32_t intDataSize = constSet.constantInfo.maxIntIndex * sizeof(Vector4i);
+    if (constSet.constantInfo.maxIntIndex != 0)
       std::memcpy(dst->iConsts, Src.iConsts, intDataSize);
-    if (constSet.meta.maxConstIndexF != 0)
+    if (constSet.constantInfo.maxFloatIndex != 0)
       std::memcpy(dst->fConsts, Src.fConsts, floatDataSize);
 
-    if (constSet.meta.needsConstantCopies) {
+    if (constSet.constantInfo.floatsAccessedDynamically) {
       // Copy shader defined constants over so they can be accessed
       // with relative addressing.
       Vector4* data = reinterpret_cast<Vector4*>(dst->fConsts);
 
-      auto& shaderConsts = GetCommonShader(Shader)->GetConstants();
+      auto& shaderConsts = GetCommonShader(Shader)->GetImmediateConstants();
 
       for (const auto& constant : shaderConsts) {
-        if (constant.uboIdx < constSet.meta.maxConstIndexF)
+        if (constant.uboIdx < constSet.constantInfo.maxFloatIndex)
           data[constant.uboIdx] = *reinterpret_cast<const Vector4*>(constant.float32);
       }
     }
@@ -7695,7 +7695,7 @@ namespace dxvk {
       if (likely(!CanSWVP())) {
         UpdateVertexBoolSpec(
           m_state.vsConsts->bConsts[0] &
-          m_consts[uint32_t(D3D9ShaderType::VertexShader)].meta.boolConstantMask);
+          m_consts[uint32_t(D3D9ShaderType::VertexShader)].constantInfo.boolMask);
       } else
         UpdateVertexBoolSpec(0);
     }
@@ -7736,7 +7736,7 @@ namespace dxvk {
 
       UpdatePixelBoolSpec(
         m_state.psConsts->bConsts[0] &
-        m_consts[uint32_t(D3D9ShaderType::PixelShader)].meta.boolConstantMask);
+        m_consts[uint32_t(D3D9ShaderType::PixelShader)].constantInfo.boolMask);
     }
     else {
       // Fixed function shaders use the projected spec constant too.
@@ -8116,51 +8116,48 @@ namespace dxvk {
   HRESULT D3D9DeviceEx::CreateShaderModule(
           D3D9CommonShader*       pShaderModule,
           size_t*                 pBytecodeLength,
-          VkShaderStageFlagBits   ShaderStage,
+          D3D9ShaderType          ShaderType,
     const DWORD*                  pShaderBytecode) {
 
     if (!pShaderBytecode)
       return D3DERR_INVALIDCALL;
 
-    DxsoReader reader(
-      reinterpret_cast<const char*>(pShaderBytecode));
+    dxbc_spv::util::ByteReader reader(pShaderBytecode, std::numeric_limits<size_t>::max());
 
-    DxsoModule module(reader);
-    DxsoAnalysisInfo info = module.analyze();
+    D3D9ShaderAnalysis analysis(reader, m_isSWVP);
+    analysis.RunAnalysis();
 
-    const uint32_t majorVersion = module.info().majorVersion();
-    const uint32_t minorVersion = module.info().minorVersion();
-    VkShaderStageFlagBits bytecodeShaderStage = module.info().shaderStage();
-    size_t bytecodeLength = info.bytecodeByteLength;
+    auto info = analysis.GetShaderInfo();
 
+    size_t bytecodeLength = analysis.GetLength();
 
     // Pre-conversion checks
-    if (unlikely(ShaderStage != bytecodeShaderStage)) {
+    if (unlikely(ShaderType != D3D9ShaderType(info.getType()))) {
       Logger::err("CreateShaderModule: Bytecode does not match shader stage");
       return D3DERR_INVALIDCALL;
     }
 
     // Vertex shader version checks
-    if (ShaderStage == VK_SHADER_STAGE_VERTEX_BIT) {
+    if (ShaderStage == D3D9ShaderType::VertexShader) {
       // Late fixed-function capable hardware exposed support for VS 1.1
       const uint32_t shaderModelVS = IsD3D8Compatible() ? 1u : std::max(1u, m_d3d9Options.shaderModel);
 
-      if (unlikely(majorVersion > shaderModelVS
-               || (majorVersion == 1 && minorVersion > 1)
+      if (unlikely(info.getVersion().first > shaderModelVS
+               || (info.getVersion().first == 1 && info.getVersion().second > 1)
                // Skip checking the SM2 minor version, as it has a 2_x mode apparently
-               || (majorVersion == 3 && minorVersion != 0))) {
-        Logger::err(str::format("CreateShaderModule: Unsupported VS version ", majorVersion, ".", minorVersion));
+               || (info.getVersion().first == 3 && info.getVersion().second != 0))) {
+        Logger::err(str::format("CreateShaderModule: Unsupported VS version ", info.getVersion().first, ".", info.getVersion().second));
         return D3DERR_INVALIDCALL;
       }
     // Pixel shader version checks
-    } else if (ShaderStage == VK_SHADER_STAGE_FRAGMENT_BIT) {
+    } else if (ShaderStage == D3D9ShaderType::PixelShader) {
       const uint32_t shaderModelPS = IsD3D8Compatible() ? std::min(1u, m_d3d9Options.shaderModel) : m_d3d9Options.shaderModel;
 
-      if (unlikely(majorVersion > shaderModelPS
-               || (majorVersion == 1 && minorVersion > 4)
+      if (unlikely(info.getVersion().first > shaderModelPS
+               || (info.getVersion().first == 1 && info.getVersion().second > 4)
                // Skip checking the SM2 minor version, as it has a 2_x mode apparently
-               || (majorVersion == 3 && minorVersion != 0))) {
-        Logger::err(str::format("CreateShaderModule: Unsupported PS version ", majorVersion, ".", minorVersion));
+               || (info.getVersion().first == 3 && info.getVersion().second != 0))) {
+        Logger::err(str::format("CreateShaderModule: Unsupported PS version ", info.getVersion().first, ".", info.getVersion().second));
         return D3DERR_INVALIDCALL;
       }
     } else {
@@ -8189,14 +8186,14 @@ namespace dxvk {
 
 
     // Post-conversion checks
-    const int32_t maxFloatConstantIndex = commonShader.GetMaxDefinedFloatConstant();
-    const int32_t maxIntConstantIndex = commonShader.GetMaxDefinedIntConstant();
-    const int32_t maxBoolConstantIndex = commonShader.GetMaxDefinedBoolConstant();
+    const int32_t maxFloatConstantIndex = commonShader.GetConstantsInfo().maxFloatIndex;
+    const int32_t maxIntConstantIndex = commonShader.GetConstantsInfo().maxIntIndex;
+    const int32_t maxBoolConstantIndex = commonShader.GetConstantsInfo().maxBoolIndex;
 
     // Vertex shader specific validations. These validations are not
     // performed on SWVP devices or on MIXED devices, even if
     // SetSoftwareVertexProcessing(FALSE) is used to disable SWVP mode.
-    if (!CanSWVP() && key.stage() == VK_SHADER_STAGE_VERTEX_BIT) {
+    if (!CanSWVP() && key.stage() == D3D9ShaderType::PixelShader) {
 
       // Validate the float constant value advertised in pCaps->MaxFloatConstantsVS for HWVP.
       if (unlikely(maxFloatConstantIndex > static_cast<int32_t>(caps::MaxFloatConstantsVS - 1))) {
@@ -8217,10 +8214,10 @@ namespace dxvk {
       }
 
     // Pixel shader specific validations.
-    } else if (key.stage() == VK_SHADER_STAGE_FRAGMENT_BIT) {
+    } else if (key.stage() == D3D9ShaderType::PixelShader) {
 
-      uint32_t majorVersion = commonShader.GetInfo().majorVersion();
-      uint32_t minorVersion = commonShader.GetInfo().minorVersion();
+      uint32_t majorVersion = commonShader.GetInfo().getVersion().first;
+      uint32_t minorVersion = commonShader.GetInfo().getVersion().second;
 
       const bool isSM2XOrNewer = majorVersion == 3 || (majorVersion == 2 && minorVersion != 0);
       // Pixel shader model version 2_x has the same limits here as version 2_0
@@ -8319,13 +8316,13 @@ namespace dxvk {
 
     if constexpr (ConstantType != D3D9ConstantType::Bool) {
       uint32_t maxCount = ConstantType == D3D9ConstantType::Float
-        ? constSet.meta.maxConstIndexF
-        : constSet.meta.maxConstIndexI;
+        ? constSet.constantInfo.maxFloatIndex
+        : constSet.constantInfo.maxIntIndex;
 
       constSet.dirty |= StartRegister < maxCount;
     } else if constexpr (ShaderType == D3D9ShaderType::VertexShader) {
       if (unlikely(CanSWVP())) {
-        constSet.dirty |= StartRegister < constSet.meta.maxConstIndexB;
+        constSet.dirty |= StartRegister < constSet.constantInfo.maxBoolIndex;
       }
     }
 

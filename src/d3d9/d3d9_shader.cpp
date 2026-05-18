@@ -11,6 +11,7 @@ namespace dxvk {
   D3D9CommonShader::D3D9CommonShader(
             D3D9DeviceEx*         pDevice,
       const DxvkShaderHash&       ShaderKey,
+            D3D9ShaderAnalysis&&  Analysis,
       const D3D9ShaderCreateInfo& ModuleInfo,
       const void*                 pShaderBytecode) {
 

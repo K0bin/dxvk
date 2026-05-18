@@ -1,6 +1,9 @@
 #include "d3d9_shader_analysis.h"
 
+#include <utility>
+
 #include "../util/log/log.h"
+#include "vulkan/vulkan_core.h"
 
 namespace dxvk {
 
@@ -10,14 +13,20 @@ namespace dxvk {
       m_constants.boolMask = ~0u;
   }
 
-  bool D3D9ShaderAnalysis::runAnalysis() {
-    if (!initParser(m_parser, m_code))
+  D3D9ShaderAnalysis::D3D9ShaderAnalysis(D3D9ShaderAnalysis&& other)
+    : m_code(other.m_code), m_isSWVP(other.m_isSWVP), m_length(other.m_length),
+      m_usedRTs(other.m_usedRTs), m_usedSamplers(other.m_usedSamplers), m_constants(other.m_constants),
+      m_imageViewTypes(other.m_imageViewTypes), m_inputSignature(std::move(other.m_inputSignature)),
+      m_parser(std::move(other.m_parser)), m_immediateConstants(std::move(other.m_immediateConstants)) { }
+
+  bool D3D9ShaderAnalysis::RunAnalysis() {
+    if (!InitParser(m_parser, m_code))
       return false;
 
     while (m_parser) {
       Instruction instruction = m_parser.parseInstruction();
 
-      if (!handleInstruction(instruction))
+      if (!HandleInstruction(instruction))
         return false;
     }
 
@@ -26,7 +35,7 @@ namespace dxvk {
     return true;
   }
 
-  bool D3D9ShaderAnalysis::initParser(Parser& parser, dxbc_spv::util::ByteReader reader) {
+  bool D3D9ShaderAnalysis::InitParser(Parser& parser, dxbc_spv::util::ByteReader reader) {
     if (!reader) {
       Logger::err("No code chunk found in shader.");
       return false;
@@ -40,7 +49,7 @@ namespace dxvk {
     return true;
   }
 
-  bool D3D9ShaderAnalysis::handleInstruction(const Instruction& op) {
+  bool D3D9ShaderAnalysis::HandleInstruction(const Instruction& op) {
     /* Determine whether we're accessing float constants dynamically
      * because in that case, we'll need to copy the immediate constants
      * into the constant buffer inside DXVK. */
@@ -83,7 +92,7 @@ namespace dxvk {
       if (!src.hasRelativeAddressing())
         continue;
 
-      uint32_t hwvpFloatConstantsCount = getShaderInfo().getType() == ShaderType::ePixel ? MaxFloatConstantsPS : MaxFloatConstantsVS;
+      uint32_t hwvpFloatConstantsCount = GetShaderInfo().getType() == ShaderType::ePixel ? MaxFloatConstantsPS : MaxFloatConstantsVS;
 
       m_constants.maxFloatIndex = std::max(
         m_constants.maxFloatIndex,
@@ -96,7 +105,7 @@ namespace dxvk {
       case OpCode::eDef:
       case OpCode::eDefI:
       case OpCode::eDefB:
-        if (!handleDef(op))
+        if (!HandleDef(op))
           return false;
         break;
 
@@ -116,12 +125,12 @@ namespace dxvk {
       case OpCode::eTexM3x3:
       case OpCode::eTexLdd:
       case OpCode::eTexLdl:
-        if (!handleTextureSample(op))
+        if (!HandleTextureSample(op))
           return false;
         break;
 
       case OpCode::eDcl:
-        if (!handleDcl(op))
+        if (!HandleDcl(op))
           return false;
         break;
 
@@ -131,7 +140,7 @@ namespace dxvk {
     return true;
   }
 
-  bool D3D9ShaderAnalysis::handleDef(const Instruction& op) {
+  bool D3D9ShaderAnalysis::HandleDef(const Instruction& op) {
     dxbc_spv_assert(op.hasDst());
     uint32_t index = op.getDst().getIndex();
 
@@ -158,7 +167,7 @@ namespace dxvk {
   }
 
 
-  bool D3D9ShaderAnalysis::handleTextureSample(const Instruction& op) {
+  bool D3D9ShaderAnalysis::HandleTextureSample(const Instruction& op) {
     uint32_t samplerIndex;
     auto dst = op.getDst();
     Operand src1;
@@ -203,7 +212,7 @@ namespace dxvk {
   }
 
 
-  bool D3D9ShaderAnalysis::handleDcl(const Instruction& op) {
+  bool D3D9ShaderAnalysis::HandleDcl(const Instruction& op) {
     dxbc_spv_assert(op.hasDcl());
     const auto& dcl = op.getDcl();
     dxbc_spv_assert(op.hasDst());
@@ -213,12 +222,23 @@ namespace dxvk {
     uint32_t index = dst.getIndex();
 
     if (registerType == RegisterType::eSampler) {
-      m_textureTypes[index] = dcl.getTextureType();
+      switch (dcl.getTextureType()) {
+        case TextureType::eTexture3D:
+          m_imageViewTypes[index] = VK_IMAGE_VIEW_TYPE_3D;
+          break;
+        case TextureType::eTextureCube:
+          m_imageViewTypes[index] = VK_IMAGE_VIEW_TYPE_CUBE;
+          break;
+        case TextureType::eTexture2D:
+        default:
+          m_imageViewTypes[index] = VK_IMAGE_VIEW_TYPE_2D;
+          break;
+      }
       m_usedSamplers |= 1u << index;
       return true;
     }
 
-    if (registerType == RegisterType::eInput && getShaderInfo().getType() == ShaderType::eVertex) {
+    if (registerType == RegisterType::eInput && GetShaderInfo().getType() == ShaderType::eVertex) {
       m_inputSignature.push_back({ uint32_t(m_inputSignature.size()) + 12u, { dcl.getSemanticUsage(), dcl.getSemanticIndex() } });
       return true;
     }
