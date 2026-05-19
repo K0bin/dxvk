@@ -47,8 +47,11 @@ namespace dxvk {
     D3D9ConstantLayout        layout;
     D3D9SwvpConstantBuffers   swvp;
     D3D9ConstantBuffer        buffer;
-    D3D9ShaderConstantsInfo       constantInfo;
+    D3D9ShaderConstantsInfo   shaderConstantsInfo;
     bool                      dirty = true;
+    int32_t                  maxChangedFloadIndex = -1;
+    int32_t                  maxChangedIntIndex = -1;
+    int32_t                  maxChangedBoolIndex = -1;
   };
 
 }

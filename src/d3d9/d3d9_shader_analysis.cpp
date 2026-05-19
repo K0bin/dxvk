@@ -1,50 +1,60 @@
+#include "../dxvk/dxvk_include.h"
+
 #include "d3d9_shader_analysis.h"
+#include "d3d9_util.h"
 
 #include <utility>
 
 #include "../util/log/log.h"
-#include "vulkan/vulkan_core.h"
 
 namespace dxvk {
 
   D3D9ShaderAnalysis::D3D9ShaderAnalysis(dxbc_spv::util::ByteReader code, bool isSWVP)
-    : m_code(code), m_isSWVP(isSWVP) {
+    : m_isSWVP(isSWVP) {
     if (isSWVP)
       m_constants.boolMask = ~0u;
+
+    if (!code) {
+      Logger::err("No code chunk found in shader.");
+    }
+
+    if (Parser parser = Parser(code)) {
+      m_length = 0u;
+      RunAnalysis(parser);
+    } else {
+      Logger::err("Failed to parse code chunk.");
+    }
   }
 
   D3D9ShaderAnalysis::D3D9ShaderAnalysis(D3D9ShaderAnalysis&& other)
-    : m_code(other.m_code), m_isSWVP(other.m_isSWVP), m_length(other.m_length),
-      m_usedRTs(other.m_usedRTs), m_usedSamplers(other.m_usedSamplers), m_constants(other.m_constants),
-      m_imageViewTypes(other.m_imageViewTypes), m_inputSignature(std::move(other.m_inputSignature)),
-      m_parser(std::move(other.m_parser)), m_immediateConstants(std::move(other.m_immediateConstants)) { }
+    : m_isSWVP(other.m_isSWVP), m_length(other.m_length), m_shaderInfo(other.m_shaderInfo),
+      m_constants(other.m_constants), m_immediateConstants(std::move(other.m_immediateConstants)),
+      m_usedRTs(other.m_usedRTs), m_usedSamplers(other.m_usedSamplers), m_imageViewTypes(other.m_imageViewTypes),
+      m_inputSignature(std::move(other.m_inputSignature)) { }
 
-  bool D3D9ShaderAnalysis::RunAnalysis() {
-    if (!InitParser(m_parser, m_code))
-      return false;
+  D3D9ShaderAnalysis::D3D9ShaderAnalysis(const D3D9ShaderAnalysis& other)
+    : m_isSWVP(other.m_isSWVP), m_length(other.m_length), m_shaderInfo(other.m_shaderInfo),
+      m_constants(other.m_constants), m_immediateConstants(other.m_immediateConstants), m_usedRTs(other.m_usedRTs),
+      m_usedSamplers(other.m_usedSamplers), m_imageViewTypes(other.m_imageViewTypes),
+      m_inputSignature(other.m_inputSignature) { }
 
-    while (m_parser) {
-      Instruction instruction = m_parser.parseInstruction();
+  bool D3D9ShaderAnalysis::RunAnalysis(Parser& parser) {
+    m_shaderInfo = parser.getShaderInfo();
+
+    while (parser) {
+      Instruction instruction = parser.parseInstruction();
 
       if (!HandleInstruction(instruction))
         return false;
     }
 
-    m_length = m_parser.getByteOffset();
+    m_length = parser.getByteOffset();
 
-    return true;
-  }
-
-  bool D3D9ShaderAnalysis::InitParser(Parser& parser, dxbc_spv::util::ByteReader reader) {
-    if (!reader) {
-      Logger::err("No code chunk found in shader.");
-      return false;
-    }
-
-    if (!(parser = Parser(reader))) {
-      Logger::err("Failed to parse code chunk.");
-      return false;
-    }
+    // Shift up these sampler bits so we can just
+    // do an or per-draw in the device.
+    // We shift by 17 because 16 ps samplers + 1 dmap (tess)
+    if (m_shaderInfo.getType() == ShaderType::eVertex)
+      m_usedSamplers <<= FirstVSSamplerSlot;
 
     return true;
   }
@@ -58,7 +68,7 @@ namespace dxvk {
       auto registerType = src.getRegisterType();
       uint32_t index = src.getIndex();
 
-      if (getShaderInfo().getType() == ShaderType::ePixel
+      if (GetShaderInfo().getType() == ShaderType::ePixel
         && op.hasDst()
         && op.getDst().getRegisterType() == RegisterType::eColorOut) {
         m_usedRTs |= 1u << op.getDst().getIndex();
@@ -150,7 +160,7 @@ namespace dxvk {
       dxbc_spv_assert(op.hasImm());
       auto imm = op.getImm();
 
-      std::array<float, 4u> value = {
+      Vector4 value = {
         imm.getImmediate<float>(0u), imm.getImmediate<float>(1u),
         imm.getImmediate<float>(2u), imm.getImmediate<float>(3u)
       };
@@ -176,7 +186,7 @@ namespace dxvk {
 
     switch (op.getOpCode()) {
       case OpCode::eTexLd:
-        if (getShaderInfo().getVersion().first <= 1u)
+        if (GetShaderInfo().getVersion().first <= 1u)
           samplerIndex = dst.getIndex();
         else
           samplerIndex = src1.getIndex();
@@ -244,6 +254,41 @@ namespace dxvk {
     }
 
     return true;
+  }
+
+
+  D3D9ShaderAnalysis& D3D9ShaderAnalysis::operator=(const D3D9ShaderAnalysis& other) {
+    if (this == &other)
+      return *this;
+
+    m_isSWVP = other.m_isSWVP;
+    m_length = other.m_length;
+    m_shaderInfo = other.m_shaderInfo;
+    m_constants = other.m_constants;
+    m_immediateConstants = other.m_immediateConstants;
+    m_usedRTs = other.m_usedRTs;
+    m_usedSamplers = other.m_usedSamplers;
+    m_imageViewTypes = other.m_imageViewTypes;
+    m_inputSignature = other.m_inputSignature;
+
+    return *this;
+  }
+
+  D3D9ShaderAnalysis& D3D9ShaderAnalysis::operator=(D3D9ShaderAnalysis&& other) {
+    if (this == &other)
+      return *this;
+
+    m_isSWVP = other.m_isSWVP;
+    m_length = other.m_length;
+    m_shaderInfo = other.m_shaderInfo;
+    m_constants = other.m_constants;
+    m_immediateConstants = std::move(other.m_immediateConstants);
+    m_usedRTs = other.m_usedRTs;
+    m_usedSamplers = other.m_usedSamplers;
+    m_imageViewTypes = other.m_imageViewTypes;
+    m_inputSignature = std::move(other.m_inputSignature);
+
+    return *this;
   }
 
 }

@@ -15,6 +15,7 @@
 #include "d3d9_mem.h"
 
 #include <array>
+#include <string>
 
 #include "d3d9_shader_analysis.h"
 
@@ -115,7 +116,7 @@ namespace dxvk {
 
   public:
 
-    D3D9CommonShader();
+    D3D9CommonShader() = default;
 
     D3D9CommonShader(
             D3D9DeviceEx*         pDevice,
@@ -282,6 +283,7 @@ namespace dxvk {
     HRESULT GetShaderModule(
             D3D9DeviceEx*           pDevice,
       const DxvkShaderHash&         ShaderKey,
+            D3D9ShaderAnalysis&&    ShaderAnalysis,
       const D3D9ShaderCreateInfo&   ModuleInfo,
       const void*                   pShaderBytecode,
             D3D9CommonShader*       pShader);

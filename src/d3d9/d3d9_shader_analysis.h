@@ -1,11 +1,15 @@
 #pragma once
 
+#include "../util/util_vector.h"
+
 #include <util/util_byte_stream.h>
 #include <util/util_small_vector.h>
 
 #include <sm3/sm3_types.h>
 #include <sm3/sm3_parser.h>
 #include <sm3/sm3_resources.h>
+
+#include <vulkan/vulkan.h>
 
 #include <vector>
 
@@ -16,8 +20,7 @@ namespace dxvk {
 
 struct D3D9ImmediateFloatConstant {
   uint32_t index;
-
-  std::array<float, 4u> value;
+  Vector4 value;
 };
 
 using D3D9ImmediateFloatConstants = std::vector<D3D9ImmediateFloatConstant>;
@@ -53,14 +56,20 @@ class D3D9ShaderAnalysis {
 
 public:
 
+  D3D9ShaderAnalysis() = default;
+
   D3D9ShaderAnalysis(dxbc_spv::util::ByteReader code, bool isSWVP);
 
   D3D9ShaderAnalysis(D3D9ShaderAnalysis&& other);
 
-  bool RunAnalysis();
+  D3D9ShaderAnalysis(const D3D9ShaderAnalysis& other);
+
+  D3D9ShaderAnalysis& operator=(const D3D9ShaderAnalysis& other);
+
+  D3D9ShaderAnalysis& operator=(D3D9ShaderAnalysis&& other);
 
   ShaderInfo GetShaderInfo() const {
-    return m_parser.getShaderInfo();
+    return m_shaderInfo;
   }
 
   size_t GetLength() const {
@@ -103,7 +112,7 @@ public:
 
 private:
 
-  bool InitParser(Parser& parser, dxbc_spv::util::ByteReader reader);
+  bool RunAnalysis(Parser& parser);
 
   bool HandleInstruction(const Instruction& op);
 
@@ -113,13 +122,11 @@ private:
 
   bool HandleDcl(const Instruction& op);
 
-  dxbc_spv::util::ByteReader m_code;
-
-  Parser           m_parser;
-
   bool             m_isSWVP;
 
-  size_t m_length = 0u;
+  uint32_t m_length = 0u;
+
+  ShaderInfo m_shaderInfo;
 
   D3D9ShaderConstantsInfo m_constants;
 
