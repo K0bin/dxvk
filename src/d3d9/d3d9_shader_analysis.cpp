@@ -31,7 +31,9 @@ namespace dxvk {
     : m_isSWVP(other.m_isSWVP), m_length(other.m_length), m_shaderInfo(other.m_shaderInfo),
       m_constants(other.m_constants), m_immediateConstants(std::move(other.m_immediateConstants)),
       m_usedRTs(other.m_usedRTs), m_usedSamplers(other.m_usedSamplers), m_imageViewTypes(other.m_imageViewTypes),
-      m_flatShadingMask(other.m_flatShadingMask), m_inputSignature(std::move(other.m_inputSignature)) { }
+      m_flatShadingMask(other.m_flatShadingMask), m_inputSignature(std::move(other.m_inputSignature)) {
+    other.m_length = 0u;
+  }
 
   D3D9ShaderAnalysis::D3D9ShaderAnalysis(const D3D9ShaderAnalysis& other)
     : m_isSWVP(other.m_isSWVP), m_length(other.m_length), m_shaderInfo(other.m_shaderInfo),
@@ -312,6 +314,7 @@ namespace dxvk {
     m_imageViewTypes = other.m_imageViewTypes;
     m_flatShadingMask = other.m_flatShadingMask;
     m_inputSignature = std::move(other.m_inputSignature);
+    other.m_length = 0u;
 
     return *this;
   }
