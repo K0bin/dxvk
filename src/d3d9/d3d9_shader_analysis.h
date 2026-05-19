@@ -114,6 +114,10 @@ public:
     return m_flatShadingMask;
   }
 
+  explicit operator bool() const {
+    return m_length != 0u;
+  }
+
 private:
 
   bool RunAnalysis(Parser& parser);
@@ -126,7 +130,7 @@ private:
 
   bool HandleDcl(const Instruction& op);
 
-  bool             m_isSWVP = false;
+  bool m_isSWVP = false;
 
   uint32_t m_length = 0u;
 
