@@ -49,7 +49,7 @@ namespace dxvk {
     D3D9ConstantBuffer        buffer;
     D3D9ShaderConstantsInfo   shaderConstantsInfo;
     bool                      dirty = true;
-    int32_t                  maxChangedFloadIndex = -1;
+    int32_t                  maxChangedFloatIndex = -1;
     int32_t                  maxChangedIntIndex = -1;
     int32_t                  maxChangedBoolIndex = -1;
   };

@@ -122,10 +122,10 @@ namespace dxvk {
 
     if (!useRobustConstantAccess) {
       // Disable optimized constant copies, we always have to copy all constants.
-      vsConstSet.maxChangedFloadIndex = vsConstSet.layout.floatCount;
-      vsConstSet.maxChangedIntIndex   = vsConstSet.layout.intCount;
-      vsConstSet.maxChangedBoolIndex  = vsConstSet.layout.boolCount;
-      psConstSet.maxChangedFloadIndex = psConstSet.layout.floatCount;
+      vsConstSet.maxChangedFloatIndex = int32_t(vsConstSet.layout.floatCount) - 1;
+      vsConstSet.maxChangedIntIndex   = int32_t(vsConstSet.layout.intCount) - 1;
+      vsConstSet.maxChangedBoolIndex  = int32_t(vsConstSet.layout.boolCount) - 1;
+      psConstSet.maxChangedFloatIndex = int32_t(psConstSet.layout.floatCount) - 1;
 
       if (supportsRobustness2) {
         Logger::warn("Disabling robust constant buffer access because of alignment.");
@@ -6095,7 +6095,7 @@ namespace dxvk {
     constSet.dirty = false;
 
     // If we statically know which is the last float constant accessed by the shader, we don't need to copy the rest.
-    uint32_t floatCount = uint32_t(constSet.maxChangedFloadIndex + 1);
+    uint32_t floatCount = uint32_t(constSet.maxChangedFloatIndex + 1);
     if (constSet.shaderConstantsInfo.floatsAccessedDynamically) {
       // If the shader requires us to preserve shader defined constants,
       // we copy those over. We need to adjust the amount of used floats accordingly.
@@ -6163,7 +6163,7 @@ namespace dxvk {
 
     constSet.dirty = false;
 
-    uint32_t floatCount = uint32_t(constSet.maxChangedFloadIndex + 1);
+    uint32_t floatCount = uint32_t(constSet.maxChangedFloatIndex + 1);
     if (constSet.shaderConstantsInfo.floatsAccessedDynamically) {
       // If the shader requires us to preserve shader defined constants,
       // we copy those over. We need to adjust the amount of used floats accordingly.
@@ -8193,7 +8193,7 @@ namespace dxvk {
     // Vertex shader specific validations. These validations are not
     // performed on SWVP devices or on MIXED devices, even if
     // SetSoftwareVertexProcessing(FALSE) is used to disable SWVP mode.
-    if (!CanSWVP() && key.stage() == VK_SHADER_STAGE_FRAGMENT_BIT) {
+    if (!CanSWVP() && key.stage() == VK_SHADER_STAGE_VERTEX_BIT) {
 
       // Validate the float constant value advertised in pCaps->MaxFloatConstantsVS for HWVP.
       if (unlikely(maxFloatConstantIndex > static_cast<int32_t>(caps::MaxFloatConstantsVS - 1))) {
@@ -8303,7 +8303,7 @@ namespace dxvk {
     D3D9ConstantSets& constSet = m_consts[uint32_t(ShaderType)];
 
     if constexpr (ConstantType == D3D9ConstantType::Float) {
-      constSet.maxChangedFloadIndex = std::max(constSet.maxChangedFloadIndex, int32_t(StartRegister + Count));
+      constSet.maxChangedFloatIndex = std::max(constSet.maxChangedFloatIndex, int32_t(StartRegister + Count));
     } else if constexpr (ConstantType == D3D9ConstantType::Int && ShaderType == D3D9ShaderType::VertexShader) {
       // We only track changed int constants for vertex shaders (and it's only used when the device uses the SWVP UBO layout).
       // Pixel shaders (and vertex shaders on HWVP devices) always copy all int constants into the same UBO as the float constants
@@ -8315,14 +8315,14 @@ namespace dxvk {
     }
 
     if constexpr (ConstantType != D3D9ConstantType::Bool) {
-      uint32_t maxCount = ConstantType == D3D9ConstantType::Float
+      int32_t maxIndex = (ConstantType == D3D9ConstantType::Float
         ? constSet.shaderConstantsInfo.maxFloatIndex
-        : constSet.shaderConstantsInfo.maxIntIndex;
+        : constSet.shaderConstantsInfo.maxIntIndex);
 
-      constSet.dirty |= StartRegister < maxCount;
+      constSet.dirty |= int32_t(StartRegister) <= maxIndex;
     } else if constexpr (ShaderType == D3D9ShaderType::VertexShader) {
       if (unlikely(CanSWVP())) {
-        constSet.dirty |= int32_t(StartRegister) < constSet.shaderConstantsInfo.maxBoolIndex;
+        constSet.dirty |= int32_t(StartRegister) <= constSet.shaderConstantsInfo.maxBoolIndex;
       }
     }
 

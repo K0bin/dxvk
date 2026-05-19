@@ -110,6 +110,10 @@ public:
 
   const D3D9InputSignature& GetInputSignature() const { return m_inputSignature; }
 
+  uint32_t GetFlatShadingMask() const {
+    return m_flatShadingMask;
+  }
+
 private:
 
   bool RunAnalysis(Parser& parser);
@@ -122,7 +126,7 @@ private:
 
   bool HandleDcl(const Instruction& op);
 
-  bool             m_isSWVP;
+  bool             m_isSWVP = false;
 
   uint32_t m_length = 0u;
 
@@ -137,6 +141,8 @@ private:
   D3D9SamplerMask m_usedSamplers = 0u;
 
   std::array<VkImageViewType, 16u> m_imageViewTypes = {};
+
+  uint32_t m_flatShadingMask = 0u;
 
   D3D9InputSignature m_inputSignature    = {};
 

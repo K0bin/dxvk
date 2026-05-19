@@ -2,6 +2,7 @@
 
 #include "d3d9_shader_analysis.h"
 #include "d3d9_util.h"
+#include "d3d9_fixed_function.h"
 
 #include <utility>
 
@@ -30,13 +31,13 @@ namespace dxvk {
     : m_isSWVP(other.m_isSWVP), m_length(other.m_length), m_shaderInfo(other.m_shaderInfo),
       m_constants(other.m_constants), m_immediateConstants(std::move(other.m_immediateConstants)),
       m_usedRTs(other.m_usedRTs), m_usedSamplers(other.m_usedSamplers), m_imageViewTypes(other.m_imageViewTypes),
-      m_inputSignature(std::move(other.m_inputSignature)) { }
+      m_flatShadingMask(other.m_flatShadingMask), m_inputSignature(std::move(other.m_inputSignature)) { }
 
   D3D9ShaderAnalysis::D3D9ShaderAnalysis(const D3D9ShaderAnalysis& other)
     : m_isSWVP(other.m_isSWVP), m_length(other.m_length), m_shaderInfo(other.m_shaderInfo),
       m_constants(other.m_constants), m_immediateConstants(other.m_immediateConstants), m_usedRTs(other.m_usedRTs),
       m_usedSamplers(other.m_usedSamplers), m_imageViewTypes(other.m_imageViewTypes),
-      m_inputSignature(other.m_inputSignature) { }
+      m_flatShadingMask(other.m_flatShadingMask), m_inputSignature(other.m_inputSignature) { }
 
   bool D3D9ShaderAnalysis::RunAnalysis(Parser& parser) {
     m_shaderInfo = parser.getShaderInfo();
@@ -67,12 +68,6 @@ namespace dxvk {
       const auto& src = op.getSrc(i);
       auto registerType = src.getRegisterType();
       uint32_t index = src.getIndex();
-
-      if (GetShaderInfo().getType() == ShaderType::ePixel
-        && op.hasDst()
-        && op.getDst().getRegisterType() == RegisterType::eColorOut) {
-        m_usedRTs |= 1u << op.getDst().getIndex();
-      }
 
       /* The indices start counting at 1 to differentiate between a shader
        * that doesn't access any constants at all and one that accesses the
@@ -109,6 +104,12 @@ namespace dxvk {
         int32_t(m_isSWVP ? MaxFloatConstantsSoftware : hwvpFloatConstantsCount)
       );
       m_constants.floatsAccessedDynamically = true;
+    }
+
+    if (GetShaderInfo().getType() == ShaderType::ePixel
+      && op.hasDst()
+      && op.getDst().getRegisterType() == RegisterType::eColorOut) {
+      m_usedRTs |= 1u << op.getDst().getIndex();
     }
 
     switch (op.getOpCode()) {
@@ -253,6 +254,28 @@ namespace dxvk {
       return true;
     }
 
+    if (GetShaderInfo().getType() == ShaderType::ePixel
+      && dcl.getSemanticUsage() == SemanticUsage::eColor
+      && dcl.getSemanticIndex() < 2u) {
+      Semantic semantic = { dcl.getSemanticUsage(), dcl.getSemanticIndex() };
+
+      int32_t location = -1;
+      auto ffInputs = GetFixedFunctionIsgn();
+      for (int32_t i = 0; i < int32_t(ffInputs.size()); i++) {
+        const auto& input = ffInputs[i];
+        if (input.semantic == semantic) {
+          location = i;
+          break;
+        }
+      }
+
+      if (location == -1) {
+        return false;
+      }
+
+      m_flatShadingMask |= 1u << uint32_t(location);
+    }
+
     return true;
   }
 
@@ -269,6 +292,7 @@ namespace dxvk {
     m_usedRTs = other.m_usedRTs;
     m_usedSamplers = other.m_usedSamplers;
     m_imageViewTypes = other.m_imageViewTypes;
+    m_flatShadingMask = other.m_flatShadingMask;
     m_inputSignature = other.m_inputSignature;
 
     return *this;
@@ -286,6 +310,7 @@ namespace dxvk {
     m_usedRTs = other.m_usedRTs;
     m_usedSamplers = other.m_usedSamplers;
     m_imageViewTypes = other.m_imageViewTypes;
+    m_flatShadingMask = other.m_flatShadingMask;
     m_inputSignature = std::move(other.m_inputSignature);
 
     return *this;
