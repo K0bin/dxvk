@@ -7963,8 +7963,8 @@ namespace dxvk {
           ? GetCommonShader(cVertexShader)->GetInputSignature()
           : GetFixedFunctionIsgn();
 
-        for (uint32_t i = 0; i < isgn.elemCount; i++) {
-          const auto& decl = isgn.elems[i];
+        for (uint32_t i = 0; i < isgn.size(); i++) {
+          const auto& decl = isgn[i];
 
           DxvkVertexAttribute attrib = { };
           attrib.location = i;
@@ -7973,9 +7973,9 @@ namespace dxvk {
           attrib.offset   = 0;
 
           for (const auto& element : elements) {
-            DxsoSemantic elementSemantic = { static_cast<DxsoUsage>(element.Usage), element.UsageIndex };
-            if (elementSemantic.usage == DxsoUsage::PositionT)
-              elementSemantic.usage = DxsoUsage::Position;
+            dxbc_spv::sm3::Semantic elementSemantic = { static_cast<dxbc_spv::sm3::SemanticUsage>(element.Usage), element.UsageIndex };
+            if (elementSemantic.usage == dxbc_spv::sm3::SemanticUsage::ePositionT)
+              elementSemantic.usage = dxbc_spv::sm3::SemanticUsage::ePosition;
 
             if (elementSemantic == decl.semantic) {
               attrib.binding = uint32_t(element.Stream);
@@ -8177,7 +8177,6 @@ namespace dxvk {
     moduleInfo.irCreateInfo         = {};
     moduleInfo.irCreateInfo.options = m_dxvkShaderOptions;
     moduleInfo.shaderOptions        = m_shaderOptions;
-    moduleInfo.analysisInfo = info;
 
     HRESULT hr = m_shaderModules->GetShaderModule(this,
       key, std::move(analysis), moduleInfo, pShaderBytecode, &commonShader);

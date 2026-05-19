@@ -61,7 +61,7 @@ namespace dxvk {
     moduleInfo.options.forceSampleRateShading = ModuleInfo.irCreateInfo.options.flags.test(DxvkShaderCompileFlag::EnableSampleRateShading);
     moduleInfo.options.vertexFloatConstantBufferAsSSBO = ModuleInfo.irCreateInfo.options.maxUniformBufferSize < constantLayout.totalSize();
 
-    m_shader       = module.compile(moduleInfo, ShaderKey.toString(), ModuleInfo.analysisInfo, constantLayout);
+    m_shader       = module.compile(moduleInfo, ShaderKey.toString(), module.analyze(), constantLayout);
   }
 
 
