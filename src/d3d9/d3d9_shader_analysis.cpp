@@ -103,7 +103,7 @@ namespace dxvk {
 
       m_constants.maxFloatIndex = std::max(
         m_constants.maxFloatIndex,
-        int32_t(m_isSWVP ? MaxFloatConstantsSoftware : hwvpFloatConstantsCount)
+        int32_t(m_isSWVP ? MaxFloatConstantsSoftware : hwvpFloatConstantsCount) - 1
       );
       m_constants.floatsAccessedDynamically = true;
     }
