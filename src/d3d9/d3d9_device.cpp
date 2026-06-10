@@ -8354,7 +8354,7 @@ namespace dxvk {
           // Strip modifiers from arguments
           uint32_t pureColorArg1 = data[DXVK_TSS_COLORARG1] & D3DTA_SELECTMASK;
           uint32_t pureColorArg2 = data[DXVK_TSS_COLORARG2] & D3DTA_SELECTMASK;
-          uint32_t pureColorArg0 = data[DXVK_TSS_COLORARG1] & D3DTA_SELECTMASK;
+          uint32_t pureColorArg0 = data[DXVK_TSS_COLORARG0] & D3DTA_SELECTMASK;
 
           if ((pureColorArg0 == D3DTA_TEXTURE && usesArg(data[DXVK_TSS_COLOROP], 0u))
            || (pureColorArg1 == D3DTA_TEXTURE && usesArg(data[DXVK_TSS_COLOROP], 1u))
@@ -8369,7 +8369,7 @@ namespace dxvk {
           uint32_t colorOp = data[DXVK_TSS_COLOROP];
           uint32_t colorArg1 = data[DXVK_TSS_COLORARG1];
           uint32_t colorArg2 = data[DXVK_TSS_COLORARG2];
-          uint32_t colorArg0 = data[DXVK_TSS_COLORARG1];
+          uint32_t colorArg0 = data[DXVK_TSS_COLORARG0];
           uint32_t alphaOp = data[DXVK_TSS_ALPHAOP];
           uint32_t alphaArg1 = data[DXVK_TSS_ALPHAARG1];
           uint32_t alphaArg2 = data[DXVK_TSS_ALPHAARG2];
