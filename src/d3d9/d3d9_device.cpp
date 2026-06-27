@@ -5413,10 +5413,10 @@ namespace dxvk {
     auto& desc = *pResource->Desc();
 
     if (!(desc.Usage & D3DUSAGE_DYNAMIC))
-      Flags &= ~D3DLOCK_NOOVERWRITE | D3DLOCK_DISCARD;
+      Flags &= ~(D3DLOCK_NOOVERWRITE | D3DLOCK_DISCARD);
 
     // Ignore NOOVERWRITE or READONLY if DISCARD is set
-    if (unlikely((Flags & (D3DLOCK_DISCARD | D3DLOCK_NOOVERWRITE | D3DLOCK_READONLY)) != D3DLOCK_DISCARD))
+    if (Flags & D3DLOCK_DISCARD)
       Flags &= ~(D3DLOCK_NOOVERWRITE | D3DLOCK_READONLY);
 
     // Tests show that D3D9 drivers ignore DISCARD when the device is lost.
