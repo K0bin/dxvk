@@ -119,9 +119,6 @@ namespace dxvk {
     /// Enumerate adapters by displays
     bool enumerateByDisplays;
 
-    /// Cached dynamic buffers: Maps all buffers in cached memory.
-    bool cachedWriteOnlyBuffers;
-
     /// Use device local memory for constant buffers.
     Tristate deviceLocalConstantBuffers;
 

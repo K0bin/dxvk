@@ -557,7 +557,6 @@ namespace dxvk {
       { "d3d9.supportX4R4G4B4",            "False" },
       { "d3d9.maxAvailableMemory",          "2048" },
       { "d3d9.memoryTrackTest",             "True" },
-      { "d3d9.cachedWriteOnlyBuffers",      "True" },
     }} },
     /* Dead Space                                 *
      * Uses the a NULL render target instead      *
@@ -653,12 +652,7 @@ namespace dxvk {
      * D3DUSAGE_DYNAMIC | D3DUSAGE_WRITEONLY buffer. *
      * Legend flickers with next gen content option. */
     { R"(\\(trl|tra|tru)\.exe$)", {{
-      { "d3d9.cachedWriteOnlyBuffers",      "True" },
       { "d3d9.maxFrameRate",                 "-60" },
-    }} },
-    /* Everquest                                  */
-    { R"(\\eqgame\.exe$)", {{
-      { "d3d9.cachedWriteOnlyBuffers",      "True" },
     }} },
     /* Dark Messiah of Might & Magic              */
     { R"(\\mm\.exe$)", {{
@@ -760,7 +754,6 @@ namespace dxvk {
      * Resolution change crash and cached         *
      * dynamic buffers for performance reasons    */
     { R"(\\eoa\.exe$)", {{
-      { "d3d9.cachedWriteOnlyBuffers",      "True" },
       { "d3d9.countLosableResources",      "False" },
     }} },
     /* Supreme Commander & Forged Alliance Forever */
@@ -809,16 +802,6 @@ namespace dxvk {
     { R"(\\SinEpisodes\.exe$)", {{
       { "d3d9.memoryTrackTest",             "True" },
     }} },
-    /* Hammer World Editor                        */
-    { R"(\\(hammer(plusplus)?|mallet|wc)\.exe$)", {{
-      { "d3d9.cachedWriteOnlyBuffers",      "True" },
-    }} },
-    /* Sonic & All-Stars Racing Transformed       *
-     * Helps performance when Resizable BAR       *
-     * is enabled                                 */
-    { R"(\\ASN_App_PcDx9_Final\.exe$)", {{
-      { "d3d9.cachedWriteOnlyBuffers",      "True" },
-    }} },
     /* Final Fantasy XIV - Direct3D 9 mode        *
      * Can crash with unmapping                   */
     { R"(\\ffxiv\.exe$)", {{
@@ -841,7 +824,6 @@ namespace dxvk {
      * and CPU bound performance                  */
     { R"(\\(PANZERS|PANZERS_Phase_2)\.exe$)", {{
       { "d3d9.deferSurfaceCreation",        "True" },
-      { "d3d9.cachedWriteOnlyBuffers",      "True" },
     }} },
     /* DC Universe Online                         *
      * Freezes after alt tabbing                  */
@@ -875,10 +857,6 @@ namespace dxvk {
     /* Age of Empires 2 - janky frame timing      */
     { R"(\\AoK HD\.exe$)", {{
       { "d3d9.maxFrameLatency",                "1" },
-    }} },
-    /* Battlestations Midway                      */
-    { R"(\\Battlestationsmidway\.exe$)", {{
-      { "d3d9.cachedWriteOnlyBuffers",      "True" },
     }} },
     /* Assassin's Creed 2                         *
      * Helps alt tab crash on Linux               */
@@ -914,10 +892,6 @@ namespace dxvk {
     { R"(\\ninthdawnii\.exe$)", {{
       { "d3d9.deferSurfaceCreation",        "True" },
     }} },
-    /* Delta Force: Xtreme 1 & 2 - Performance    */
-    { R"(\\(DFX|dfx2)\.exe$)", {{
-      { "d3d9.cachedWriteOnlyBuffers",      "True" },
-    }} },
     /* Prototype                                  *
      * Incorrect shadows on AMD & Intel.          *
      * AA 4x can not be selected above 2GB vram   */
@@ -938,17 +912,6 @@ namespace dxvk {
       { "d3d9.floatEmulation",            "Strict" },
       { "d3d9.hideNvidiaGpu",               "True" },
     }} },
-    /* Dungeons and Dragons: Dragonshard          *
-     * Massive FPS decreases in some scenes       */
-    { R"(\\Dragonshard\.exe$)", {{
-      { "d3d9.cachedWriteOnlyBuffers",      "True" },
-    }} },
-    /* Battle for Middle-earth 2 and expansion    *
-     * Slowdowns in certain scenarios             */
-    { R"(\\(The Battle for Middle-earth( \(tm\))? II( Demo)?)"
-      R"(|The Lord of the Rings, The Rise of the Witch-king)\\game\.dat$)", {{
-      { "d3d9.cachedWriteOnlyBuffers",      "True" },
-    }} },
     /* WRC4 - Audio breaks above 60fps            */
     { R"(\\WRC4\.exe$)", {{
       { "d3d9.maxFrameRate",                 "-60" },
@@ -964,15 +927,6 @@ namespace dxvk {
     { R"(\\RaccoonCity\.exe$)", {{
       { "d3d9.textureMemory",                  "0" },
     }} },
-    /* APB: Reloaded                              *
-     * Fixes frametime jumps when shooting        */
-    { R"(\\APB\.exe$)", {{
-      { "d3d9.cachedWriteOnlyBuffers",      "True" },
-    }} },
-    /* Battle Mages - helps CPU bound perf        */
-    { R"(\\Battle Mages\\mages\.exe$)", {{
-      { "d3d9.cachedWriteOnlyBuffers",      "True" },
-    }} },
     /* Prince of Persia (2008) - Can get stuck    *
      * during loading at very high fps            */
     { R"(\\Prince( of Persia|OfPersia_Launcher)\.exe$)", {{
@@ -987,12 +941,6 @@ namespace dxvk {
      * 512MB vram locking higher graphics presets */
     { R"(\\SecretWorldLegends\.exe$)", {{
       { "d3d9.memoryTrackTest",             "True" },
-    }} },
-    /* Far Cry 2:                                 *
-     * Set cached dynamic buffers to True to      *
-     * improve perf on all hardware.              */
-    { R"(\\(FarCry2|farcry2game)\.exe$)", {{
-      { "d3d9.cachedWriteOnlyBuffers",      "True" },
     }} },
     /* Dark Sector - Crashes in places            */
     { R"(\\DS\.exe$)", {{
@@ -1029,16 +977,6 @@ namespace dxvk {
      * GetFrontBufferData().                      */
     { R"(\\sh2pc\.exe$)", {{
       { "d3d9.extraFrontbuffer",            "True" },
-    }} },
-    /* Lego Indiana Jones: The Original Adventures *
-     * Fix UI performance                          */
-    { R"(\\LEGOIndy\.exe$)", {{
-      { "d3d9.cachedWriteOnlyBuffers",      "True" },
-    }} },
-    /* Lego Batman: The Videogame                 *
-     * Fix UI performance                         */
-    { R"((\\LEGOBatman|LegoBatman\\Game)\.exe$)", {{
-      { "d3d9.cachedWriteOnlyBuffers",      "True" },
     }} },
     /* Thumper - Fixes missing track              */
     { R"(\\THUMPER_dx9\.exe$)", {{
@@ -1202,10 +1140,6 @@ namespace dxvk {
       { "d3d9.maxAvailableMemory",          "1024" },
       { "d3d8.batching",                    "True" },
     }} },
-    /* Need for Speed: Hot Pursuit 2              */
-    { R"(\\NFSHP2\.exe$)", {{
-      { "d3d9.cachedWriteOnlyBuffers",      "True" },
-    }} },
     /* Project I.G.I. 2: Covert Strike            *
      * Very stuttery frametime with own framecap  */
     { R"(\\igi2\.exe$)", {{
@@ -1240,14 +1174,6 @@ namespace dxvk {
     { R"(\\Alexander\\Data\\engine\.exe$)", {{
       { "d3d9.maxFrameRate",                 "-60" },
     }} },
-    /* Delta Force: Black Hawk Down               */
-    { R"(\\dfbhd\.exe$)", {{
-      { "d3d9.cachedWriteOnlyBuffers",      "True" },
-    }} },
-    /* X2: The Threat                             */
-    { R"(\\X2\.exe$)", {{
-      { "d3d9.cachedWriteOnlyBuffers",      "True" },
-    }} },
     /* The Lord of the Rings:                     *
      * The Fellowship of the Ring                 */
     { R"(\\Fellowship\.exe$)", {{
@@ -1258,14 +1184,6 @@ namespace dxvk {
      * Leaks a resource when alt-tabbing          */
     { R"(\\Inquisitor\.exe$)", {{
       { "d3d9.countLosableResources",      "False" },
-    }} },
-    /* Art of Murder FBI Confidential - CPU perf  */
-    { R"(\\Art of Murder - FBI Confidential\\game\.exe$)", {{
-      { "d3d9.cachedWriteOnlyBuffers",      "True" },
-    }} },
-    /* FIFA Football 2003                         */
-    { R"(\\fifa2003(demo)?\.exe$)", {{
-      { "d3d9.cachedWriteOnlyBuffers",      "True" },
     }} },
     /* Splinter Cell: Pandora Tomorrow (Retail)   *
      * Missing shadows without dref scaling and   *
@@ -1324,7 +1242,6 @@ namespace dxvk {
     { R"(\\GTR (- FIA GT Rac(e)?ing Game|Demo)\\(GTR(Demo)?|(3D)?Config)\.exe$)", {{
       { "d3d9.maxAvailableMemory",          "1024" },
       { "d3d9.memoryTrackTest",             "True" },
-      { "d3d9.cachedWriteOnlyBuffers",      "True" },
     }} },
     /* Comanche 4 - Only enables the FSAA option  *
      * if it detects a device ID of 0x025x.       */

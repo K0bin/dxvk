@@ -119,10 +119,7 @@ namespace dxvk {
       memoryFlags |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
                   |  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
-      if ((m_desc.Usage & D3DUSAGE_WRITEONLY) == 0
-        || m_parent->GetOptions()->cachedWriteOnlyBuffers) {
-        // Never use uncached memory on devices that support SWVP because we might end up reading from it.
-
+      if (!(m_desc.Usage & D3DUSAGE_WRITEONLY)) {
         info.access |= VK_ACCESS_HOST_READ_BIT;
         memoryFlags |= VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
       } else {
