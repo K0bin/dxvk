@@ -1039,11 +1039,6 @@ namespace dxvk {
     { R"(\\Alone\.exe$)", {{
       { "d3d9.memoryTrackTest",             "True" },
     }} },
-    /* Scarface - Rendering issues when the       *
-     * D3DLOCK_DISCARD flag is respected          */
-    { R"(\\Scarface\.exe$)", {{
-      { "d3d9.allowDiscard",               "False" },
-    }} },
     /* Heroes of Annihilated Empires              *
      * Cursor and other animations play back too  *
      * fast without a frame cap in place.         */
