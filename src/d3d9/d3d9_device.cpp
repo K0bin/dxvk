@@ -711,7 +711,8 @@ namespace dxvk {
     // unless they are dynamic textures. Volume textures do not
     // exempt private, FOURCC, driver formats from these checks.
     desc.IsLockable         = Pool != D3DPOOL_DEFAULT
-                            || (Usage & D3DUSAGE_DYNAMIC);
+                            || (Usage & D3DUSAGE_DYNAMIC)
+                            || IsVendorFormat(EnumerateFormat(Format));
 
     HRESULT hr = D3D9CommonTexture::NormalizeTextureProperties(this, D3DRTYPE_VOLUMETEXTURE, &desc);
     if (FAILED(hr))
@@ -1161,7 +1162,6 @@ namespace dxvk {
                        || dstTexExtent.width > srcTexExtent.width
                        || dstTexExtent.height > srcTexExtent.height;
 
-    dstTexInfo->CreateBuffer(clearDst, dstTexInfo->GetTotalSize());
     DxvkBufferSlice dstBufferSlice      = dstTexInfo->GetBufferSlice(dst->GetSubresource());
     Rc<DxvkImage> srcImage              = srcTexInfo->GetImage();
     const DxvkFormatInfo* srcFormatInfo = lookupFormatInfo(srcImage->info().format);

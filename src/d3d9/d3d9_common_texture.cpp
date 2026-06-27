@@ -598,7 +598,8 @@ namespace dxvk {
   }
 
   D3D9_COMMON_TEXTURE_MAP_MODE D3D9CommonTexture::DetermineMapMode() const {
-    if (m_desc.Format == D3D9Format::NULL_FORMAT)
+    if (m_desc.Format == D3D9Format::NULL_FORMAT
+      || !m_desc.IsLockable)
       return D3D9_COMMON_TEXTURE_MAP_MODE_NONE;
 
 #ifdef D3D9_ALLOW_UNMAPPING
