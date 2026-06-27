@@ -3705,6 +3705,9 @@ namespace dxvk {
         if (commonBuffer->DoPerDrawUpload())
           m_vbSlotTracking.uploadPerDraw |= bit;
 
+        if (commonBuffer->NeedsUpload())
+          m_vbSlotTracking.needsUpload |= bit;
+
         vbo.vertexBuffer = buffer;
         vbo.length = commonBuffer->Desc()->Size;
         vbo.offset = OffsetInBytes;
