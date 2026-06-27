@@ -3014,6 +3014,9 @@ namespace dxvk {
     if (unlikely(!PrimitiveCount))
       return D3D_OK;
 
+    if (hasWaits)
+      Logger::warn("DrawPrimitive");
+
     PrepareDraw(PrimitiveType);
 
     // Tests on Windows show that D3D9 does not do non-indexed instanced draws.
@@ -3056,6 +3059,9 @@ namespace dxvk {
 
     if (unlikely(!PrimitiveCount || !NumVertices))
       return D3D_OK;
+
+    if (hasWaits)
+      Logger::warn("DrawPrimitive");
 
     PrepareDraw(PrimitiveType);
 
@@ -4189,6 +4195,11 @@ namespace dxvk {
     const RGNDATA* pDirtyRegion,
           DWORD dwFlags) {
 
+    if (hasWaits) {
+      Logger::warn("FrameEnd");
+      hasWaits = false;
+    }
+
     if (m_cursor.IsSoftwareCursor()) {
       D3D9_SOFTWARE_CURSOR* pSoftwareCursor = m_cursor.GetSoftwareCursor();
 
@@ -4861,6 +4872,8 @@ namespace dxvk {
 
         m_dxvkDevice->waitForResource(Resource, access);
       }
+    } else {
+      return false;
     }
 
     return true;
@@ -5407,8 +5420,12 @@ namespace dxvk {
           DWORD                   Flags) {
     D3D9DeviceLock lock = LockDevice();
 
+    DWORD originalFlags = Flags;
+
     if (unlikely(ppbData == nullptr))
       return D3DERR_INVALIDCALL;
+
+    Logger::warn(str::format("Locking buffer: ", reinterpret_cast<size_t>(pResource), " Flags: ", originalFlags, " buffer pool: ", pResource->Desc()->Pool, " buffer usage: ", pResource->Desc()->Usage, " offset: ", OffsetToLock, " size: ", SizeToLock, " buffer size: ", pResource->Desc()->Size));
 
     auto& desc = *pResource->Desc();
 
@@ -5426,6 +5443,9 @@ namespace dxvk {
     // Ignore readonly if the buffer is writeonly. This is UB according to the documentation.
     if ((Flags & D3DLOCK_READONLY) && (desc.Usage & D3DUSAGE_WRITEONLY))
       Flags &= ~D3DLOCK_READONLY;
+
+    if (false && SizeToLock == 0 && !(Flags & D3DLOCK_NOOVERWRITE) && pResource->Desc()->Pool == D3DPOOL_SYSTEMMEM && pResource->Desc()->Usage == D3DUSAGE_DYNAMIC)
+      Flags |= D3DLOCK_DISCARD;
 
     uint32_t size   = std::min(SizeToLock, desc.Size - OffsetToLock);
     D3D9Range lockRange = D3D9Range(OffsetToLock, OffsetToLock + size);
@@ -5486,12 +5506,18 @@ namespace dxvk {
       const bool directMapping = pResource->GetMapMode() == D3D9_COMMON_BUFFER_MAP_MODE_DIRECT;
 
       // If we're not directly mapped, we can rely on needsReadback to tell us if a sync is required.
-      const bool skipWait = (!needsReadback && (readOnly || !directMapping)) || noOverwrite;
+      const bool skipWait = !needsReadback && (readOnly || !directMapping || noOverwrite);
 
       if (!skipWait) {
         const Rc<DxvkBuffer> mappingBuffer = pResource->GetBuffer<D3D9_COMMON_BUFFER_TYPE_MAPPING>();
-        if (!WaitForResource(*mappingBuffer, pResource->GetMappingBufferSequenceNumber(), Flags))
-          return D3DERR_WASSTILLDRAWING;
+        if (!WaitForResource(*mappingBuffer, pResource->GetMappingBufferSequenceNumber(), Flags)) {
+          if (Flags & D3DLOCK_DONOTWAIT)
+            return D3DERR_WASSTILLDRAWING;
+
+          hasWaits = true;
+          //Logger::warn(str::format("Waiting for resource: buffer: ", reinterpret_cast<size_t>(pResource), " Flags: ", originalFlags, " buffer pool: ", pResource->Desc()->Pool, " buffer usage: ", pResource->Desc()->Usage, " offset: ", OffsetToLock, " size: ", SizeToLock, " buffer size: ", pResource->Desc()->Size));
+          Logger::warn("Wait");
+        }
 
         pResource->SetNeedsReadback(false);
       }

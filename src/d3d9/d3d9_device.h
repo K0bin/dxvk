@@ -1609,6 +1609,8 @@ namespace dxvk {
     bool                            m_isD3D8Compatible;
     bool                            m_ffZTest          = false;
 
+    bool hasWaits = false;
+
     // the enablement of below features is tracked independently
     // of render states both due to complexity and to avoid
     // incurring overhead on all render state changes
