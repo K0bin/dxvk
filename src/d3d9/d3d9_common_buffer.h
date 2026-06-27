@@ -91,7 +91,7 @@ namespace dxvk {
     /**
     * \brief Determine the mapping mode of the buffer, (ie. direct mapping or backed)
     */
-    D3D9_COMMON_BUFFER_MAP_MODE DetermineMapMode(const D3D9Options* options) const;
+    D3D9_COMMON_BUFFER_MAP_MODE DetermineMapMode() const;
 
     /**
     * \brief Get the mapping mode of the buffer, (ie. direct mapping or backed)
@@ -142,9 +142,6 @@ namespace dxvk {
       return m_allocation;
     }
 
-    inline DWORD GetMapFlags() const      { return m_mapFlags; }
-    inline void SetMapFlags(DWORD Flags)  { m_mapFlags = Flags; }
-
     inline const D3D9_BUFFER_DESC* Desc() const { return &m_desc; }
 
     static HRESULT ValidateBufferProperties(const D3D9_BUFFER_DESC* pDesc, const bool IsExtended);
@@ -176,7 +173,7 @@ namespace dxvk {
     /**
      * \brief Whether or not the staging buffer needs to be copied to the actual buffer
      */
-    inline bool NeedsUpload() const { return (m_desc.Pool != D3DPOOL_DEFAULT || m_uploadAtDraw) && m_mapMode != D3D9_COMMON_BUFFER_MAP_MODE_DIRECT && !m_dirtyRange.IsDegenerate(); }
+    inline bool NeedsUpload() const { return (m_desc.Pool == D3DPOOL_MANAGED) && m_mapMode != D3D9_COMMON_BUFFER_MAP_MODE_DIRECT && !m_dirtyRange.IsDegenerate(); }
 
     void PreLoad();
 
@@ -206,10 +203,6 @@ namespace dxvk {
         : DxvkCsThread::SynchronizeAll;
     }
 
-    bool DoPerDrawUpload() const {
-      return m_desc.Pool == D3DPOOL_SYSTEMMEM && (m_desc.Usage & D3DUSAGE_DYNAMIC) != 0;
-    }
-
   private:
 
     Rc<DxvkBuffer> CreateBuffer() const;
@@ -229,10 +222,8 @@ namespace dxvk {
 
     D3D9DeviceEx*               m_parent;
     const D3D9_BUFFER_DESC      m_desc;
-    DWORD                       m_mapFlags = 0;
     bool                        m_needsReadback = false;
     D3D9_COMMON_BUFFER_MAP_MODE m_mapMode;
-    bool                        m_uploadAtDraw = false;
 
     Rc<DxvkBuffer>              m_buffer;
     Rc<DxvkBuffer>              m_stagingBuffer;

@@ -601,7 +601,6 @@ namespace dxvk {
        Also writes to buffer after unlocking it. */
     { R"(\\csgo\.exe$)", {{
       { "d3d9.hideNvidiaGpu",               "True" },
-      { "d3d9.forceDrawTimeBufferUpload",   "True" },
     }} },
     /* Vampire - The Masquerade Bloodlines        */
     { R"(\\vampire\.exe$)", {{
@@ -848,17 +847,6 @@ namespace dxvk {
      * Freezes after alt tabbing                  */
     { R"(\\DCGAME\.EXE$)", {{
       { "d3d9.deviceLossOnFocusLoss",       "True" },
-    }} },
-    /* Halo Online                                *
-     * Black textures                             */
-    { R"(\\eldorado\.exe$)", {{
-      { "d3d9.floatEmulation",            "Strict" },
-      { "d3d9.allowDirectBufferMapping",   "False" },
-    }} },
-    /* Injustice: Gods Among Us                   *
-     * Locks a buffer that's still in use         */
-    { R"(\\injustice\.exe$)", {{
-      { "d3d9.allowDirectBufferMapping",   "False" },
     }} },
     /* STEINS;GATE ELITE                          */
     { R"(\\SG_ELITE\\Game\.exe$)", {{
@@ -1160,11 +1148,6 @@ namespace dxvk {
     { R"(\\W40k(_gog)?\.exe$)", {{
       { "dxvk.zeroMappedMemory",            "True" },
     }} },
-    /* Insurgency
-       Writes to buffer after unlocking it. */
-    { R"(\\insurgency\.exe$)", {{
-      { "d3d9.forceDrawTimeBufferUpload",   "True" },
-    }} },
     /* SimCity Societies: Destinations            *
      * Needs depth format cube texture support    *
      * in order to start up properly              */
@@ -1257,12 +1240,6 @@ namespace dxvk {
     { R"(\\Alexander\\Data\\engine\.exe$)", {{
       { "d3d9.maxFrameRate",                 "-60" },
     }} },
-    /* 3DMark2001 (SE)                            *
-     * Fixes a drastic performance drop in the    *
-     * "Car Chase - High Detail" benchmark        */
-    { R"(\\3DMark2001(SE)?\.exe$)", {{
-      { "d3d9.allowDirectBufferMapping",   "False" },
-    }} },
     /* Delta Force: Black Hawk Down               */
     { R"(\\dfbhd\.exe$)", {{
       { "d3d9.cachedWriteOnlyBuffers",      "True" },
@@ -1285,10 +1262,6 @@ namespace dxvk {
     /* Art of Murder FBI Confidential - CPU perf  */
     { R"(\\Art of Murder - FBI Confidential\\game\.exe$)", {{
       { "d3d9.cachedWriteOnlyBuffers",      "True" },
-    }} },
-    /* Max Payne 1 - Stalls waiting for an index buffer */
-    { R"(\\MaxPayne\.exe$)", {{
-      { "d3d9.allowDirectBufferMapping",   "False" },
     }} },
     /* FIFA Football 2003                         */
     { R"(\\fifa2003(demo)?\.exe$)", {{
@@ -1370,16 +1343,6 @@ namespace dxvk {
      * legacy DISCARD behavior                    */
     { R"(\\TopSpin\.exe$)", {{
       { "d3d8.forceLegacyDiscard",          "True" },
-    }} },
-    /* Lego Racers 2 - Hits an incredible amount  *
-     * of queue syncs with direct buffer mapping  */
-    { R"(\\LEGO Racers 2\.exe$)", {{
-      { "d3d9.allowDirectBufferMapping",   "False" },
-    }} },
-    /* Smash Up Derby - Poor performance on Intel *
-     * due to queue syncs on certain race tracks  */
-    { R"(\\Smash up Derby\\cars\.exe$)", {{
-      { "d3d9.allowDirectBufferMapping",   "False" },
     }} },
     /* Age of Pirates: Caribbean Tales            *
      * Crashes due to a texture UAF otherwise     */

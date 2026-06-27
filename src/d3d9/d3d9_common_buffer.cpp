@@ -9,7 +9,7 @@ namespace dxvk {
           D3D9DeviceEx*      pDevice,
     const D3D9_BUFFER_DESC*  pDesc)
     : m_parent ( pDevice ), m_desc ( *pDesc ),
-      m_mapMode(DetermineMapMode(pDevice->GetOptions())) {
+      m_mapMode(DetermineMapMode()) {
     m_buffer = CreateBuffer();
     if (m_mapMode == D3D9_COMMON_BUFFER_MAP_MODE_BUFFER)
       m_stagingBuffer = CreateStagingBuffer();
@@ -18,8 +18,6 @@ namespace dxvk {
 
     if (m_desc.Pool != D3DPOOL_DEFAULT)
       m_dirtyRange = D3D9Range(0, m_desc.Size);
-
-    m_uploadAtDraw = m_parent->GetOptions()->forceDrawTimeBufferUpload;
   }
 
   D3D9CommonBuffer::~D3D9CommonBuffer() {
@@ -80,17 +78,11 @@ namespace dxvk {
   }
 
   
-  D3D9_COMMON_BUFFER_MAP_MODE D3D9CommonBuffer::DetermineMapMode(const D3D9Options* options) const {
-    if (m_desc.Pool != D3DPOOL_DEFAULT)
-      return D3D9_COMMON_BUFFER_MAP_MODE_BUFFER;
+  D3D9_COMMON_BUFFER_MAP_MODE D3D9CommonBuffer::DetermineMapMode() const {
+    if ((m_desc.Usage & D3DUSAGE_DYNAMIC) || m_desc.Pool == D3DPOOL_SYSTEMMEM)
+      return D3D9_COMMON_BUFFER_MAP_MODE_DIRECT;
 
-    if (!(m_desc.Usage & D3DUSAGE_DYNAMIC))
-      return D3D9_COMMON_BUFFER_MAP_MODE_BUFFER;
-
-    if (!options->allowDirectBufferMapping)
-      return D3D9_COMMON_BUFFER_MAP_MODE_BUFFER;
-
-    return D3D9_COMMON_BUFFER_MAP_MODE_DIRECT;
+    return D3D9_COMMON_BUFFER_MAP_MODE_BUFFER;
   }
 
 
@@ -128,8 +120,6 @@ namespace dxvk {
                   |  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
       if ((m_desc.Usage & D3DUSAGE_WRITEONLY) == 0
-        || DoPerDrawUpload()
-        || m_parent->CanOnlySWVP()
         || m_parent->GetOptions()->cachedWriteOnlyBuffers) {
         // Never use uncached memory on devices that support SWVP because we might end up reading from it.
 
