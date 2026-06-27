@@ -203,6 +203,9 @@ namespace dxvk {
     /** Whether the vertex buffer at each slot needs to be uploaded at draw time */
     uint16_t needsUpload = 0;
 
+    /** Whether the vertex buffer for each slot gets copied at draw time to act like DrawUP */
+    uint16_t uploadPerDraw = 0;
+
     /** Whether instancing is enabled for each slot */
     uint16_t instanced = 0;
   };
@@ -897,6 +900,23 @@ namespace dxvk {
     HRESULT UnlockBuffer(
             D3D9CommonBuffer*       pResource);
 
+    /**
+     * @brief Uploads data from D3DPOOL_SYSMEM + D3DUSAGE_DYNAMIC buffers and binds the temporary buffers.
+     *
+     * @param FirstVertexIndex The first vertex
+     * @param NumVertices The number of vertices that are accessed. If this is 0, the vertex buffer binding will not be modified.
+     * @param FirstIndex The first index
+     * @param NumIndices The number of indices that will be drawn. If this is 0, the index buffer binding will not be modified.
+     */
+    void UploadPerDrawData(
+            UINT&                   FirstVertexIndex,
+            UINT                    NumVertices,
+            UINT&                   FirstIndex,
+            UINT                    NumIndices,
+            INT&                    BaseVertexIndex,
+            bool*                   pDynamicVBOs,
+            bool*                   pDynamicIBO);
+
     void SetupFPU();
 
     int64_t DetermineInitialTextureMemory();
@@ -1009,7 +1029,7 @@ namespace dxvk {
 
     uint32_t GetInstanceCount() const;
 
-    void PrepareDraw(D3DPRIMITIVETYPE PrimitiveType);
+    void PrepareDraw(D3DPRIMITIVETYPE PrimitiveType, bool UploadVBOs, bool UploadIBOs);
 
     void EnsureSamplerLimit();
 

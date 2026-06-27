@@ -119,7 +119,7 @@ namespace dxvk {
       memoryFlags |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
                   |  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
-      if (!(m_desc.Usage & D3DUSAGE_WRITEONLY)) {
+      if (!(m_desc.Usage & D3DUSAGE_WRITEONLY) || DoPerDrawUpload()) {
         info.access |= VK_ACCESS_HOST_READ_BIT;
         memoryFlags |= VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
       } else {
