@@ -5481,11 +5481,12 @@ namespace dxvk {
       }
     }
 
+    const bool perDrawUpload = pResource->DoPerDrawUpload();
     const bool needsReadback = pResource->NeedsReadback();
 
     uint8_t* data = nullptr;
 
-    if ((Flags & D3DLOCK_DISCARD) && (directMapping || needsReadback)) {
+    if ((Flags & D3DLOCK_DISCARD) && (directMapping || needsReadback) && !perDrawUpload)) {
       // If we're not directly mapped and don't need readback,
       // the buffer is not currently getting used anyway
       // so there's no reason to waste memory by discarding.
@@ -5523,7 +5524,7 @@ namespace dxvk {
       const bool directMapping = pResource->GetMapMode() == D3D9_COMMON_BUFFER_MAP_MODE_DIRECT;
 
       // If we're not directly mapped, we can rely on needsReadback to tell us if a sync is required.
-      const bool skipWait = (!needsReadback && (readOnly || !directMapping)) || noOverwrite;
+      const bool skipWait = (!needsReadback && (readOnly || !directMapping)) || noOverwrite || perDrawUpload;
 
       if (!skipWait) {
         const Rc<DxvkBuffer> mappingBuffer = pResource->GetBuffer<D3D9_COMMON_BUFFER_TYPE_MAPPING>();
