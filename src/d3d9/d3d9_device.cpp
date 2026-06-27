@@ -5629,7 +5629,7 @@ namespace dxvk {
     bool dynamicSysmemVBOs = usedBuffersMask == m_vbSlotTracking.uploadPerDraw;
 
     D3D9CommonBuffer* ibo = GetCommonBuffer(m_state.indices);
-    bool dynamicSysmemIBO = NumIndices != 0 && ibo != nullptr && (ibo->DoPerDrawUpload() || CanOnlySWVP());
+    bool dynamicSysmemIBO = NumIndices != 0 && ibo != nullptr && ibo->DoPerDrawUpload();
 
     *pDynamicVBOs = dynamicSysmemVBOs;
 
