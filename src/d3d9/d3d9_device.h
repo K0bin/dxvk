@@ -803,7 +803,7 @@ namespace dxvk {
     /**
      * \brief Returns whether the Vulkan device supports the required features for ProcessVertices
      */
-    bool SupportsSWVP();
+    bool SupportsProcessVertices();
 
     bool SupportsVCacheQuery() const;
 

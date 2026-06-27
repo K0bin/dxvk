@@ -100,7 +100,9 @@ namespace dxvk {
       info.stages |= VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
       info.access |= VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
 
-      if (m_parent->SupportsSWVP()) {
+      // D3DUSAGE_SOFTWAREPROCESSING is necessary for mixed devices and hardware processing devices don't support it at all
+      if (m_parent->SupportsProcessVertices()
+        && m_parent->CanSWVP() && (m_parent->CanOnlySWVP() || (m_desc.Usage & D3DUSAGE_SOFTWAREPROCESSING))) {
         info.usage  |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
         info.stages |= VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT;
         info.access |= VK_ACCESS_SHADER_WRITE_BIT;

@@ -3243,6 +3243,9 @@ namespace dxvk {
           DWORD                        Flags) {
     D3D9DeviceLock lock = LockDevice();
 
+    if (unlikely(!CanSWVP()))
+      return D3DERR_INVALIDCALL;
+
     if (unlikely(pDestBuffer == nullptr))
       return D3DERR_INVALIDCALL;
 
@@ -3255,7 +3258,7 @@ namespace dxvk {
         return D3DERR_INVALIDCALL;
     }
 
-    if (!SupportsSWVP()) {
+    if (!SupportsProcessVertices()) {
       static bool s_errorShown = false;
 
       if (!std::exchange(s_errorShown, true))
@@ -4716,7 +4719,7 @@ namespace dxvk {
   }
 
 
-  bool D3D9DeviceEx::SupportsSWVP() {
+  bool D3D9DeviceEx::SupportsProcessVertices() {
     return m_dxvkDevice->features().core.features.vertexPipelineStoresAndAtomics;
   }
 
