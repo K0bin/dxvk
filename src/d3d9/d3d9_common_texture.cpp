@@ -602,13 +602,13 @@ namespace dxvk {
       || !m_desc.IsLockable)
       return D3D9_COMMON_TEXTURE_MAP_MODE_NONE;
 
-#ifdef D3D9_ALLOW_UNMAPPING
-    if (m_device->GetOptions()->textureMemory != 0 && m_desc.Pool != D3DPOOL_DEFAULT)
-      return D3D9_COMMON_TEXTURE_MAP_MODE_UNMAPPABLE;
-#endif
-
     if (m_desc.Pool == D3DPOOL_SYSTEMMEM || m_desc.Pool == D3DPOOL_SCRATCH)
       return D3D9_COMMON_TEXTURE_MAP_MODE_SYSTEMMEM;
+
+#ifdef D3D9_ALLOW_UNMAPPING
+    if (m_device->GetOptions()->textureMemory != 0 && m_desc.Pool == D3DPOOL_MANAGED)
+      return D3D9_COMMON_TEXTURE_MAP_MODE_UNMAPPABLE;
+#endif
 
     return D3D9_COMMON_TEXTURE_MAP_MODE_BACKED;
   }

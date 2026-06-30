@@ -4952,6 +4952,9 @@ namespace dxvk {
 
     auto& desc = *(pResource->Desc());
 
+    if (unlikely(!desc.IsLockable))
+      return D3DERR_INVALIDCALL;
+
     if (!(desc.Usage & D3DUSAGE_DYNAMIC))
       Flags &= ~(D3DLOCK_NOOVERWRITE | D3DLOCK_DISCARD);
 
@@ -4959,18 +4962,15 @@ namespace dxvk {
                && desc.Pool == D3DPOOL_DEFAULT))
       return D3DERR_INVALIDCALL;
 
-    if (!desc.IsAttachmentOnly)
-      Flags &= ~D3DLOCK_DONOTWAIT;
-
-    if (Flags & D3DLOCK_DISCARD)
-      Flags &= ~D3DLOCK_NOOVERWRITE;
-
     // Tests show that D3D9 drivers ignore DISCARD when the device is lost.
     if (unlikely(m_deviceLostState != D3D9DeviceLostState::Ok))
       Flags &= ~D3DLOCK_DISCARD;
 
-    if (unlikely(!desc.IsLockable))
-      return D3DERR_INVALIDCALL;
+    if (!desc.IsAttachmentOnly)
+      Flags &= ~D3DLOCK_DONOTWAIT;
+
+    if (Flags & D3DLOCK_DISCARD)
+      Flags &= ~(D3DLOCK_NOOVERWRITE | D3DLOCK_READONLY);
 
     if (unlikely(pBox != nullptr)) {
       D3DRESOURCETYPE type = pResource->GetType();
