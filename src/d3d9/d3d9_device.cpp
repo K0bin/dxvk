@@ -4952,16 +4952,18 @@ namespace dxvk {
 
     auto& desc = *(pResource->Desc());
 
+    if (!(desc.Usage & D3DUSAGE_DYNAMIC))
+      Flags &= ~(D3DLOCK_NOOVERWRITE | D3DLOCK_DISCARD);
+
     if (unlikely((Flags & (D3DLOCK_DISCARD | D3DLOCK_READONLY)) == (D3DLOCK_DISCARD | D3DLOCK_READONLY)
                && desc.Pool == D3DPOOL_DEFAULT))
       return D3DERR_INVALIDCALL;
 
-    // We only ever wait for textures that were used with GetRenderTargetData or GetFrontBufferData anyway.
-    // Games like Beyond Good and Evil break if this doesn't succeed.
-    Flags &= ~D3DLOCK_DONOTWAIT;
+    if (!desc.IsAttachmentOnly)
+      Flags &= ~D3DLOCK_DONOTWAIT;
 
-    if (unlikely((Flags & (D3DLOCK_DISCARD | D3DLOCK_NOOVERWRITE)) == (D3DLOCK_DISCARD | D3DLOCK_NOOVERWRITE)))
-      Flags &= ~D3DLOCK_DISCARD;
+    if (Flags & D3DLOCK_DISCARD)
+      Flags &= ~D3DLOCK_NOOVERWRITE;
 
     // Tests show that D3D9 drivers ignore DISCARD when the device is lost.
     if (unlikely(m_deviceLostState != D3D9DeviceLostState::Ok))
