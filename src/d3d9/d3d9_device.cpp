@@ -5452,16 +5452,16 @@ namespace dxvk {
     if (!(desc.Usage & D3DUSAGE_DYNAMIC))
       Flags &= ~(D3DLOCK_NOOVERWRITE | D3DLOCK_DISCARD);
 
-    // Ignore NOOVERWRITE or READONLY if DISCARD is set
-    if (Flags & D3DLOCK_DISCARD)
-      Flags &= ~(D3DLOCK_NOOVERWRITE | D3DLOCK_READONLY);
-
     // Tests show that D3D9 drivers ignore DISCARD when the device is lost.
     if (unlikely(m_deviceLostState != D3D9DeviceLostState::Ok))
       Flags &= ~D3DLOCK_DISCARD;
 
-    // Ignore readonly if the buffer is writeonly. This is UB according to the documentation.
-    if ((Flags & D3DLOCK_READONLY) && (desc.Usage & D3DUSAGE_WRITEONLY))
+    // Ignore NOOVERWRITE or READONLY if DISCARD is set
+    if (Flags & D3DLOCK_DISCARD)
+      Flags &= ~(D3DLOCK_NOOVERWRITE | D3DLOCK_READONLY);
+
+    // Ignore READONLY if the buffer is WRITEONLY. This is UB according to the documentation.
+    if (desc.Usage & D3DUSAGE_WRITEONLY)
       Flags &= ~D3DLOCK_READONLY;
 
     // DONOTWAIT can only used with textures

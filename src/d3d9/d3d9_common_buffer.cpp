@@ -79,7 +79,9 @@ namespace dxvk {
 
   
   D3D9_COMMON_BUFFER_MAP_MODE D3D9CommonBuffer::DetermineMapMode() const {
-    if ((m_desc.Usage & D3DUSAGE_DYNAMIC) || m_desc.Pool == D3DPOOL_SYSTEMMEM)
+    if ((m_desc.Usage & D3DUSAGE_DYNAMIC)
+      || m_desc.Pool == D3DPOOL_SYSTEMMEM
+      || m_desc.Pool == D3DPOOL_DEFAULT)
       return D3D9_COMMON_BUFFER_MAP_MODE_DIRECT;
 
     return D3D9_COMMON_BUFFER_MAP_MODE_BUFFER;
