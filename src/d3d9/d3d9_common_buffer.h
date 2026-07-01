@@ -224,6 +224,8 @@ namespace dxvk {
       return m_buffer;
     }
 
+    bool isSwvpBuffer() const;
+
     D3D9DeviceEx*               m_parent;
     const D3D9_BUFFER_DESC      m_desc;
     bool                        m_needsReadback = false;

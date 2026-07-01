@@ -106,9 +106,7 @@ namespace dxvk {
       info.stages |= VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
       info.access |= VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
 
-      // D3DUSAGE_SOFTWAREPROCESSING is necessary for mixed devices and hardware processing devices don't support it at all
-      if (m_parent->SupportsProcessVertices()
-        && m_parent->CanSWVP() && (m_parent->CanOnlySWVP() || (m_desc.Usage & D3DUSAGE_SOFTWAREPROCESSING))) {
+      if (m_parent->SupportsProcessVertices() && isSwvpBuffer()) {
         info.usage  |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
         info.stages |= VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT;
         info.access |= VK_ACCESS_SHADER_WRITE_BIT;
@@ -127,7 +125,7 @@ namespace dxvk {
       memoryFlags |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
                   |  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
-      if (!(m_desc.Usage & D3DUSAGE_WRITEONLY) || m_desc.Pool == D3DPOOL_SYSTEMMEM) {
+      if (!(m_desc.Usage & D3DUSAGE_WRITEONLY) || m_desc.Pool == D3DPOOL_SYSTEMMEM || !isSwvpBuffer()) {
         info.access |= VK_ACCESS_HOST_READ_BIT;
         memoryFlags |= VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
       } else {
@@ -161,7 +159,7 @@ namespace dxvk {
       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
     | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
-    if (!(m_desc.Usage & D3DUSAGE_WRITEONLY)) {
+    if (!(m_desc.Usage & D3DUSAGE_WRITEONLY) || isSwvpBuffer()) {
       info.access |= VK_ACCESS_HOST_READ_BIT;
       memoryFlags |= VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
     }
@@ -169,4 +167,9 @@ namespace dxvk {
     return m_parent->GetDXVKDevice()->createBuffer(info, memoryFlags);
   }
 
+
+  bool D3D9CommonBuffer::isSwvpBuffer() const {
+      // D3DUSAGE_SOFTWAREPROCESSING is necessary for mixed devices and hardware processing devices don't support it at all
+      return m_parent->CanSWVP() && (m_parent->CanOnlySWVP() || (m_desc.Usage & D3DUSAGE_SOFTWAREPROCESSING));
+  }
 }
