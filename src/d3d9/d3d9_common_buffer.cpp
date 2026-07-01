@@ -80,8 +80,12 @@ namespace dxvk {
   
   D3D9_COMMON_BUFFER_MAP_MODE D3D9CommonBuffer::DetermineMapMode() const {
     if ((m_desc.Usage & D3DUSAGE_DYNAMIC)
-      || m_desc.Pool == D3DPOOL_SYSTEMMEM
-      || m_desc.Pool == D3DPOOL_DEFAULT)
+      || m_desc.Pool == D3DPOOL_SYSTEMMEM)
+      return D3D9_COMMON_BUFFER_MAP_MODE_DIRECT;
+
+    if (m_desc.Pool == D3DPOOL_DEFAULT
+      && (m_parent->GetDXVKDevice()->isUnifiedMemoryArchitecture()
+      || m_parent->GetDXVKDevice()->hasResizableBar()))
       return D3D9_COMMON_BUFFER_MAP_MODE_DIRECT;
 
     return D3D9_COMMON_BUFFER_MAP_MODE_BUFFER;
@@ -153,13 +157,14 @@ namespace dxvk {
     info.access = VK_ACCESS_HOST_WRITE_BIT
                 | VK_ACCESS_TRANSFER_READ_BIT;
 
-    if (!(m_desc.Usage & D3DUSAGE_WRITEONLY))
-      info.access |= VK_ACCESS_HOST_READ_BIT;
-
     VkMemoryPropertyFlags memoryFlags = 
       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
-    | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-    | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+    | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+    if (!(m_desc.Usage & D3DUSAGE_WRITEONLY)) {
+      info.access |= VK_ACCESS_HOST_READ_BIT;
+      memoryFlags |= VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+    }
 
     return m_parent->GetDXVKDevice()->createBuffer(info, memoryFlags);
   }
