@@ -4973,6 +4973,9 @@ namespace dxvk {
     if (Flags & D3DLOCK_DISCARD)
       Flags &= ~(D3DLOCK_NOOVERWRITE | D3DLOCK_READONLY);
 
+    // NOOVERWRITE only impacts buffers
+    Flags &= ~D3DLOCK_NOOVERWRITE;
+
     if (unlikely(pBox != nullptr)) {
       D3DRESOURCETYPE type = pResource->GetType();
       D3D9_FORMAT_BLOCK_SIZE blockSize = GetFormatAlignedBlockSize(desc.Format);
@@ -5470,8 +5473,12 @@ namespace dxvk {
     // DONOTWAIT can only used with textures
     Flags &= ~D3DLOCK_DONOTWAIT;
 
-    uint32_t size   = std::min(SizeToLock, desc.Size - OffsetToLock);
+    uint32_t size       = SizeToLock == 0 && OffsetToLock == 0
+                        ? desc.Size : std::min(SizeToLock, desc.Size - OffsetToLock);
     D3D9Range lockRange = D3D9Range(OffsetToLock, OffsetToLock + size);
+
+    if (pResource->GetLockCount() != 0 || (size != desc.Size))
+      Flags &= ~D3DLOCK_DISCARD;
 
     const bool directMapping = pResource->GetMapMode() == D3D9_COMMON_BUFFER_MAP_MODE_DIRECT;
 
