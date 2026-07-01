@@ -5473,8 +5473,7 @@ namespace dxvk {
     // DONOTWAIT can only used with textures
     Flags &= ~D3DLOCK_DONOTWAIT;
 
-    uint32_t size       = SizeToLock == 0 && OffsetToLock == 0
-                        ? desc.Size : std::min(SizeToLock, desc.Size - OffsetToLock);
+    uint32_t size       = SizeToLock == 0 ? desc.Size - OffsetToLock : std::min(SizeToLock, desc.Size - OffsetToLock);
     D3D9Range lockRange = D3D9Range(OffsetToLock, OffsetToLock + size);
 
     if (pResource->GetLockCount() != 0 || (size != desc.Size))
