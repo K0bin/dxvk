@@ -289,6 +289,15 @@ namespace dxvk {
     bool isUnifiedMemoryArchitecture() const;
 
     /**
+     * \brief Checks whether the system supports resizable bar
+     *
+     * Basically tests whether there isn't a second device local heap.
+     * Unified memory systems are also reported as supporting resizable bar.
+     * \return \c true if the system supports resizable bar.
+     */
+    bool hasResizableBar() const;
+
+    /**
      * \brief Registers a relationship with another GPU
      *
      * Used for display enumeration purposes.

@@ -111,6 +111,11 @@ namespace dxvk {
   }
 
 
+  bool DxvkDevice::hasResizableBar() const {
+    return m_adapter->hasResizableBar();
+  }
+
+
   bool DxvkDevice::canUseGraphicsPipelineLibrary() const {
     // Without graphicsPipelineLibraryIndependentInterpolationDecoration, we
     // cannot use this effectively in many games since no client API provides

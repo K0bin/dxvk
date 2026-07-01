@@ -382,4 +382,21 @@ namespace dxvk {
     return result;
   }
 
+
+  bool DxvkAdapter::hasResizableBar() const {
+    auto memory = m_capabilities.getMemoryInfo().core.memoryProperties;
+    bool foundDeviceLocalHeap = false;
+
+    for (uint32_t i = 0; i < memory.memoryHeapCount; i++) {
+      if (memory.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
+        if (foundDeviceLocalHeap)
+          return false;
+        else
+          foundDeviceLocalHeap = true;
+      }
+    }
+
+    return true;
+  }
+
 }
