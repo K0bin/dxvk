@@ -5537,7 +5537,7 @@ namespace dxvk {
       const bool needsReadback = pResource->NeedsReadback();
 
       // If we're not directly mapped, we can rely on needsReadback to tell us if a sync is required.
-      const bool skipWait = (!needsReadback && readOnly) || noOverwrite || perDrawUpload;
+      const bool skipWait = (!needsReadback && readOnly || noOverwrite) || perDrawUpload;
 
       if (!skipWait) {
         const Rc<DxvkBuffer> mappingBuffer = pResource->GetBuffer<D3D9_COMMON_BUFFER_TYPE_MAPPING>();
