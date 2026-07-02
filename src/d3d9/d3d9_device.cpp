@@ -5476,7 +5476,7 @@ namespace dxvk {
     uint32_t size       = SizeToLock == 0 ? desc.Size - OffsetToLock : std::min(SizeToLock, desc.Size - OffsetToLock);
     D3D9Range lockRange = D3D9Range(OffsetToLock, OffsetToLock + size);
 
-    if (pResource->GetLockCount() != 0 || (size != desc.Size))
+    if (pResource->GetLockCount() != 0)
       Flags &= ~D3DLOCK_DISCARD;
 
     const bool directMapping = pResource->GetMapMode() == D3D9_COMMON_BUFFER_MAP_MODE_DIRECT;
