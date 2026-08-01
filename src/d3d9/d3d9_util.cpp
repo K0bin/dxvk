@@ -43,6 +43,7 @@ namespace dxvk {
           DWORD                     MultisampleQuality,
           VkSampleCountFlagBits*    pSampleCount) {
     uint32_t sampleCount = std::max<uint32_t>(MultiSample, 1u);
+    sampleCount = std::min(sampleCount,4u);
 
     if (MultiSample == D3DMULTISAMPLE_NONMASKABLE)
       sampleCount = 1u << MultisampleQuality;
