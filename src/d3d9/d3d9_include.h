@@ -44,14 +44,6 @@
 #define D3DPRESENT_FORCEIMMEDIATE              0x00000100L
 #endif
 
-// MinGW headers are broken. Who'dve guessed?
-#ifndef _MSC_VER
-typedef struct _D3DDEVINFO_RESOURCEMANAGER
-{
-  char dummy;
-} D3DDEVINFO_RESOURCEMANAGER, * LPD3DDEVINFO_RESOURCEMANAGER;
-#endif
-
 // This is the managed pool on D3D9Ex, it's just hidden!
 #define D3DPOOL_MANAGED_EX D3DPOOL(6)
 

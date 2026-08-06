@@ -1941,9 +1941,9 @@ namespace dxvk {
     enabled.core.features.depthBiasClamp                          = VK_TRUE;
     enabled.core.features.depthClamp                              = VK_TRUE;
     enabled.core.features.dualSrcBlend                            = VK_TRUE;
-    enabled.core.features.fillModeNonSolid                        = VK_TRUE;
+    enabled.core.features.fillModeNonSolid                        = supported.core.features.fillModeNonSolid;
     enabled.core.features.fullDrawIndexUint32                     = VK_TRUE;
-    enabled.core.features.geometryShader                          = VK_TRUE;
+    enabled.core.features.geometryShader                          = supported.core.features.geometryShader;
     enabled.core.features.imageCubeArray                          = VK_TRUE;
     enabled.core.features.independentBlend                        = VK_TRUE;
     enabled.core.features.multiViewport                           = VK_TRUE;
@@ -1963,8 +1963,8 @@ namespace dxvk {
     enabled.extCustomBorderColor.customBorderColors               = supported.extCustomBorderColor.customBorderColorWithoutFormat;
     enabled.extCustomBorderColor.customBorderColorWithoutFormat   = supported.extCustomBorderColor.customBorderColorWithoutFormat;
 
-    enabled.extTransformFeedback.transformFeedback                = VK_TRUE;
-    enabled.extTransformFeedback.geometryStreams                  = VK_TRUE;
+    enabled.extTransformFeedback.transformFeedback                = supported.extTransformFeedback.transformFeedback;
+    enabled.extTransformFeedback.geometryStreams                  = supported.extTransformFeedback.geometryStreams;
 
     enabled.extVertexAttributeDivisor.vertexAttributeInstanceRateDivisor      = supported.extVertexAttributeDivisor.vertexAttributeInstanceRateDivisor;
     enabled.extVertexAttributeDivisor.vertexAttributeInstanceRateZeroDivisor  = supported.extVertexAttributeDivisor.vertexAttributeInstanceRateZeroDivisor;

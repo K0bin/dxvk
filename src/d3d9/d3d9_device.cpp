@@ -4521,7 +4521,7 @@ namespace dxvk {
     DxvkDeviceFeatures enabled = {};
 
     // Geometry shaders are used for some meta ops
-    enabled.core.features.geometryShader = VK_TRUE;
+    enabled.core.features.geometryShader = supported.core.features.geometryShader;
     enabled.core.features.robustBufferAccess = VK_TRUE;
 
     enabled.vk12.samplerMirrorClampToEdge = VK_TRUE;
@@ -4543,7 +4543,7 @@ namespace dxvk {
     // SM1 level hardware
     enabled.core.features.depthClamp = VK_TRUE;
     enabled.core.features.depthBiasClamp = VK_TRUE;
-    enabled.core.features.fillModeNonSolid = VK_TRUE;
+    enabled.core.features.fillModeNonSolid = supported.core.features.fillModeNonSolid;
     enabled.core.features.pipelineStatisticsQuery = supported.core.features.pipelineStatisticsQuery;
     enabled.core.features.sampleRateShading = VK_TRUE;
     enabled.core.features.samplerAnisotropy = supported.core.features.samplerAnisotropy;
