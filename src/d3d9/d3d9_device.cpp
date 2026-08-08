@@ -2279,6 +2279,7 @@ namespace dxvk {
     }
 
     bool enabled = m_state.renderStates[D3DRS_CLIPPLANEENABLE] & (1u << Index);
+    enabled &= m_state.renderStates[D3DRS_CLIPPING];
     dirty &= enabled;
 
     if (dirty)
@@ -2650,6 +2651,10 @@ namespace dxvk {
           }
           break;
         }
+
+        case D3DRS_CLIPPING:
+          m_dirty.set(D3D9DeviceDirtyFlag::ClipPlanes);
+          break;
 
         default:
           static bool s_errorShown[256];
@@ -6103,9 +6108,10 @@ namespace dxvk {
     m_dirty.clr(D3D9DeviceDirtyFlag::ClipPlanes);
 
     auto dst = GetConstantBuffer(CbvIndex::VSClipPlanes).AllocTyped<D3D9ClipPlane>(caps::MaxClipPlanes);
+    bool clippingEnabled = m_state.renderStates[D3DRS_CLIPPING] != FALSE;
 
     uint32_t clipPlaneCount = 0u;
-    for (uint32_t i = 0; i < caps::MaxClipPlanes; i++) {
+    for (uint32_t i = 0; i < caps::MaxClipPlanes && clippingEnabled; i++) {
       D3D9ClipPlane clipPlane = (m_state.renderStates[D3DRS_CLIPPLANEENABLE] & (1 << i))
         ? m_state.clipPlanes[i]
         : D3D9ClipPlane();
