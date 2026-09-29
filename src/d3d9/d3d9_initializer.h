@@ -37,8 +37,7 @@ namespace dxvk {
             D3D9CommonBuffer*  pBuffer);
 
     void InitTexture(
-            D3D9CommonTexture* pTexture,
-            void*              pInitialData = nullptr);
+            D3D9CommonTexture* pTexture);
 
   private:
 

@@ -17,6 +17,19 @@ namespace dxvk {
           D3DRESOURCETYPE           ResourceType,
           HANDLE*                   pSharedHandle)
     : m_device(pDevice), m_desc(*pDesc), m_type(ResourceType), m_d3d9Interop(pInterface, this) {
+
+    // On Windows Vista (so most likely D3D9Ex), pSharedHandle can be used to pass initial data
+    // for a texture, but only for a very specific type of texture.
+    HANDLE* imageImportHandle = pSharedHandle;
+    void* importData = nullptr;
+    if (unlikely(pSharedHandle != nullptr && pDesc->Pool == D3DPOOL_SYSTEMMEM && pDesc->MipLevels == 1)) {
+      imageImportHandle = nullptr;
+      importData = *pSharedHandle;
+
+      // TODO: check that pointer alignment matches requirements
+    }
+
+
     if (m_desc.Format == D3D9Format::Unknown)
       m_desc.Format = (m_desc.Usage & D3DUSAGE_DEPTHSTENCIL)
                     ? D3D9Format::D24X8
@@ -44,14 +57,14 @@ namespace dxvk {
     m_supportsFetch4 = DetermineFetch4Compatibility();
 
     if (TextureUsesImage(&m_desc)) {
-      m_image = CreatePrimaryImage(ResourceType, pSharedHandle);
+      m_image = CreatePrimaryImage(ResourceType, imageImportHandle);
 
       if (unlikely(m_image == nullptr && (m_desc.Usage & D3DUSAGE_AUTOGENMIPMAP))) {
         // AUTOGENMIPMAP is supposed to be treated like a hint according to the docs.
         // So if creating an image with it fails, create one without it.
         m_desc.Usage &= ~D3DUSAGE_AUTOGENMIPMAP;
         m_desc.MipLevels = 1;
-        m_image = CreatePrimaryImage(ResourceType, pSharedHandle);
+        m_image = CreatePrimaryImage(ResourceType, imageImportHandle);
       }
 
       if (unlikely(m_image == nullptr)) {
@@ -69,7 +82,7 @@ namespace dxvk {
           "\n  Pool:    0x", std::hex, m_desc.Pool, std::dec));
       }
 
-      if (pSharedHandle && *pSharedHandle == nullptr) {
+      if (imageImportHandle && *imageImportHandle == nullptr) {
         *pSharedHandle = m_image->sharedHandle();
         ExportImageInfo();
       }
@@ -97,7 +110,7 @@ namespace dxvk {
     if (m_mapMode == D3D9_COMMON_TEXTURE_MAP_MODE_UNMAPPABLE)
       m_data = MemoryFileRegion(*m_device->GetAllocator(), paddedSize);
     else if (m_mapMode != D3D9_COMMON_TEXTURE_MAP_MODE_NONE && m_desc.Pool != D3DPOOL_DEFAULT)
-      CreateBuffer(false, paddedSize);
+      CreateBuffer(false, paddedSize, importData);
   }
 
 
@@ -316,7 +329,7 @@ namespace dxvk {
   }
 
 
-  void D3D9CommonTexture::CreateBuffer(bool Initialize, uint32_t Size) {
+  void D3D9CommonTexture::CreateBuffer(bool Initialize, uint32_t Size, void* importData) {
     if (likely(m_buffer != nullptr))
       return;
 
@@ -340,6 +353,12 @@ namespace dxvk {
     VkMemoryPropertyFlags memType = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
                                   | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
                                   | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+
+    if (importData) {
+      info.sharing.type = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
+      info.sharing.handle = importData;
+      info.sharing.mode = DxvkSharedHandleMode::Import;
+    }
 
     m_buffer = m_device->GetDXVKDevice()->createBuffer(info, memType);
 

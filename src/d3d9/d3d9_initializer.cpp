@@ -39,8 +39,7 @@ namespace dxvk {
 
 
   void D3D9Initializer::InitTexture(
-          D3D9CommonTexture* pTexture,
-          void*              pInitialData) {
+          D3D9CommonTexture* pTexture) {
     if (pTexture->GetMapMode() == D3D9_COMMON_TEXTURE_MAP_MODE_NONE)
       return;
     if (pTexture->GetImage()->info().sharing.mode == DxvkSharedHandleMode::Import)
@@ -58,7 +57,12 @@ namespace dxvk {
       InitDeviceLocalTexture(pTexture);
 
     if (mapPtr != nullptr) {
-      InitHostVisibleTexture(pTexture, pInitialData, mapPtr);
+      // All subresources are allocated in one chunk of memory.
+      // So we can just get the pointer for subresource 0 and memset all of them at once.
+      std::memset(
+        mapPtr, 0,
+        pTexture->GetTotalSize());
+
       pTexture->UnmapData();
     }
 
@@ -107,43 +111,6 @@ namespace dxvk {
     });
 
     ThrottleAllocationLocked();
-  }
-
-
-  void D3D9Initializer::InitHostVisibleTexture(
-          D3D9CommonTexture* pTexture,
-          void*              pInitialData,
-          void*              mapPtr) {
-    // If the buffer is mapped, we can write data directly
-    // to the mapped memory region instead of doing it on
-    // the GPU. Same goes for zero-initialization.
-    if (pInitialData) {
-      // Initial data is only supported for textures with 1 subresource
-      VkExtent3D mipExtent = pTexture->GetExtentMip(0);
-      const DxvkFormatInfo* formatInfo = lookupFormatInfo(pTexture->GetFormatMapping().Format);
-      VkExtent3D blockCount = util::computeBlockCount(mipExtent, formatInfo->blockSize);
-      uint32_t pitch = blockCount.width * formatInfo->elementSize;
-      uint32_t alignedPitch = align(pitch, 4);
-
-      util::packImageData(
-        mapPtr,
-        pInitialData,
-        pitch,
-        pitch * blockCount.height,
-        alignedPitch,
-        alignedPitch * blockCount.height,
-        D3D9CommonTexture::GetImageTypeFromResourceType(pTexture->GetType()),
-        mipExtent,
-        pTexture->Desc()->ArraySize,
-        formatInfo,
-        VK_IMAGE_ASPECT_COLOR_BIT);
-    } else {
-      // All subresources are allocated in one chunk of memory.
-      // So we can just get the pointer for subresource 0 and memset all of them at once.
-      std::memset(
-        mapPtr, 0,
-        pTexture->GetTotalSize());
-    }
   }
 
 

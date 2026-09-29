@@ -512,7 +512,7 @@ namespace dxvk {
      * \param [in] Size The size of the buffer
      * \returns Whether an allocation happened
      */
-    void CreateBuffer(bool Initialize, uint32_t Size);
+    void CreateBuffer(bool Initialize, uint32_t Size, void* ImportData);
 
     ID3D9VkInteropTexture* GetVkInterop() { return &m_d3d9Interop; }
 

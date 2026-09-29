@@ -636,15 +636,6 @@ namespace dxvk {
       return hr;
 
     try {
-      void* initialData = nullptr;
-
-      // On Windows Vista (so most likely D3D9Ex), pSharedHandle can be used to pass initial data
-      // for a texture, but only for a very specific type of texture.
-      if (unlikely(pSharedHandle != nullptr && Pool == D3DPOOL_SYSTEMMEM && Levels == 1)) {
-        initialData = *(reinterpret_cast<void**>(pSharedHandle));
-        pSharedHandle = nullptr;
-      }
-
       // Shared textures have to be in POOL_DEFAULT
       if (unlikely(pSharedHandle != nullptr && Pool != D3DPOOL_DEFAULT))
         return D3DERR_INVALIDCALL;
@@ -657,7 +648,7 @@ namespace dxvk {
       const bool isExtended = m_d3dCompatibility.test(D3DCompatibility::D3D9Ex);
       const Com<D3D9Texture2D> texture = new D3D9Texture2D(this, &desc, isExtended, pSharedHandle);
 
-      m_initializer->InitTexture(texture->GetCommonTexture(), initialData);
+      m_initializer->InitTexture(texture->GetCommonTexture());
       *ppTexture = texture.ref();
 
       if (desc.Pool == D3DPOOL_DEFAULT)
@@ -4376,15 +4367,6 @@ namespace dxvk {
       return hr;
 
     try {
-      void* initialData = nullptr;
-
-      // On Windows Vista (so most likely D3D9Ex), pSharedHandle can be used to pass initial data
-      // for an offscreen plain surface, but only for a very specific type of offscreen plain surface.
-      if (unlikely(pSharedHandle != nullptr && Pool == D3DPOOL_SYSTEMMEM)) {
-        initialData = *(reinterpret_cast<void**>(pSharedHandle));
-        pSharedHandle = nullptr;
-      }
-
       // Shared offscreen plain surfaces have to be in POOL_DEFAULT
       if (unlikely(pSharedHandle != nullptr && Pool != D3DPOOL_DEFAULT))
         return D3DERR_INVALIDCALL;
@@ -4395,7 +4377,7 @@ namespace dxvk {
 
       const bool isExtended = m_d3dCompatibility.test(D3DCompatibility::D3D9Ex);
       const Com<D3D9Surface> surface = new D3D9Surface(this, &desc, isExtended, nullptr, pSharedHandle);
-      m_initializer->InitTexture(surface->GetCommonTexture(), initialData);
+      m_initializer->InitTexture(surface->GetCommonTexture());
       *ppSurface = surface.ref();
 
       if (desc.Pool == D3DPOOL_DEFAULT)
