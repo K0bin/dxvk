@@ -4287,13 +4287,7 @@ namespace dxvk {
     if (unlikely(ppSurface == nullptr))
       return D3DERR_INVALIDCALL;
 
-    // The new Create functions added in 9Ex only accept the new USAGE flags added with 9Ex.
-    // Yes, it actually fails when explicitly passing D3DUSAGE_RENDERTARGET.
-    if (unlikely(Usage & ~(D3DUSAGE_RESTRICTED_CONTENT | D3DUSAGE_RESTRICT_SHARED_RESOURCE | D3DUSAGE_RESTRICT_SHARED_RESOURCE_DRIVER)))
-      return D3DERR_INVALIDCALL;
-
-    if (unlikely((Usage & (D3DUSAGE_RESTRICT_SHARED_RESOURCE | D3DUSAGE_RESTRICT_SHARED_RESOURCE_DRIVER)) != 0
-      && pSharedHandle == nullptr))
+    if (unlikely(!D3D9CommonTexture::ValidateExUsages(Usage, pSharedHandle)))
       return D3DERR_INVALIDCALL;
 
     D3D9_COMMON_TEXTURE_DESC desc;
@@ -4349,12 +4343,7 @@ namespace dxvk {
     if (unlikely(ppSurface == nullptr))
       return D3DERR_INVALIDCALL;
 
-    // The new Create functions added in 9Ex only accept the new USAGE flags added with 9Ex.
-    if (unlikely(Usage & ~(D3DUSAGE_RESTRICTED_CONTENT | D3DUSAGE_RESTRICT_SHARED_RESOURCE | D3DUSAGE_RESTRICT_SHARED_RESOURCE_DRIVER)))
-      return D3DERR_INVALIDCALL;
-
-    if (unlikely((Usage & (D3DUSAGE_RESTRICT_SHARED_RESOURCE | D3DUSAGE_RESTRICT_SHARED_RESOURCE_DRIVER)) != 0
-      && pSharedHandle == nullptr))
+    if (unlikely(!D3D9CommonTexture::ValidateExUsages(Usage, pSharedHandle)))
       return D3DERR_INVALIDCALL;
 
     D3D9_COMMON_TEXTURE_DESC desc;
@@ -4384,14 +4373,20 @@ namespace dxvk {
       return hr;
 
     try {
-      void* initialData = nullptr;
+      void* importData = nullptr;
 
       // On Windows Vista (so most likely D3D9Ex), pSharedHandle can be used to pass initial data
       // for an offscreen plain surface, but only for a very specific type of offscreen plain surface.
-      if (unlikely(pSharedHandle != nullptr && Pool == D3DPOOL_SYSTEMMEM)) {
-        initialData = *(reinterpret_cast<void**>(pSharedHandle));
-        pSharedHandle = nullptr;
+      if (unlikely(pSharedHandle != nullptr
+        && Pool == D3DPOOL_SYSTEMMEM
+        && *pSharedHandle != nullptr )) {
+        importData = *(reinterpret_cast<void**>(pSharedHandle));
       }
+
+      if (unlikely(pSharedHandle != nullptr
+          && *pSharedHandle != nullptr
+          && !ValidateSharedTexture(*pSharedHandle, D3DRTYPE_SURFACE, desc)))
+        return E_INVALIDARG;
 
       // Shared offscreen plain surfaces have to be in POOL_DEFAULT
       if (unlikely(pSharedHandle != nullptr && Pool != D3DPOOL_DEFAULT))
@@ -4433,13 +4428,7 @@ namespace dxvk {
     if (unlikely(ppSurface == nullptr))
       return D3DERR_INVALIDCALL;
 
-    // The new Create functions added in 9Ex only accept the new USAGE flags added with 9Ex.
-    // Yes, it actually fails when explicitly passing D3DUSAGE_DEPTHSTENCIL.
-    if (unlikely(Usage & ~(D3DUSAGE_RESTRICTED_CONTENT | D3DUSAGE_RESTRICT_SHARED_RESOURCE | D3DUSAGE_RESTRICT_SHARED_RESOURCE_DRIVER)))
-      return D3DERR_INVALIDCALL;
-
-    if (unlikely((Usage & (D3DUSAGE_RESTRICT_SHARED_RESOURCE | D3DUSAGE_RESTRICT_SHARED_RESOURCE_DRIVER)) != 0
-      && pSharedHandle == nullptr))
+    if (unlikely(!D3D9CommonTexture::ValidateExUsages(Usage, pSharedHandle)))
       return D3DERR_INVALIDCALL;
 
     D3D9_COMMON_TEXTURE_DESC desc;
