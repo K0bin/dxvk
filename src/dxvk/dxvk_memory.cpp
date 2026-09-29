@@ -939,10 +939,11 @@ namespace dxvk {
   Rc<DxvkResourceAllocation> DxvkMemoryAllocator::createBufferResource(
     const VkBufferCreateInfo&         createInfo,
     const DxvkAllocationInfo&         allocationInfo,
-          DxvkLocalAllocationCache*   allocationCache) {
+          DxvkLocalAllocationCache*   allocationCache,
+    const void*                       next) {
     Rc<DxvkResourceAllocation> allocation;
 
-    if (likely(!createInfo.flags)) {
+    if (likely(!createInfo.flags && !next)) {
       VkMemoryRequirements memoryRequirements = { };
       memoryRequirements.size = createInfo.size;
       memoryRequirements.alignment = GlobalBufferAlignment;
@@ -1047,7 +1048,7 @@ namespace dxvk {
       // ca expect these to be long-lived and mapped, and potentially use a dedicated
       // memory type that may have unexpected size restrictions. Also make sure not
       // to ever relocate these buffers since they require a stable GPU address.
-      if (createInfo.usage & (DescriptorBufferUsage | DescriptorHeapUsage)) {
+      if ((createInfo.usage & (DescriptorBufferUsage | DescriptorHeapUsage)) || next) {
         VkMemoryDedicatedAllocateInfo dedicatedInfo = { VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO };
         dedicatedInfo.buffer = buffer;
 

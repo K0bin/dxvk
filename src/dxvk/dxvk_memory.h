@@ -1219,12 +1219,14 @@ namespace dxvk {
      * \param [in] createInfo Buffer create info
      * \param [in] allocationInfo Allocation properties
      * \param [in] allocationCache Optional allocation cache
+     * \param [in] next External memory properties
      * \returns Buffer resource
      */
     Rc<DxvkResourceAllocation> createBufferResource(
       const VkBufferCreateInfo&         createInfo,
       const DxvkAllocationInfo&         allocationInfo,
-            DxvkLocalAllocationCache*   allocationCache);
+            DxvkLocalAllocationCache*   allocationCache,
+      const void*                       next);
 
     /**
      * \brief Creates image resource

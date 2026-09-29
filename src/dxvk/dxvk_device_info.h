@@ -120,6 +120,7 @@ namespace dxvk {
     VkPhysicalDeviceRawAccessChainsFeaturesNV                 nvRawAccessChains               = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAW_ACCESS_CHAINS_FEATURES_NV };
     VkBool32                                                  nvxBinaryImport                 = VK_FALSE;
     VkBool32                                                  nvxImageViewHandle              = VK_FALSE;
+    VkBool32                                                  extExternalMemoryHost           = VK_FALSE;
   };
 
 
@@ -197,6 +198,7 @@ namespace dxvk {
     VkExtensionProperties nvRawAccessChains                 = vk::makeExtension(VK_NV_RAW_ACCESS_CHAINS_EXTENSION_NAME);
     VkExtensionProperties nvxBinaryImport                   = vk::makeExtension(VK_NVX_BINARY_IMPORT_EXTENSION_NAME);
     VkExtensionProperties nvxImageViewHandle                = vk::makeExtension(VK_NVX_IMAGE_VIEW_HANDLE_EXTENSION_NAME);
+    VkExtensionProperties extExternalMemoryHost             = vk::makeExtension(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME);
   };
 
 

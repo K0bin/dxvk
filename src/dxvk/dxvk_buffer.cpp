@@ -30,6 +30,10 @@ namespace dxvk {
     // Unconditionally enable BDA usage
     m_info.usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 
+    // Determine whether the image is shareable before creating the resource
+    m_shared = m_info.sharing.mode != DxvkSharedHandleMode::None && device->features().khrExternalMemoryWin32;
+    m_stableAddress = m_shared;
+
     // Create and assign actual buffer resource
     assignStorage(allocateStorage());
   }
@@ -69,8 +73,29 @@ namespace dxvk {
 
 
   bool DxvkBuffer::canRelocate() const {
-    return !m_bufferInfo.mapPtr && !m_stableAddress
+    return !m_bufferInfo.mapPtr && !m_shared && !m_stableAddress
         && !(m_info.flags & VK_BUFFER_CREATE_SPARSE_BINDING_BIT);
+  }
+
+
+  HANDLE DxvkBuffer::sharedHandle() const {
+    HANDLE handle = INVALID_HANDLE_VALUE;
+
+    if (!m_shared || m_info.sharing.type == VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT)
+      return INVALID_HANDLE_VALUE;
+
+#ifdef _WIN32
+    DxvkResourceMemoryInfo memoryInfo = m_storage->getMemoryInfo();
+
+    VkMemoryGetWin32HandleInfoKHR handleInfo = { VK_STRUCTURE_TYPE_MEMORY_GET_WIN32_HANDLE_INFO_KHR };
+    handleInfo.handleType = m_info.sharing.type;
+    handleInfo.memory = memoryInfo.memory;
+
+    if (m_vkd->vkGetMemoryWin32HandleKHR(m_vkd->device(), &handleInfo, &handle) != VK_SUCCESS)
+      Logger::warn("DxvkImage::DxvkImage: Failed to get shared handle for image");
+#endif
+
+    return handle;
   }
 
 
@@ -108,7 +133,7 @@ namespace dxvk {
     info.size = m_info.size;
     m_sharingMode.fill(info);
 
-    return m_allocator->createBufferResource(info, allocationInfo, nullptr);
+    return m_allocator->createBufferResource(info, allocationInfo, nullptr, nullptr);
   }
 
 
@@ -137,6 +162,88 @@ namespace dxvk {
 
   std::string DxvkBuffer::createDebugName(const char* name) const {
     return str::format(vk::isValidDebugName(name) ? name : "Buffer", " (", cookie(), ")");
+  }
+
+
+  Rc<DxvkResourceAllocation> DxvkBuffer::allocateStorage(DxvkLocalAllocationCache* cache) {
+    DxvkAllocationInfo allocationInfo = { };
+    allocationInfo.resourceCookie = cookie();
+    allocationInfo.properties = m_properties;
+
+    VkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+    info.flags = m_info.flags;
+    info.usage = m_info.usage;
+    info.size = m_info.size;
+    m_sharingMode.fill(info);
+
+    // Set up external memory parameters for shared buffers
+    VkExternalMemoryImageCreateInfo externalInfo = { VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO };
+
+    if (m_shared) {
+      externalInfo.pNext = std::exchange(info.pNext, &externalInfo);
+      externalInfo.handleTypes = m_info.sharing.type;
+    }
+
+
+    // Set up shared memory properties
+    void* sharedMemoryInfo = nullptr;
+
+    VkExportMemoryAllocateInfo sharedExport = { VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO };
+    VkImportMemoryWin32HandleInfoKHR sharedImportWin32 = { VK_STRUCTURE_TYPE_IMPORT_MEMORY_WIN32_HANDLE_INFO_KHR };
+    VkImportMemoryHostPointerInfoEXT sharedImportHostPointer = { VK_STRUCTURE_TYPE_IMPORT_MEMORY_HOST_POINTER_INFO_EXT };
+
+    if (m_shared && m_info.sharing.mode == DxvkSharedHandleMode::Export) {
+      sharedExport.pNext = std::exchange(sharedMemoryInfo, &sharedExport);
+      sharedExport.handleTypes = m_info.sharing.type;
+    }
+
+    if (m_shared && m_info.sharing.mode == DxvkSharedHandleMode::Import) {
+      if (m_info.sharing.type == VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT) {
+        sharedImportHostPointer.pNext = std::exchange(sharedMemoryInfo, &sharedImportHostPointer);
+        sharedImportWin32.handleType = m_info.sharing.type;
+        sharedImportWin32.handle = m_info.sharing.handle;
+      } else {
+        sharedImportWin32.pNext = std::exchange(sharedMemoryInfo, &sharedImportWin32);
+        sharedImportWin32.handleType = m_info.sharing.type;
+        sharedImportWin32.handle = m_info.sharing.handle;
+      }
+    }
+
+    allocationInfo.handleType = m_info.sharing.type;
+
+
+    return m_allocator->createBufferResource(info, allocationInfo, cache, sharedMemoryInfo);
+  }
+
+
+  bool DxvkBuffer::canShareBuffer(DxvkDevice* device, const VkBufferCreateInfo& createInfo,
+    VkExternalFenceHandleTypeFlagBits handleType,
+    const DxvkSharedHandleInfo& sharingInfo) const {
+    if (sharingInfo.mode == DxvkSharedHandleMode::None)
+      return false;
+
+    if (handleType == VK_EXTERNAL_FENCE_HANDLE_TYPE_OPAQUE_WIN32_BIT
+      || handleType == VK_EXTERNAL_FENCE_HANDLE_TYPE_OPAQUE_WIN32_KMT_BIT) {
+      if (!device->features().khrExternalMemoryWin32) {
+        Logger::err("Failed to create shared resource: VK_KHR_EXTERNAL_MEMORY_WIN32 not supported");
+        return false;
+      }
+    } else if (handleType == VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT) {
+        if (!device->features().extExternalMemoryHost) {
+          Logger::err("Failed to create shared resource: VK_EXT_EXTERNAL_MEMORY_HOST not supported");
+          return false;
+        }
+    } else {
+      Logger::err("Failed to create shared resource: Unsupported handle type");
+      return false;
+    }
+
+    if (createInfo.flags & VK_BUFFER_CREATE_SPARSE_BINDING_BIT) {
+      Logger::err("Failed to create shared resource: Sharing sparse resources not supported");
+      return false;
+    }
+
+    return true;
   }
 
 

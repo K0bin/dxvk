@@ -36,6 +36,9 @@ namespace dxvk {
     /// Buffer create flags
     VkBufferCreateFlags flags = 0;
 
+    /// Shared handle info
+    DxvkSharedHandleInfo sharing = { };
+
     /// Debug name.
     const char* debugName = nullptr;
   };
@@ -276,19 +279,7 @@ namespace dxvk {
      * \param [in] cache Optional allocation cache
      * \returns The new buffer slice
      */
-    Rc<DxvkResourceAllocation> allocateStorage(DxvkLocalAllocationCache* cache) {
-      DxvkAllocationInfo allocationInfo = { };
-      allocationInfo.resourceCookie = cookie();
-      allocationInfo.properties = m_properties;
-
-      VkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
-      info.flags = m_info.flags;
-      info.usage = m_info.usage;
-      info.size = m_info.size;
-      m_sharingMode.fill(info);
-
-      return m_allocator->createBufferResource(info, allocationInfo, cache);
-    }
+    Rc<DxvkResourceAllocation> allocateStorage(DxvkLocalAllocationCache* cache);
 
     /**
      * \brief Replaces backing resource
@@ -348,6 +339,12 @@ namespace dxvk {
      * \returns \c true if the backend can safely relocate the buffer
      */
     bool canRelocate() const;
+
+    /**
+     * \brief Create a new shared handle to dedicated memory backing the buffer
+     * \returns The shared handle with the type given by DxvkSharedHandleInfo::type
+     */
+    HANDLE sharedHandle() const;
 
     /**
      * \brief Enables stable GPU address
@@ -419,11 +416,17 @@ namespace dxvk {
     std::unordered_map<DxvkBufferViewKey,
       DxvkBufferView, DxvkHash, DxvkEq> m_views;
 
+    bool                        m_shared = false;
+
     std::string                 m_debugName;
 
     void updateDebugName();
 
     std::string createDebugName(const char* name) const;
+
+    bool canShareBuffer(DxvkDevice* device, const VkBufferCreateInfo& createInfo,
+      VkExternalFenceHandleTypeFlagBits handleType,
+      const DxvkSharedHandleInfo& sharingInfo) const;
 
   };
 

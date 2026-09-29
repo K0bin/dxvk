@@ -1114,6 +1114,9 @@ namespace dxvk {
       /* CUDA interop extensions */
       ENABLE_EXT(nvxBinaryImport, false),
       ENABLE_EXT(nvxImageViewHandle, false),
+
+      /* Memory import */
+      ENABLE_EXT(extExternalMemoryHost, false),
     }};
 
     #undef ENABLE_FEATURE
