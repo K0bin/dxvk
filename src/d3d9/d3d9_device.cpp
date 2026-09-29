@@ -1158,8 +1158,11 @@ namespace dxvk {
     if (src->GetSurfaceExtent() != dst->GetSurfaceExtent())
       return D3DERR_INVALIDCALL;
 
-    if (dstTexInfo->Desc()->Pool == D3DPOOL_DEFAULT)
-      return this->StretchRect(pRenderTarget, nullptr, pDestSurface, nullptr, D3DTEXF_NONE);
+    if (unlikely(srcTexInfo->Desc()->Pool != D3DPOOL_DEFAULT))
+      return D3DERR_INVALIDARG;
+
+    if (unlikely(!m_d3dCompatibility.test(D3DCompatibility::D3D8) && dstTexInfo->Desc()->Pool != D3DPOOL_SYSTEMMEM))
+      return D3DERR_INVALIDARG;
 
     VkExtent3D dstTexExtent = dstTexInfo->GetExtentMip(dst->GetMipLevel());
     VkExtent3D srcTexExtent = srcTexInfo->GetExtentMip(src->GetMipLevel());
@@ -4365,7 +4368,7 @@ namespace dxvk {
 
     // Because they are always lockable, image surfaces / offscreen plain surfaces
     // are restricted to using lockable depth stencil formats.
-    if (unlikely(IsDepthStencilFormat(desc.Format) && !IsLockableDepthStencilFormat(desc.Format)))
+    i if (unlikely(IsDepthStencilFormat(desc.Format) && !IsLockableDepthStencilFormat(desc.Format)))
       return D3DERR_INVALIDCALL;
 
     HRESULT hr = D3D9CommonTexture::NormalizeTextureProperties(this, D3DRTYPE_SURFACE, &desc);
@@ -4373,20 +4376,14 @@ namespace dxvk {
       return hr;
 
     try {
-      void* importData = nullptr;
+      void* initialData = nullptr;
 
       // On Windows Vista (so most likely D3D9Ex), pSharedHandle can be used to pass initial data
       // for an offscreen plain surface, but only for a very specific type of offscreen plain surface.
-      if (unlikely(pSharedHandle != nullptr
-        && Pool == D3DPOOL_SYSTEMMEM
-        && *pSharedHandle != nullptr )) {
-        importData = *(reinterpret_cast<void**>(pSharedHandle));
+      if (unlikely(pSharedHandle != nullptr && Pool == D3DPOOL_SYSTEMMEM)) {
+        initialData = *(reinterpret_cast<void**>(pSharedHandle));
+        pSharedHandle = nullptr;
       }
-
-      if (unlikely(pSharedHandle != nullptr
-          && *pSharedHandle != nullptr
-          && !ValidateSharedTexture(*pSharedHandle, D3DRTYPE_SURFACE, desc)))
-        return E_INVALIDARG;
 
       // Shared offscreen plain surfaces have to be in POOL_DEFAULT
       if (unlikely(pSharedHandle != nullptr && Pool != D3DPOOL_DEFAULT))
