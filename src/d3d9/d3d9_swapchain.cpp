@@ -281,7 +281,7 @@ namespace dxvk {
                        || dstTexExtent.width > srcTexExtent.width
                        || dstTexExtent.height > srcTexExtent.height;
 
-    dstTexInfo->CreateBuffer(clearDst, dstTexInfo->GetTotalSize());
+    dstTexInfo->CreateBuffer(clearDst, dstTexInfo->GetTotalSize(), nullptr);
     DxvkBufferSlice dstBufferSlice = dstTexInfo->GetBufferSlice(dst->GetSubresource());
     Rc<DxvkImage>   srcImage       = srcTexInfo->GetImage();
 

@@ -329,7 +329,7 @@ namespace dxvk {
   }
 
 
-  void D3D9CommonTexture::CreateBuffer(bool Initialize, uint32_t Size, void* importData) {
+  void D3D9CommonTexture::CreateBuffer(bool Initialize, uint32_t Size, void* ImportData) {
     if (likely(m_buffer != nullptr))
       return;
 
@@ -354,15 +354,15 @@ namespace dxvk {
                                   | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
                                   | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
 
-    if (importData) {
+    if (ImportData) {
       info.sharing.type = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
-      info.sharing.handle = importData;
+      info.sharing.handle = ImportData;
       info.sharing.mode = DxvkSharedHandleMode::Import;
     }
 
     m_buffer = m_device->GetDXVKDevice()->createBuffer(info, memType);
 
-    if (Initialize) {
+    if (Initialize && !ImportData) {
       if (m_data)
         std::memcpy(m_buffer->mapPtr(0), m_data.map(), m_totalSize);
       else

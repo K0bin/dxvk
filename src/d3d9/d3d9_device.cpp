@@ -1150,10 +1150,10 @@ namespace dxvk {
       return D3DERR_INVALIDCALL;
 
     if (unlikely(srcTexInfo->Desc()->Pool != D3DPOOL_DEFAULT))
-      return D3DERR_INVALIDARG;
+      return D3DERR_INVALIDCALL;
 
     if (unlikely(!m_d3dCompatibility.test(D3DCompatibility::D3D8) && dstTexInfo->Desc()->Pool != D3DPOOL_SYSTEMMEM))
-      return D3DERR_INVALIDARG;
+      return D3DERR_INVALIDCALL;
 
     VkExtent3D dstTexExtent = dstTexInfo->GetExtentMip(dst->GetMipLevel());
     VkExtent3D srcTexExtent = srcTexInfo->GetExtentMip(src->GetMipLevel());
@@ -1162,7 +1162,7 @@ namespace dxvk {
                        || dstTexExtent.width > srcTexExtent.width
                        || dstTexExtent.height > srcTexExtent.height;
 
-    dstTexInfo->CreateBuffer(clearDst, dstTexInfo->GetTotalSize());
+    dstTexInfo->CreateBuffer(clearDst, dstTexInfo->GetTotalSize(), nullptr);
     DxvkBufferSlice dstBufferSlice      = dstTexInfo->GetBufferSlice(dst->GetSubresource());
     Rc<DxvkImage> srcImage              = srcTexInfo->GetImage();
     const DxvkFormatInfo* srcFormatInfo = lookupFormatInfo(srcImage->info().format);
@@ -4359,7 +4359,7 @@ namespace dxvk {
 
     // Because they are always lockable, image surfaces / offscreen plain surfaces
     // are restricted to using lockable depth stencil formats.
-    i if (unlikely(IsDepthStencilFormat(desc.Format) && !IsLockableDepthStencilFormat(desc.Format)))
+    if (unlikely(IsDepthStencilFormat(desc.Format) && !IsLockableDepthStencilFormat(desc.Format)))
       return D3DERR_INVALIDCALL;
 
     HRESULT hr = D3D9CommonTexture::NormalizeTextureProperties(this, D3DRTYPE_SURFACE, &desc);
@@ -5022,7 +5022,7 @@ namespace dxvk {
 
     if (unlikely(pResource->GetMapMode() == D3D9_COMMON_TEXTURE_MAP_MODE_BACKED || needsReadback)) {
       // Create mapping buffer if it doesn't exist yet. (POOL_DEFAULT)
-      pResource->CreateBuffer(!needsReadback, pResource->GetTotalSize());
+      pResource->CreateBuffer(!needsReadback, pResource->GetTotalSize(), nullptr);
     }
 
     // Don't use MapTexture here to keep the mapped list small while the resource is still locked.

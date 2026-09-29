@@ -201,7 +201,7 @@ namespace dxvk {
      * \param pSharedHandle Shared handle passed to the create function
      * \return true if the passed flags combined with the handle are fine, false if not.
      */
-    static HRESULT D3D9CommonTexture::ValidateExUsages(DWORD Usage, HANDLE* pSharedHandle) {
+    static HRESULT ValidateExUsages(DWORD Usage, HANDLE* pSharedHandle) {
       // The new Create functions added in 9Ex only accept the new USAGE flags added with 9Ex.
       // Yes, it actually fails when explicitly passing D3DUSAGE_RENDERTARGET in CreateRenderTargetEx
       // and D3DUSAGE_DEPTHSTENCIL in CreateDepthStencilSurfaceEx.
