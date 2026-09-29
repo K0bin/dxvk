@@ -425,7 +425,7 @@ namespace dxvk {
     std::string createDebugName(const char* name) const;
 
     bool canShareBuffer(DxvkDevice* device, const VkBufferCreateInfo& createInfo,
-      VkExternalFenceHandleTypeFlagBits handleType,
+      VkExternalMemoryHandleTypeFlagBits handleType,
       const DxvkSharedHandleInfo& sharingInfo) const;
 
   };

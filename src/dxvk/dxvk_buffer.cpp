@@ -217,7 +217,7 @@ namespace dxvk {
 
 
   bool DxvkBuffer::canShareBuffer(DxvkDevice* device, const VkBufferCreateInfo& createInfo,
-    VkExternalFenceHandleTypeFlagBits handleType,
+    VkExternalMemoryHandleTypeFlagBits handleType,
     const DxvkSharedHandleInfo& sharingInfo) const {
     if (sharingInfo.mode == DxvkSharedHandleMode::None)
       return false;
