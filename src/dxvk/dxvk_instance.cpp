@@ -286,7 +286,8 @@ namespace dxvk {
 
   bool DxvkInstance::initAdapters() {
     uint32_t numAdapters = 0;
-    if (m_vki->vkEnumeratePhysicalDevices(m_vki->instance(), &numAdapters, nullptr) != VK_SUCCESS)
+    VkResult res = m_vki->vkEnumeratePhysicalDevices(m_vki->instance(), &numAdapters, nullptr);
+    if (res != VK_SUCCESS)
       throw DxvkError("DxvkInstance::enumAdapters: Failed to enumerate adapters");
     
     std::vector<VkPhysicalDevice> adapters(numAdapters);

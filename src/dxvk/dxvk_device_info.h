@@ -44,6 +44,7 @@ namespace dxvk {
     VkPhysicalDeviceMaintenance7PropertiesKHR                 khrMaintenance7                 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_7_PROPERTIES_KHR };
     VkPhysicalDeviceMaintenance9PropertiesKHR                 khrMaintenance9                 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_9_PROPERTIES_KHR };
     VkPhysicalDeviceMaintenance10PropertiesKHR                khrMaintenance10                = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_10_PROPERTIES_KHR };
+    VkPhysicalDeviceExternalMemoryHostPropertiesEXT           extExternalMemoryHost           = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_MEMORY_HOST_PROPERTIES_EXT };
   };
 
 

@@ -42,8 +42,10 @@ namespace dxvk {
           D3D9CommonTexture* pTexture) {
     if (pTexture->GetMapMode() == D3D9_COMMON_TEXTURE_MAP_MODE_NONE)
       return;
-    if (pTexture->GetImage()->info().sharing.mode == DxvkSharedHandleMode::Import)
+    if (pTexture->GetImage() != nullptr && pTexture->GetImage()->info().sharing.mode == DxvkSharedHandleMode::Import)
       return;
+    if (pTexture->GetBuffer() != nullptr && pTexture->GetBuffer()->info().sharing.mode == DxvkSharedHandleMode::Import)
+        return;
 
     void* mapPtr = nullptr;
 

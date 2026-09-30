@@ -76,7 +76,8 @@ namespace dxvk {
     HANDLE_EXT(nvLowLatency2);                     \
     HANDLE_EXT(nvRawAccessChains);                 \
     HANDLE_EXT(nvxBinaryImport);                   \
-    HANDLE_EXT(nvxImageViewHandle);
+    HANDLE_EXT(nvxImageViewHandle);                \
+    HANDLE_EXT(extExternalMemoryHost);
 
   #define EXTENSIONS_WITH_PROPERTIES               \
     HANDLE_EXT(extConservativeRasterization);      \
@@ -96,7 +97,8 @@ namespace dxvk {
     HANDLE_EXT(khrMaintenance6);                   \
     HANDLE_EXT(khrMaintenance7);                   \
     HANDLE_EXT(khrMaintenance9);                   \
-    HANDLE_EXT(khrMaintenance10);
+    HANDLE_EXT(khrMaintenance10);                  \
+    HANDLE_EXT(extExternalMemoryHost);
 
 
   DxvkDeviceCapabilities::DxvkDeviceCapabilities(
@@ -672,6 +674,8 @@ namespace dxvk {
           if (entry == s_passiveExtensions.end())
             m_extensionList.push_back(f.extensionEnabled);
         }
+      } else {
+        Logger::warn(str::format("EXT unsupported: ", f.readableName));
       }
     }
 
@@ -1116,7 +1120,7 @@ namespace dxvk {
       ENABLE_EXT(nvxImageViewHandle, false),
 
       /* Memory import */
-      ENABLE_EXT(extExternalMemoryHost, false),
+      ENABLE_EXT(extExternalMemoryHost, true),
     }};
 
     #undef ENABLE_FEATURE

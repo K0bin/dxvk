@@ -637,11 +637,12 @@ namespace dxvk {
 
     try {
       // Shared textures have to be in POOL_DEFAULT
-      if (unlikely(pSharedHandle != nullptr && Pool != D3DPOOL_DEFAULT))
+      // 9Ex allows importing memory allocations for POOL_SYSTEMMEM
+      if (unlikely(pSharedHandle != nullptr && Pool != D3DPOOL_DEFAULT && (!m_d3dCompatibility.test(DxvkD3DCompatibility::D3D9Ex) || Pool != D3DPOOL_SYSTEMMEM || Levels == 1)))
         return D3DERR_INVALIDCALL;
 
       // Shared resource handle has to be a D3DKMT global handle */
-      if (unlikely(pSharedHandle != nullptr && *pSharedHandle != nullptr &&
+      if (unlikely(Pool == D3DPOOL_DEFAULT && pSharedHandle != nullptr && *pSharedHandle != nullptr &&
                    !ValidateSharedTexture(*pSharedHandle, D3DRTYPE_TEXTURE, desc)))
         return E_INVALIDARG;
 
@@ -678,9 +679,6 @@ namespace dxvk {
     if (unlikely(ppVolumeTexture == nullptr))
       return D3DERR_INVALIDCALL;
 
-    if (unlikely(pSharedHandle != nullptr && Pool != D3DPOOL_DEFAULT))
-      return D3DERR_INVALIDCALL;
-
     if (unlikely(pSharedHandle))
         Logger::err("CreateVolumeTexture: Shared volume textures not supported");
 
@@ -715,6 +713,10 @@ namespace dxvk {
 
     try {
       const bool isExtended = m_d3dCompatibility.test(D3DCompatibility::D3D9Ex);
+
+      if (unlikely(pSharedHandle != nullptr && (Pool != D3DPOOL_DEFAULT && (!isExtended || Pool != D3DPOOL_SYSTEMMEM || Levels == 1))))
+        return D3DERR_INVALIDCALL;
+
       const Com<D3D9Texture3D> texture = new D3D9Texture3D(this, &desc, isExtended);
       m_initializer->InitTexture(texture->GetCommonTexture());
       *ppVolumeTexture = texture.ref();
@@ -743,9 +745,6 @@ namespace dxvk {
     InitReturnPtr(ppCubeTexture);
 
     if (unlikely(ppCubeTexture == nullptr))
-      return D3DERR_INVALIDCALL;
-
-    if (unlikely(pSharedHandle != nullptr && Pool != D3DPOOL_DEFAULT))
       return D3DERR_INVALIDCALL;
 
     if (unlikely(pSharedHandle))
@@ -782,6 +781,10 @@ namespace dxvk {
 
     try {
       const bool isExtended = m_d3dCompatibility.test(D3DCompatibility::D3D9Ex);
+
+      if (unlikely(pSharedHandle != nullptr && (Pool != D3DPOOL_DEFAULT && (!isExtended || Pool != D3DPOOL_SYSTEMMEM || Levels == 1))))
+        return D3DERR_INVALIDCALL;
+
       const Com<D3D9TextureCube> texture = new D3D9TextureCube(this, &desc, isExtended);
       m_initializer->InitTexture(texture->GetCommonTexture());
       *ppCubeTexture = texture.ref();
@@ -4367,15 +4370,17 @@ namespace dxvk {
       return hr;
 
     try {
+      const bool isExtended = m_d3dCompatibility.test(D3DCompatibility::D3D9Ex);
+
       // Shared offscreen plain surfaces have to be in POOL_DEFAULT
-      if (unlikely(pSharedHandle != nullptr && Pool != D3DPOOL_DEFAULT))
+      // 9Ex allows importing memory allocations for POOL_SYSTEMMEM
+      if (unlikely(pSharedHandle != nullptr && Pool != D3DPOOL_DEFAULT && (!isExtended || Pool != D3DPOOL_SYSTEMMEM)))
         return D3DERR_INVALIDCALL;
 
-      if (unlikely(pSharedHandle != nullptr && *pSharedHandle != nullptr &&
+      if (unlikely(Pool == D3DPOOL_DEFAULT && pSharedHandle != nullptr && *pSharedHandle != nullptr &&
                    !ValidateSharedTexture(*pSharedHandle, D3DRTYPE_SURFACE, desc)))
         return E_INVALIDARG;
 
-      const bool isExtended = m_d3dCompatibility.test(D3DCompatibility::D3D9Ex);
       const Com<D3D9Surface> surface = new D3D9Surface(this, &desc, isExtended, nullptr, pSharedHandle);
       m_initializer->InitTexture(surface->GetCommonTexture());
       *ppSurface = surface.ref();
@@ -9129,8 +9134,10 @@ namespace dxvk {
 
     if (D3DKMTQueryResourceInfo(&query)) {
       Logger::warn(str::format("D3D9DeviceEx::ValidateSharedTexture: Failed to query resource: ", handle));
+      return false;
     } else if (query.PrivateRuntimeDataSize < sizeof(desc.dxgi) || query.PrivateRuntimeDataSize > sizeof(desc)) {
       Logger::warn(str::format("D3D9DeviceEx::ValidateSharedTexture: Unexpected size: ", query.PrivateRuntimeDataSize));
+      return false;
     } else {
       D3DDDI_OPENALLOCATIONINFO2 alloc = { };
       D3DKMT_OPENRESOURCE open = { };

@@ -30,8 +30,10 @@ namespace dxvk {
     // Unconditionally enable BDA usage
     m_info.usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 
-    // Determine whether the image is shareable before creating the resource
-    m_shared = m_info.sharing.mode != DxvkSharedHandleMode::None && device->features().khrExternalMemoryWin32;
+    // Determine whether the buffer is shareable before creating the resource
+    m_shared = m_info.sharing.mode != DxvkSharedHandleMode::None
+      && ((m_info.sharing.type != VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT && device->features().khrExternalMemoryWin32)
+        || (m_info.sharing.type == VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT && device->features().extExternalMemoryHost));
     m_stableAddress = m_shared;
 
     // Create and assign actual buffer resource
@@ -184,7 +186,6 @@ namespace dxvk {
       externalInfo.handleTypes = m_info.sharing.type;
     }
 
-
     // Set up shared memory properties
     void* sharedMemoryInfo = nullptr;
 
@@ -200,8 +201,8 @@ namespace dxvk {
     if (m_shared && m_info.sharing.mode == DxvkSharedHandleMode::Import) {
       if (m_info.sharing.type == VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT) {
         sharedImportHostPointer.pNext = std::exchange(sharedMemoryInfo, &sharedImportHostPointer);
-        sharedImportWin32.handleType = m_info.sharing.type;
-        sharedImportWin32.handle = m_info.sharing.handle;
+        sharedImportHostPointer.handleType = m_info.sharing.type;
+        sharedImportHostPointer.pHostPointer = m_info.sharing.handle;
       } else {
         sharedImportWin32.pNext = std::exchange(sharedMemoryInfo, &sharedImportWin32);
         sharedImportWin32.handleType = m_info.sharing.type;

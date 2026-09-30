@@ -551,7 +551,11 @@ namespace dxvk::vk {
     VULKAN_FN(vkSetLatencyMarkerNV);
     VULKAN_FN(vkGetLatencyTimingsNV);
     VULKAN_FN(vkQueueNotifyOutOfBandNV);
-    #endif
+  #endif
+
+  #ifdef VK_EXT_external_memory_host
+      VULKAN_FN(vkGetMemoryHostPointerPropertiesEXT);
+  #endif
   };
   
 }

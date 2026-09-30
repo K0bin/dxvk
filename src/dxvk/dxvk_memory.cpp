@@ -920,9 +920,38 @@ namespace dxvk {
     const void*                             next) {
     std::lock_guard<dxvk::mutex> lock(m_mutex);
 
+    uint32_t typeMask = requirements.memoryTypeBits;
+
+
+
+    if (next && device()->features().extExternalMemoryHost
+      && *reinterpret_cast<const VkStructureType*>(next) == VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO) {
+      auto dedicatedAlloc = reinterpret_cast<const VkMemoryDedicatedAllocateInfo*>(next);
+      if (dedicatedAlloc->pNext != nullptr && *reinterpret_cast<const VkStructureType*>(dedicatedAlloc->pNext) == VK_STRUCTURE_TYPE_IMPORT_MEMORY_HOST_POINTER_INFO_EXT) {
+        // TODO: this is horrible
+        Logger::warn(str::format("bits before: ", typeMask));
+
+        auto ptrInfo = reinterpret_cast<const VkImportMemoryHostPointerInfoEXT*>(next);
+        VkMemoryHostPointerPropertiesEXT properties = { VK_STRUCTURE_TYPE_IMPORT_MEMORY_HOST_POINTER_INFO_EXT };
+        if (m_device->vkd()->vkGetMemoryHostPointerPropertiesEXT(m_device->vkd()->device(),
+          VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT, ptrInfo->pHostPointer, &properties) == VK_SUCCESS)
+          typeMask &= properties.memoryTypeBits;
+
+        if ((reinterpret_cast<size_t>(ptrInfo->pHostPointer) % size_t(m_device->properties().extExternalMemoryHost.minImportedHostPointerAlignment)) != 0) {
+          Logger::warn(str::format("bits before alignment 0: ", typeMask));
+          typeMask = 0;
+          Logger::warn(str::format("ALIGNMENT WRONG: ", ptrInfo->pHostPointer,
+            " need: ", m_device->properties().extExternalMemoryHost.minImportedHostPointerAlignment,
+            " remainder: ", reinterpret_cast<size_t>(ptrInfo->pHostPointer) % size_t(m_device->properties().extExternalMemoryHost.minImportedHostPointerAlignment)));
+        }
+
+        Logger::warn(str::format("bits: ", typeMask));
+      }
+    }
+
     DxvkDeviceMemory memory = { };
 
-    for (auto typeIndex : bit::BitMask(requirements.memoryTypeBits & getMemoryTypeMask(allocationInfo.properties))) {
+    for (auto typeIndex : bit::BitMask(typeMask & getMemoryTypeMask(allocationInfo.properties))) {
       auto& type = m_memTypes[typeIndex];
       memory = allocateDeviceMemory(type, requirements.size, next);
 
@@ -1049,7 +1078,7 @@ namespace dxvk {
       // memory type that may have unexpected size restrictions. Also make sure not
       // to ever relocate these buffers since they require a stable GPU address.
       if ((createInfo.usage & (DescriptorBufferUsage | DescriptorHeapUsage)) || next) {
-        VkMemoryDedicatedAllocateInfo dedicatedInfo = { VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO };
+        VkMemoryDedicatedAllocateInfo dedicatedInfo = { VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO, next };
         dedicatedInfo.buffer = buffer;
 
         if ((allocation = allocateDedicatedMemory(requirements.memoryRequirements, allocationInfo, &dedicatedInfo)))
