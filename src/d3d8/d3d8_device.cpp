@@ -697,6 +697,7 @@ namespace dxvk {
     const POINT*              pDestPointsArray) {
     D3D8DeviceLock lock = LockDevice();
 
+
     // The source and destination surfaces can not be identical.
     if (unlikely(pSourceSurface == nullptr ||
                  pDestinationSurface == nullptr ||
@@ -709,6 +710,12 @@ namespace dxvk {
 
     Com<D3D8Surface> src = static_cast<D3D8Surface*>(pSourceSurface);
     Com<D3D8Surface> dst = static_cast<D3D8Surface*>(pDestinationSurface);
+
+
+
+    return m_bridge->CopyRects(src->GetD3D9(), pSourceRectsArray, cRects, dst->GetD3D9(), pDestPointsArray);
+
+
 
     d3d9::D3DSURFACE_DESC srcDesc, dstDesc;
     src->GetD3D9()->GetDesc(&srcDesc);

@@ -42,6 +42,14 @@ IDxvkLegacyD3DDeviceBridge : public IUnknown {
       const RECT*               pSrcRect,
       const POINT*              pDestPoint) = 0;
 
+
+  virtual HRESULT CopyRects(
+        IDirect3DSurface9*  pSourceSurface,
+  const RECT*               pSourceRectsArray,
+        UINT                cRects,
+        IDirect3DSurface9*  pDestinationSurface,
+  const POINT*              pDestPointsArray);
+
   /**
    * \brief Checks if a particular surface format is supported by D3D9
    *
@@ -104,6 +112,13 @@ namespace dxvk {
         const POINT*              pDestPoint);
 
     bool IsSupportedSurfaceFormat(D3DFORMAT Format);
+
+    HRESULT CopyRects(
+          IDirect3DSurface9*  pSourceSurface,
+    const RECT*               pSourceRectsArray,
+          UINT                cRects,
+          IDirect3DSurface9*  pDestinationSurface,
+    const POINT*              pDestPointsArray);
 
   private:
 
