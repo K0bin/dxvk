@@ -108,9 +108,6 @@ namespace dxvk {
       return D3DERR_INVALIDCALL;
     }
 
-    // TODO: No stretching or clipping of either source or destination rectangles.
-    // All src/dest rectangles must fit within the dest surface.
-
     Com<D3D9Surface> src = static_cast<D3D9Surface*>(pSourceSurface);
     Com<D3D9Surface> dst = static_cast<D3D9Surface*>(pDestinationSurface);
 
