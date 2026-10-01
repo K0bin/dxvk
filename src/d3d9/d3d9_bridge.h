@@ -28,21 +28,6 @@ IDxvkLegacyD3DDeviceBridge : public IUnknown {
     using D3DFORMAT = d3d9::D3DFORMAT;
   #endif
 
-  /**
-   * \brief Updates a D3D9 surface from a D3D9 buffer
-   *
-   * \param [in] pDestSurface Destination surface (typically in VRAM)
-   * \param [in] pSrcSurface  Source surface (typically in system memory)
-   * \param [in] pSrcRect     Source rectangle
-   * \param [in] pDestPoint   Destination (top-left) point
-   */
-  virtual HRESULT UpdateTextureFromBuffer(
-      IDirect3DSurface9*        pDestSurface,
-      IDirect3DSurface9*        pSrcSurface,
-      const RECT*               pSrcRect,
-      const POINT*              pDestPoint) = 0;
-
-
   virtual HRESULT CopyRects(
         IDirect3DSurface9*  pSourceSurface,
   const RECT*               pSourceRectsArray,
@@ -104,12 +89,6 @@ namespace dxvk {
     HRESULT STDMETHODCALLTYPE QueryInterface(
             REFIID  riid,
             void** ppvObject);
-
-    HRESULT UpdateTextureFromBuffer(
-        IDirect3DSurface9*        pDestSurface,
-        IDirect3DSurface9*        pSrcSurface,
-        const RECT*               pSrcRect,
-        const POINT*              pDestPoint);
 
     bool IsSupportedSurfaceFormat(D3DFORMAT Format);
 

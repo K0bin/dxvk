@@ -29,66 +29,6 @@ namespace dxvk {
     return m_device->QueryInterface(riid, ppvObject);
   }
 
-  HRESULT DxvkLegacyD3DDeviceBridge::UpdateTextureFromBuffer(
-        IDirect3DSurface9*  pDestSurface,
-        IDirect3DSurface9*  pSrcSurface,
-        const RECT*         pSrcRect,
-        const POINT*        pDestPoint) {
-    auto lock = m_device->LockDevice();
-
-    D3D9Surface* dst = static_cast<D3D9Surface*>(pDestSurface);
-    D3D9Surface* src = static_cast<D3D9Surface*>(pSrcSurface);
-
-    if (unlikely(dst == nullptr || src == nullptr))
-      return D3DERR_INVALIDCALL;
-
-    // CopyRects will not pass a null pSrcRect, but check anyway
-    if (unlikely(pSrcRect == nullptr))
-      return D3DERR_INVALIDCALL;
-
-    // validate dimensions to ensure we calculate a meaningful srcOffset & extent
-    if (unlikely(pSrcRect->left < 0
-              || pSrcRect->top  < 0
-              || pSrcRect->right  <= pSrcRect->left
-              || pSrcRect->bottom <= pSrcRect->top))
-      return D3DERR_INVALIDCALL;
-
-    // CopyRects will not pass a null pDestPoint, but check anyway
-    if (unlikely(pDestPoint == nullptr))
-      return D3DERR_INVALIDCALL;
-
-    // validate dimensions to ensure we caculate a meaningful dstOffset
-    if (unlikely(pDestPoint->x < 0
-              || pDestPoint->y < 0))
-      return D3DERR_INVALIDCALL;
-
-    D3D9CommonTexture* srcTextureInfo = src->GetCommonTexture();
-    D3D9CommonTexture* dstTextureInfo = dst->GetCommonTexture();
-
-    VkOffset3D srcOffset = { pSrcRect->left,
-                             pSrcRect->top,
-                             0u };
-
-    VkExtent3D extent = { uint32_t(pSrcRect->right - pSrcRect->left), uint32_t(pSrcRect->bottom - pSrcRect->top), 1 };
-
-    VkOffset3D dstOffset = { pDestPoint->x,
-                             pDestPoint->y,
-                             0u };
-
-    m_device->UpdateTextureFromBuffer(
-      srcTextureInfo, dstTextureInfo,
-      src->GetSubresource(), dst->GetSubresource(),
-      srcOffset, extent, dstOffset
-    );
-
-    dstTextureInfo->SetNeedsReadback(dst->GetSubresource(), true);
-
-    if (dstTextureInfo->IsAutomaticMip())
-      m_device->MarkTextureMipsDirty(dstTextureInfo);
-
-    return D3D_OK;
-  }
-
 
   /**
    * \brief D3D8 CopyRects implementation
