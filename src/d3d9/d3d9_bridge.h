@@ -24,23 +24,17 @@ IDxvkLegacyD3DDeviceBridge : public IUnknown {
 
   // D3D8 keeps D3D9 objects contained in a namespace.
   #ifdef DXVK_D3D9_NAMESPACE
+    using IDirect3DTexture9 = d3d9::IDirect3DTexture9;
     using IDirect3DSurface9 = d3d9::IDirect3DSurface9;
     using D3DFORMAT = d3d9::D3DFORMAT;
   #endif
 
-  /**
-   * \brief Updates a D3D9 surface from a D3D9 buffer
-   *
-   * \param [in] pDestSurface Destination surface (typically in VRAM)
-   * \param [in] pSrcSurface  Source surface (typically in system memory)
-   * \param [in] pSrcRect     Source rectangle
-   * \param [in] pDestPoint   Destination (top-left) point
-   */
-  virtual HRESULT UpdateTextureFromBuffer(
-      IDirect3DSurface9*        pDestSurface,
-      IDirect3DSurface9*        pSrcSurface,
-      const RECT*               pSrcRect,
-      const POINT*              pDestPoint) = 0;
+  virtual HRESULT CopyRects(
+        IDirect3DSurface9*  pSourceSurface,
+  const RECT*               pSourceRectsArray,
+        UINT                cRects,
+        IDirect3DSurface9*  pDestinationSurface,
+  const POINT*              pDestPointsArray) = 0;
 
   /**
    * \brief Checks if a particular surface format is supported by D3D9
@@ -97,13 +91,14 @@ namespace dxvk {
             REFIID  riid,
             void** ppvObject);
 
-    HRESULT UpdateTextureFromBuffer(
-        IDirect3DSurface9*        pDestSurface,
-        IDirect3DSurface9*        pSrcSurface,
-        const RECT*               pSrcRect,
-        const POINT*              pDestPoint);
-
     bool IsSupportedSurfaceFormat(D3DFORMAT Format);
+
+    HRESULT CopyRects(
+          IDirect3DSurface9*  pSourceSurface,
+    const RECT*               pSourceRectsArray,
+          UINT                cRects,
+          IDirect3DSurface9*  pDestinationSurface,
+    const POINT*              pDestPointsArray);
 
   private:
 
