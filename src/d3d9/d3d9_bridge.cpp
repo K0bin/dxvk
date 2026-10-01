@@ -126,7 +126,7 @@ namespace dxvk {
       return D3DERR_INVALIDCALL;
 
     if (unlikely(dstTex->GetFormatMapping().ConversionFormatInfo.FormatType != D3D9ConversionFormat_None && (srcTex->GetImage() == nullptr || dstTex->GetImage() == nullptr))) {
-      Logger::err("CopyRects with formats that need conversion is only supported if it's an image to image copy.");
+      Logger::err("CopyRects with formats, that need conversion, is only supported if it's an image to image copy.");
       return D3DERR_NOTAVAILABLE;
     }
 
