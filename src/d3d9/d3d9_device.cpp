@@ -1487,6 +1487,185 @@ namespace dxvk {
   }
 
 
+
+
+  /**
+   * \brief D3D8 CopyRects implementation
+   */
+  HRESULT STDMETHODCALLTYPE D3D9DeviceEx::CopyRects(
+          IDirect3DSurface9*  pSourceSurface,
+    const RECT*               pSourceRectsArray,
+          UINT                cRects,
+          IDirect3DSurface9*  pDestinationSurface,
+    const POINT*              pDestPointsArray) {
+    D3D9DeviceLock lock = LockDevice();
+
+    // The source and destination surfaces can not be identical.
+    if (unlikely(pSourceSurface == nullptr ||
+                 pDestinationSurface == nullptr ||
+                 pSourceSurface == pDestinationSurface)) {
+      return D3DERR_INVALIDCALL;
+    }
+
+    // TODO: No stretching or clipping of either source or destination rectangles.
+    // All src/dest rectangles must fit within the dest surface.
+
+    Com<D3D9Surface> src = static_cast<D3D9Surface*>(pSourceSurface);
+    Com<D3D9Surface> dst = static_cast<D3D9Surface*>(pDestinationSurface);
+
+    D3D9CommonTexture* srcTex = src->GetCommonTexture();
+    D3D9CommonTexture* dstTex = dst->GetCommonTexture();
+
+    // This method does not support format conversion.
+    if (unlikely(srcTex->Desc()->Format != dstTex->Desc()->Format))
+      return D3DERR_INVALIDCALL;
+
+    // This method cannot be applied to surfaces whose formats are classified as depth stencil formats.
+    if (unlikely(IsDepthStencilFormat(dstTex->Desc()->Format)))
+      return D3DERR_INVALIDCALL;
+
+    if (unlikely(dstTex->GetFormatMapping().ConversionFormatInfo.FormatType != D3D9ConversionFormat_None && (srcTex->GetImage() == nullptr || dstTex->GetImage() == nullptr))) {
+      Logger::err("CopyRects with formats that need conversion is only supported if it's an image to image copy.");
+      return D3DERR_NOTAVAILABLE;
+    }
+
+    // If pSourceRectsArray is NULL, then the entire surface is copied
+    RECT rect;
+    POINT point = { 0, 0 };
+    if (pSourceRectsArray == NULL) {
+      cRects = 1;
+      rect.top    = rect.left = 0;
+      rect.right  = srcTex->Desc()->Width;
+      rect.bottom = srcTex->Desc()->Height;
+      pSourceRectsArray = &rect;
+
+      pDestPointsArray = &point;
+    }
+
+    bool srcHasImage = srcTex->GetImage() != nullptr;
+    bool dstHasImage = srcTex->GetImage() != nullptr;
+
+    // Flush remaining managed texture uploads.
+    if (srcHasImage && srcTex->NeedsUpload(src->GetSubresource()))
+      FlushImage(srcTex, src->GetSubresource());
+    if (dstHasImage && dstTex->NeedsUpload(dst->GetSubresource()))
+      FlushImage(dstTex, dst->GetSubresource());
+
+    for (uint32_t i = 0; i < cRects; i++) {
+      RECT srcRect;
+      POINT dstPoint;
+      srcRect = pSourceRectsArray[i];
+      dstPoint = pDestPointsArray[i];
+
+      VkOffset2D dstOffset = { dstPoint.x, dstPoint.y };
+      VkOffset2D srcOffset = { srcRect.left, srcRect.top };
+      VkExtent2D extent = { uint32_t(srcRect.right - srcRect.left), uint32_t(srcRect.bottom - srcRect.top) };
+
+      VkExtent3D srcTexLevelExtent = srcTex->GetExtentMip(src->GetMipLevel());
+      VkExtent3D dstTexLevelExtent = dstTex->GetExtentMip(dst->GetMipLevel());
+
+      auto formatInfo = lookupFormatInfo(dstTex->GetFormatMapping().Format);
+      VkOffset3D alignedDstOffset = {
+        int32_t(alignDown(dstExtent.x, formatInfo->blockSize.width)),
+        int32_t(alignDown(dstExtent.y, formatInfo->blockSize.height)),
+        0
+      };
+      VkOffset3D alignedSrcOffset = {
+        int32_t(alignDown(srcOffset.x, formatInfo->blockSize.width)),
+        int32_t(alignDown(srcOffset.y, formatInfo->blockSize.height)),
+        0
+      };
+
+      dstExtent.width += dstOffset.x - alignedDstOffset.x;
+      dstExtent.height += dstOffset.y - alignedDstOffset.y;
+
+      VkExtent3D extentBlockCount = util::computeBlockCount({ extent.width, extent.height, formatInfo->blockSize }, formatInfo->blockSize);
+      VkExtent3D alignedExtent = util::computeBlockExtent(extentBlockCount, formatInfo->blockSize);
+
+      alignedExtent = util::snapExtent3D(alignedDstOffset, alignedExtent, dstTexLevelExtent);
+      alignedExtent = util::snapExtent3D(alignedSrcOffset, alignedExtent, srcTexLevelExtent);
+
+      VkOffset3D srcOffsetBlockCount = util::computeBlockOffset(alignedSrcOffset, formatInfo->blockSize);
+      VkOffset3D dstOffsetBlockCount = util::computeBlockOffset(alignedSrcOffset, formatInfo->blockSize);
+      VkExtent3D srcTexLevelExtentBlockCount = util::computeBlockCount(srcTexLevelExtent, formatInfo->blockSize);
+      VkExtent3D dstTexLevelExtentBlockCount = util::computeBlockCount(dstTexLevelExtent, formatInfo->blockSize);
+      VkDeviceSize srcPitch = align(srcTexLevelExtentBlockCount.width * formatInfo->elementSize, 4);
+      VkDeviceSize dstPitch = align(dstTexLevelExtentBlockCount.width * formatInfo->elementSize, 4);
+      VkDeviceSize copySrcOffset = srcOffsetBlockCount.z * srcTexLevelExtentBlockCount.height * srcPitch
+          + srcOffsetBlockCount.y * srcPitch
+      + srcOffsetBlockCount.x * formatInfo->elementSize;
+      VkDeviceSize copyDstOffset = dstOffsetBlockCount.z * dstTexLevelExtentBlockCount.height * dstPitch
+          + dstOffsetBlockCount.y * dstPitch
+          + dstOffsetBlockCount.x * formatInfo->elementSize;
+
+      if (srcHasImage && dstHasImage) {
+        // The backend will thankfully handle all VkUsage issues.
+        EmitCs([cDstImage = dstTex->GetImage(),
+          cSrcImage = srcTex->GetImage(),
+          cSrcOffset = alignedSrcOffset,
+          cDstOffset = alignedDstOffset,
+          cDstLayers = vk::makeSubresourceLayers(dst->GetSubresource()),
+          cSrcLayers = vk::makeSubresourceLayers(src->GetSubresource()),
+          cExtent = alignedExtent] (DxvkContext* ctx) {
+          ctx->copyImage(cDstImage, cDstLayers, cDstOffset,
+            cSrcImage, cSrcLayers, cSrcOffset, cExtent);
+        });
+      }
+      else if (!srcHasImage && dstHasImage) {
+        // Just use the staging buffer upload here.
+        UpdateTextureFromBuffer(dstTex, srcTex, src->GetSubresource(), dst->GetSubresource(), alignedSrcOffset, alignedDstOffset, alignedExtent);
+      }
+      else if (srcHasImage && !dstHasImage) {
+        EmitCs([cDstBuffer = dstTex->GetBuffer(),
+          cSrcImage = srcTex->GetImage(),
+          cDstLayers = vk::makeSubresourceLayers(dst->GetSubresource()),
+          cSrcLayers = vk::makeSubresourceLayers(src->GetSubresource()),
+          cSrcOffset = alignedSrcOffset,
+          cBufferOffset = copyDstOffset,
+          cExtent = alignedExtent
+          ] (DxvkContext* ctx) {
+          ctx->copyImageToBuffer(cDstBuffer, cBufferOffset, cDstPitch, 0, VK_FORMAT_UNDEFINED, cSrcImage, cSrcLayers, cSrcOffset cExtent);
+        });
+      }
+      else if (!srcHasImage && !dstHasImage) {
+        // Make sure both have buffers.
+        // This copies the data from the memory mapped file to a Vulkan buffer if necessary.
+        dstTex->CreateBuffer(true, dstTex->GetTotalSize());
+        srcTex->CreateBuffer(true, srcTex->GetTotalSize());
+        const Rc<DxvkBuffer>& srcBuffer = srcTex->GetBuffer();
+        const Rc<DxvkBuffer>& dstBuffer = dstTex->GetBuffer();
+
+        if (srcTex->NeedsReadback(src->GetSubresource())) {
+          Logger::warn("Stalling in CopyRects because of src.");
+          WaitForResource(*buffer, srcTex->GetMappingBufferSequenceNumber(src->GetSubresource()), 0);
+          srcTex->SetNeedsReadback(SrcSubresource, false);
+        }
+        if (srcTex->NeedsReadback(src->GetSubresource())) {
+          Logger::warn("Stalling in CopyRects because of dst.");
+          WaitForResource(*buffer, dstTex->GetMappingBufferSequenceNumber(dst->GetSubresource()), 0);
+          dstTex->SetNeedsReadback(SrcSubresource, false);
+        }
+
+        // We assume that using CopyRects with DEFAULT->SYSTEMMEM and then SYSTEMMEM->SYSTEMMEM doesn't really happen in practice.
+        // So the buffers don't need sync and we can just do the copy on the CPU here.
+
+        const void* srcMapPtr = srcBuffer->mapPtr(copySrcOffset);
+        const void* dstMapPtr = dstBuffer->mapPtr(copyDstOffset);
+        VkDeviceSize dirtySize = extentBlockCount.width * extentBlockCount.height * extentBlockCount.depth * formatInfo->elementSize;
+        D3D9BufferSlice slice = AllocStagingBuffer(dirtySize);
+        const void* srcData = reinterpret_cast<const uint8_t*>(mapPtr) + copySrcOffset;
+        util::packImageData(
+          dstMapPtr, srcMapPtr, srcPitch, 0, dstPitch, 0, VkImageType::VK_IMAGE_TYPE_2D, extent, 1, formatInfo,
+          VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT);
+      }
+
+      dstTex->SetNeedsReadback(dst->GetSubresource(), true);
+    }
+
+    return D3D_OK;
+  }
+
+
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::ColorFill(
           IDirect3DSurface9* pSurface,
     const RECT*              pRect,
@@ -5308,6 +5487,10 @@ namespace dxvk {
       // The src texutre has to be in POOL_SYSTEMEM, so it cannot use AUTOMIPGEN.
       // That means that NeedsReadback is only true if the texture has been used with GetRTData or GetFrontbufferData before.
       // Those functions create a buffer, so the buffer always exists here.
+
+      // If we run into this frequently, consider dynamically skipping the staging buffer if the src texture needs a sync.
+      Logger::warn("Stalling in UpdateTextureFromBuffer.");
+
       const Rc<DxvkBuffer>& buffer = pSrcTexture->GetBuffer();
       WaitForResource(*buffer, pSrcTexture->GetMappingBufferSequenceNumber(SrcSubresource), 0);
       pSrcTexture->SetNeedsReadback(SrcSubresource, false);

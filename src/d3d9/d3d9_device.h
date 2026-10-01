@@ -387,6 +387,13 @@ namespace dxvk {
       const RECT*                pDestRect,
             D3DTEXTUREFILTERTYPE Filter);
 
+    HRESULT STDMETHODCALLTYPE CopyRects(
+            IDirect3DSurface9*  pSourceSurface,
+      const RECT*               pSourceRectsArray,
+            UINT                cRects,
+            IDirect3DSurface9*  pDestinationSurface,
+      const POINT*              pDestPointsArray);
+
     HRESULT STDMETHODCALLTYPE ColorFill(
             IDirect3DSurface9* pSurface,
       const RECT*              pRect,
