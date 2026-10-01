@@ -84,9 +84,12 @@ namespace dxvk {
       }
     }
 
-    for (uint32_t i = 0; i < CountSubresources(); i++) {
-      m_memoryOffset[i] = m_totalSize;
-      m_totalSize += GetMipSize(i);
+    for (uint32_t layer = 0; layer < m_desc.ArraySize; layer++) {
+      for (uint32_t mip = 0u; mip < m_desc.MipLevels; mip++) {
+        uint subresource = CalcSubresource(layer, mip);
+        m_memoryOffset[subresource] = m_totalSize;
+        m_totalSize += GetMipSize(subresource);
+      }
     }
 
     // Add a tiny amount of padding at the end because some games read/write OOB
