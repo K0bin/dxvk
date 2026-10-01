@@ -578,6 +578,17 @@ namespace dxvk {
 
     void ExportImageInfo();
 
+    /**
+     * \brief Adds a small amount of padding to work around game bugs.
+     * \param size Size to pad.
+     * @return Padded size
+     */
+    static uint64_t PadTotalSize(uint64_t size) {
+      // Add a tiny amount of padding at the end because some games read/write OOB
+      // Medieval: Total War 1 for example seems to have an off-by-one bug in copying data for a managed texture.
+      return align(size + 1, CACHE_LINE_SIZE);
+    }
+
   };
 
 }
