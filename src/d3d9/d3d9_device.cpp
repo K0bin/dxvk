@@ -1564,10 +1564,13 @@ namespace dxvk {
       VkExtent3D srcTexLevelExtent = srcTex->GetExtentMip(src->GetMipLevel());
       VkExtent3D dstTexLevelExtent = dstTex->GetExtentMip(dst->GetMipLevel());
 
+      VkExtent3D srcExtent = { extent.width, extent.height, 1 };
+      VkExtent3D dstExtent = { extent.width, extent.height, 1 };
+
       auto formatInfo = lookupFormatInfo(dstTex->GetFormatMapping().Format);
       VkOffset3D alignedDstOffset = {
-        int32_t(alignDown(dstExtent.x, formatInfo->blockSize.width)),
-        int32_t(alignDown(dstExtent.y, formatInfo->blockSize.height)),
+        int32_t(alignDown(dstOffset.x, formatInfo->blockSize.width)),
+        int32_t(alignDown(dstOffset.y, formatInfo->blockSize.height)),
         0
       };
       VkOffset3D alignedSrcOffset = {
@@ -1576,10 +1579,14 @@ namespace dxvk {
         0
       };
 
+      srcExtent.width += dstOffset.x - alignedDstOffset.x;
+      srcExtent.height += dstOffset.y - alignedDstOffset.y;
       dstExtent.width += dstOffset.x - alignedDstOffset.x;
       dstExtent.height += dstOffset.y - alignedDstOffset.y;
+      extent.width = std::min(srcExtent.width, dstExtent.width);
+      extent.height = std::min(srcExtent.height, dstExtent.height);
 
-      VkExtent3D extentBlockCount = util::computeBlockCount({ extent.width, extent.height, formatInfo->blockSize }, formatInfo->blockSize);
+      VkExtent3D extentBlockCount = util::computeBlockCount(VkExtent3D { extent.width, extent.height, formatInfo->blockSize.depth }, formatInfo->blockSize);
       VkExtent3D alignedExtent = util::computeBlockExtent(extentBlockCount, formatInfo->blockSize);
 
       alignedExtent = util::snapExtent3D(alignedDstOffset, alignedExtent, dstTexLevelExtent);
@@ -1604,8 +1611,10 @@ namespace dxvk {
           cSrcImage = srcTex->GetImage(),
           cSrcOffset = alignedSrcOffset,
           cDstOffset = alignedDstOffset,
-          cDstLayers = vk::makeSubresourceLayers(dst->GetSubresource()),
-          cSrcLayers = vk::makeSubresourceLayers(src->GetSubresource()),
+          cDstLayers = vk::makeSubresourceLayers(dstTex->GetSubresourceFromIndex(
+            formatInfo->aspectMask, dst->GetSubresource())),
+          cSrcLayers = vk::makeSubresourceLayers(srcTex->GetSubresourceFromIndex(
+            formatInfo->aspectMask, src->GetSubresource())),
           cExtent = alignedExtent] (DxvkContext* ctx) {
           ctx->copyImage(cDstImage, cDstLayers, cDstOffset,
             cSrcImage, cSrcLayers, cSrcOffset, cExtent);
@@ -1613,18 +1622,21 @@ namespace dxvk {
       }
       else if (!srcHasImage && dstHasImage) {
         // Just use the staging buffer upload here.
-        UpdateTextureFromBuffer(dstTex, srcTex, src->GetSubresource(), dst->GetSubresource(), alignedSrcOffset, alignedDstOffset, alignedExtent);
+        UpdateTextureFromBuffer(dstTex, srcTex, src->GetSubresource(), dst->GetSubresource(), alignedSrcOffset, alignedExtent, alignedDstOffset);
       }
       else if (srcHasImage && !dstHasImage) {
         EmitCs([cDstBuffer = dstTex->GetBuffer(),
-          cSrcImage = srcTex->GetImage(),
-          cDstLayers = vk::makeSubresourceLayers(dst->GetSubresource()),
-          cSrcLayers = vk::makeSubresourceLayers(src->GetSubresource()),
-          cSrcOffset = alignedSrcOffset,
-          cBufferOffset = copyDstOffset,
-          cExtent = alignedExtent
+        cSrcImage = srcTex->GetImage(),
+        cDstLayers = vk::makeSubresourceLayers(dstTex->GetSubresourceFromIndex(
+          formatInfo->aspectMask, dst->GetSubresource())),
+        cSrcLayers = vk::makeSubresourceLayers(srcTex->GetSubresourceFromIndex(
+          formatInfo->aspectMask, src->GetSubresource())),
+        cSrcOffset = alignedSrcOffset,
+        cBufferOffset = copyDstOffset,
+        cDstPitch = dstPitch,
+        cExtent = alignedExtent
           ] (DxvkContext* ctx) {
-          ctx->copyImageToBuffer(cDstBuffer, cBufferOffset, cDstPitch, 0, VK_FORMAT_UNDEFINED, cSrcImage, cSrcLayers, cSrcOffset cExtent);
+          ctx->copyImageToBuffer(cDstBuffer, cBufferOffset, cDstPitch, 0, VK_FORMAT_UNDEFINED, cSrcImage, cSrcLayers, cSrcOffset, cExtent);
         });
       }
       else if (!srcHasImage && !dstHasImage) {
@@ -1637,26 +1649,25 @@ namespace dxvk {
 
         if (srcTex->NeedsReadback(src->GetSubresource())) {
           Logger::warn("Stalling in CopyRects because of src.");
-          WaitForResource(*buffer, srcTex->GetMappingBufferSequenceNumber(src->GetSubresource()), 0);
-          srcTex->SetNeedsReadback(SrcSubresource, false);
+          WaitForResource(*srcBuffer, srcTex->GetMappingBufferSequenceNumber(src->GetSubresource()), 0);
+          srcTex->SetNeedsReadback(src->GetSubresource(), false);
         }
         if (srcTex->NeedsReadback(src->GetSubresource())) {
           Logger::warn("Stalling in CopyRects because of dst.");
-          WaitForResource(*buffer, dstTex->GetMappingBufferSequenceNumber(dst->GetSubresource()), 0);
-          dstTex->SetNeedsReadback(SrcSubresource, false);
+          WaitForResource(*dstBuffer, dstTex->GetMappingBufferSequenceNumber(dst->GetSubresource()), 0);
+          dstTex->SetNeedsReadback(dst->GetSubresource(), false);
         }
 
         // We assume that using CopyRects with DEFAULT->SYSTEMMEM and then SYSTEMMEM->SYSTEMMEM doesn't really happen in practice.
         // So the buffers don't need sync and we can just do the copy on the CPU here.
 
         const void* srcMapPtr = srcBuffer->mapPtr(copySrcOffset);
-        const void* dstMapPtr = dstBuffer->mapPtr(copyDstOffset);
+        void* dstMapPtr = dstBuffer->mapPtr(copyDstOffset);
         VkDeviceSize dirtySize = extentBlockCount.width * extentBlockCount.height * extentBlockCount.depth * formatInfo->elementSize;
         D3D9BufferSlice slice = AllocStagingBuffer(dirtySize);
-        const void* srcData = reinterpret_cast<const uint8_t*>(mapPtr) + copySrcOffset;
         util::packImageData(
-          dstMapPtr, srcMapPtr, srcPitch, 0, dstPitch, 0, VkImageType::VK_IMAGE_TYPE_2D, extent, 1, formatInfo,
-          VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT);
+          dstMapPtr, srcMapPtr, srcPitch, 0, dstPitch, 0, VK_IMAGE_TYPE_2D, alignedExtent, 1, formatInfo,
+          VK_IMAGE_ASPECT_COLOR_BIT);
       }
 
       dstTex->SetNeedsReadback(dst->GetSubresource(), true);
