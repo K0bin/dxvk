@@ -142,7 +142,7 @@ namespace dxvk {
       // So we can just get the pointer for subresource 0 and memset all of them at once.
       std::memset(
         mapPtr, 0,
-        pTexture->GetTotalSize());
+        D3D9CommonTexture::PadTotalSize(pTexture->GetTotalSize()));
     }
   }
 

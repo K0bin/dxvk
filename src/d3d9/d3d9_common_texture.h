@@ -501,6 +501,10 @@ namespace dxvk {
      */
     VkDeviceSize GetMipSize(UINT Subresource) const;
 
+    uint32_t GetTotalSize() const {
+      return m_totalSize;
+    }
+
     /**
      * \brief Creates a buffer
      * Creates the mapping buffer if necessary
@@ -510,6 +514,17 @@ namespace dxvk {
     const Rc<DxvkBuffer>& EnsureBufferExists(bool Initialize = true);
 
     ID3D9VkInteropTexture* GetVkInterop() { return &m_d3d9Interop; }
+
+    /**
+     * \brief Adds a small amount of padding to work around game bugs.
+     * \param size Size to pad.
+     * @return Padded size
+     */
+    static uint64_t PadTotalSize(uint64_t size) {
+      // Add a tiny amount of padding at the end because some games read/write OOB
+      // Medieval: Total War 1 for example seems to have an off-by-one bug in copying data for a managed texture.
+      return align(size + 1, CACHE_LINE_SIZE);
+    }
 
   private:
 
