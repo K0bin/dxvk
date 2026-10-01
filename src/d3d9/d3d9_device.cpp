@@ -1161,9 +1161,7 @@ namespace dxvk {
     if (unlikely(srcTexInfo->Desc()->Pool != D3DPOOL_DEFAULT))
       return D3DERR_INVALIDCALL;
 
-    // Our D3D8 implementation uses it in CopyRects to copy DEFAULT -> SYSTEMMEM/SCRATCH/MANAGED.
-    // TODO: Using it for MANAGED is problematic because it doesn't update the image of a MANAGED texture.
-    if (unlikely(!m_d3dCompatibility.test(D3DCompatibility::D3D8) && dstTexInfo->Desc()->Pool != D3DPOOL_SYSTEMMEM))
+    if (unlikely(dstTexInfo->Desc()->Pool != D3DPOOL_SYSTEMMEM))
       return D3DERR_INVALIDCALL;
 
     if (unlikely(srcTexInfo->Desc()->MultiSample != D3DMULTISAMPLE_NONE))
