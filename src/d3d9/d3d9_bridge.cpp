@@ -93,7 +93,7 @@ namespace dxvk {
   /**
    * \brief D3D8 CopyRects implementation
    */
-  HRESULT STDMETHODCALLTYPE DxvkLegacyD3DDeviceBridge::CopyRects(
+  HRESULT DxvkLegacyD3DDeviceBridge::CopyRects(
           IDirect3DSurface9*  pSourceSurface,
     const RECT*               pSourceRectsArray,
           UINT                cRects,
