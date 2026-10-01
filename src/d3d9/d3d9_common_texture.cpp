@@ -94,13 +94,13 @@ namespace dxvk {
 
     // Add a tiny amount of padding at the end because some games read/write OOB
     // Medieval: Total War 1 for example seems to have an off-by-one bug in copying data for a managed texture.
-    uint32_t paddedSize = align(m_totalSize + 1, CACHE_LINE_SIZE);
+    m_totalSize = align(m_totalSize + 1, CACHE_LINE_SIZE);
 
     // Initialization is handled by D3D9Initializer
     if (m_mapMode == D3D9_COMMON_TEXTURE_MAP_MODE_UNMAPPABLE)
-      m_data = MemoryFileRegion(*m_device->GetAllocator(), paddedSize);
+      m_data = MemoryFileRegion(*m_device->GetAllocator(), m_totalSize);
     else if (m_mapMode != D3D9_COMMON_TEXTURE_MAP_MODE_NONE && m_desc.Pool != D3DPOOL_DEFAULT)
-      CreateBuffer(false, paddedSize);
+      EnsureBufferExists(false);
   }
 
 
@@ -319,12 +319,12 @@ namespace dxvk {
   }
 
 
-  void D3D9CommonTexture::CreateBuffer(bool Initialize, uint32_t Size) {
+  const Rc<DxvkBuffer>& D3D9CommonTexture::EnsureBufferExists(bool Initialize) {
     if (likely(m_buffer != nullptr))
-      return;
+      return m_buffer;
 
     DxvkBufferCreateInfo info;
-    info.size   = Size;
+    info.size   = m_totalSize;
     info.usage  = VK_BUFFER_USAGE_TRANSFER_SRC_BIT
                 | VK_BUFFER_USAGE_TRANSFER_DST_BIT
                 | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
@@ -353,6 +353,8 @@ namespace dxvk {
         std::memset(m_buffer->mapPtr(0), 0, m_totalSize);
     }
     m_data = {};
+
+    return m_buffer;
   }
 
 

@@ -501,18 +501,13 @@ namespace dxvk {
      */
     VkDeviceSize GetMipSize(UINT Subresource) const;
 
-    uint32_t GetTotalSize() const {
-      return m_totalSize;
-    }
-
     /**
      * \brief Creates a buffer
      * Creates the mapping buffer if necessary
      * \param [in] Initialize Whether to copy over existing data (or clear if there is no data)
-     * \param [in] Size The size of the buffer
      * \returns Whether an allocation happened
      */
-    void CreateBuffer(bool Initialize, uint32_t Size);
+    const Rc<DxvkBuffer>& EnsureBufferExists(bool Initialize = true);
 
     ID3D9VkInteropTexture* GetVkInterop() { return &m_d3d9Interop; }
 
