@@ -86,7 +86,7 @@ namespace dxvk {
 
     for (uint32_t layer = 0; layer < m_desc.ArraySize; layer++) {
       for (uint32_t mip = 0u; mip < m_desc.MipLevels; mip++) {
-        uint subresource = CalcSubresource(layer, mip);
+        uint32_t subresource = CalcSubresource(layer, mip);
         m_memoryOffset[subresource] = m_totalSize;
         m_totalSize += GetMipSize(subresource);
       }
