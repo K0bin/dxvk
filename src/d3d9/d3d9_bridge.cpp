@@ -141,7 +141,7 @@ namespace dxvk {
     }
 
     bool srcHasImage = srcTex->GetImage() != nullptr;
-    bool dstHasImage = srcTex->GetImage() != nullptr;
+    bool dstHasImage = dstTex->GetImage() != nullptr;
 
     // Flush remaining managed texture uploads.
     if (srcHasImage && srcTex->NeedsUpload(src->GetSubresource()))
@@ -162,9 +162,6 @@ namespace dxvk {
       VkExtent3D srcTexLevelExtent = srcTex->GetExtentMip(src->GetMipLevel());
       VkExtent3D dstTexLevelExtent = dstTex->GetExtentMip(dst->GetMipLevel());
 
-      VkExtent3D srcExtent = { extent.width, extent.height, 1 };
-      VkExtent3D dstExtent = { extent.width, extent.height, 1 };
-
       auto formatInfo = lookupFormatInfo(dstTex->GetFormatMapping().Format);
       VkOffset3D alignedDstOffset = {
         int32_t(alignDown(dstOffset.x, formatInfo->blockSize.width)),
@@ -177,8 +174,10 @@ namespace dxvk {
         0
       };
 
+      VkExtent3D srcExtent = { extent.width, extent.height, 1 };
       srcExtent.width += dstOffset.x - alignedDstOffset.x;
       srcExtent.height += dstOffset.y - alignedDstOffset.y;
+      VkExtent3D dstExtent = { extent.width, extent.height, 1 };
       dstExtent.width += dstOffset.x - alignedDstOffset.x;
       dstExtent.height += dstOffset.y - alignedDstOffset.y;
       extent.width = std::min(srcExtent.width, dstExtent.width);
@@ -191,7 +190,7 @@ namespace dxvk {
       alignedExtent = util::snapExtent3D(alignedSrcOffset, alignedExtent, srcTexLevelExtent);
 
       VkOffset3D srcOffsetBlockCount = util::computeBlockOffset(alignedSrcOffset, formatInfo->blockSize);
-      VkOffset3D dstOffsetBlockCount = util::computeBlockOffset(alignedSrcOffset, formatInfo->blockSize);
+      VkOffset3D dstOffsetBlockCount = util::computeBlockOffset(alignedDstOffset, formatInfo->blockSize);
       VkExtent3D srcTexLevelExtentBlockCount = util::computeBlockCount(srcTexLevelExtent, formatInfo->blockSize);
       VkExtent3D dstTexLevelExtentBlockCount = util::computeBlockCount(dstTexLevelExtent, formatInfo->blockSize);
       VkDeviceSize srcPitch = align(srcTexLevelExtentBlockCount.width * formatInfo->elementSize, 4);
@@ -205,36 +204,102 @@ namespace dxvk {
 
       if (srcHasImage && dstHasImage) {
         // The backend will thankfully handle all VkUsage issues.
-        m_device->EmitCs([cDstImage = dstTex->GetImage(),
+
+        const Rc<DxvkImage>& srcImage = srcTex->GetImage();
+        const Rc<DxvkImage>& dstImage = dstTex->GetImage();
+
+        VkImageSubresourceLayers srcLayers = vk::makeSubresourceLayers(srcTex->GetSubresourceFromIndex(
+        formatInfo->aspectMask, src->GetSubresource()));
+
+        VkImageSubresourceLayers dstLayers = vk::makeSubresourceLayers(dstTex->GetSubresourceFromIndex(
+              formatInfo->aspectMask, dst->GetSubresource()));
+
+        if (dstImage->info().sampleCount == srcImage->info().sampleCount
+          || dstImage->info().sampleCount == 1u) {
+          m_device->EmitCs([
+            cSrcImage  = srcImage,
+            cDstImage  = dstImage,
+            cSrcOffset = alignedSrcOffset,
+            cDstOffset = alignedDstOffset,
+            cSrcLayers = srcLayers,
+            cDstLayers = dstLayers,
+            cExtent    = alignedExtent,
+            cResolve   = dstImage->info().sampleCount == 1u
+          ] (DxvkContext* ctx) {
+            if (!cResolve) {
+              ctx->copyImage(cDstImage, cDstLayers, cDstOffset,
+                cSrcImage, cSrcLayers, cSrcOffset, cExtent);
+            } else {
+              VkImageResolve region;
+              region.srcSubresource = cSrcLayers;
+              region.srcOffset      = cSrcOffset;
+              region.dstSubresource = cDstLayers;
+              region.dstOffset      = cDstOffset;
+              region.extent         = cExtent;
+
+              ctx->resolveImage(
+                cDstImage, cSrcImage, region, cSrcImage->info().format, VK_RESOLVE_MODE_AVERAGE_BIT,
+                VK_RESOLVE_MODE_SAMPLE_ZERO_BIT);
+            }
+          });
+        } else {
+          DxvkImageViewKey srcViewInfo;
+          srcViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+          srcViewInfo.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+          srcViewInfo.format = srcImage->info().format;
+          srcViewInfo.aspects = srcLayers.aspectMask;
+          srcViewInfo.mipIndex = srcLayers.mipLevel;
+          srcViewInfo.mipCount = 1u;
+          srcViewInfo.layerIndex = srcLayers.baseArrayLayer;
+          srcViewInfo.layerCount = 1u;
+          srcViewInfo.packedSwizzle = DxvkImageViewKey::packSwizzle(srcTex->GetMapping().Swizzle);
+
+          DxvkImageViewKey dstViewInfo = srcViewInfo;
+          dstViewInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+          dstViewInfo.mipIndex = dstLayers.mipLevel;
+          dstViewInfo.layerIndex = dstLayers.baseArrayLayer;
+
+          m_device->EmitCs([
+            cSrcView  = srcImage->createView(srcViewInfo),
+            cDstView  = dstImage->createView(dstViewInfo),
+            cDstOffset = alignedDstOffset,
+            cSrcOffset = alignedSrcOffset,
+            cExtent    = alignedExtent
+          ] (DxvkContext* ctx) {
+            std::array<VkOffset3D, 4> offsets = {
+              cSrcOffset,
+              VkOffset3D { cSrcOffset.x + int32_t(cExtent.width), cSrcOffset.y + int32_t(cExtent.width), cSrcOffset.z + int32_t(cExtent.depth) },
+              cDstOffset,
+              VkOffset3D { cDstOffset.x + int32_t(cExtent.width), cDstOffset.y + int32_t(cExtent.width), cDstOffset.z + int32_t(cExtent.depth) },
+            };
+            ctx->blitImageView(
+              cDstView, &offsets[2],
+              cSrcView, offsets.data(),
+              VK_FILTER_NEAREST);
+          });
+        }
+      }
+      else if (!srcHasImage && dstHasImage) {
+        srcTex->CreateBuffer(true, srcTex->GetTotalSize());
+        // Just use the staging buffer upload here.
+        m_device->UpdateTextureFromBuffer(dstTex, srcTex, dst->GetSubresource(), src->GetSubresource(), alignedSrcOffset, alignedExtent, alignedDstOffset);
+      }
+      else if (srcHasImage && !dstHasImage) {
+        dstTex->CreateBuffer(true, dstTex->GetTotalSize());
+        m_device->EmitCs([
+          cDstBuffer = dstTex->GetBuffer(),
           cSrcImage = srcTex->GetImage(),
-          cSrcOffset = alignedSrcOffset,
-          cDstOffset = alignedDstOffset,
           cDstLayers = vk::makeSubresourceLayers(dstTex->GetSubresourceFromIndex(
             formatInfo->aspectMask, dst->GetSubresource())),
           cSrcLayers = vk::makeSubresourceLayers(srcTex->GetSubresourceFromIndex(
             formatInfo->aspectMask, src->GetSubresource())),
-          cExtent = alignedExtent] (DxvkContext* ctx) {
-          ctx->copyImage(cDstImage, cDstLayers, cDstOffset,
-            cSrcImage, cSrcLayers, cSrcOffset, cExtent);
-        });
-      }
-      else if (!srcHasImage && dstHasImage) {
-        // Just use the staging buffer upload here.
-        m_device->UpdateTextureFromBuffer(dstTex, srcTex, src->GetSubresource(), dst->GetSubresource(), alignedSrcOffset, alignedExtent, alignedDstOffset);
-      }
-      else if (srcHasImage && !dstHasImage) {
-        m_device->EmitCs([cDstBuffer = dstTex->GetBuffer(),
-        cSrcImage = srcTex->GetImage(),
-        cDstLayers = vk::makeSubresourceLayers(dstTex->GetSubresourceFromIndex(
-          formatInfo->aspectMask, dst->GetSubresource())),
-        cSrcLayers = vk::makeSubresourceLayers(srcTex->GetSubresourceFromIndex(
-          formatInfo->aspectMask, src->GetSubresource())),
-        cSrcOffset = alignedSrcOffset,
-        cBufferOffset = copyDstOffset,
-        cDstPitch = dstPitch,
-        cExtent = alignedExtent
-          ] (DxvkContext* ctx) {
-          ctx->copyImageToBuffer(cDstBuffer, cBufferOffset, cDstPitch, 0, VK_FORMAT_UNDEFINED, cSrcImage, cSrcLayers, cSrcOffset, cExtent);
+          cSrcOffset = alignedSrcOffset,
+          cBufferOffset = copyDstOffset,
+          cDstPitch = dstPitch,
+          cExtent = alignedExtent
+        ] (DxvkContext* ctx) {
+          ctx->copyImageToBuffer(cDstBuffer, cBufferOffset, cDstPitch, 0,
+            VK_FORMAT_UNDEFINED, cSrcImage, cSrcLayers, cSrcOffset, cExtent);
         });
       }
       else if (!srcHasImage && !dstHasImage) {
