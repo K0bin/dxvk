@@ -5220,6 +5220,8 @@ namespace dxvk {
     MapTexture(pResource, Subresource); // Add it to the list of mapped resources
     pResource->SetLocked(Subresource, false);
 
+    pResource->CopyImportedPointerToBuffer();
+
     // Flush image contents from staging if we aren't read only
     // and we aren't deferring for managed.
     const D3DBOX& box = pResource->GetDirtyBox(Face);

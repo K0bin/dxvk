@@ -841,13 +841,13 @@ namespace dxvk {
 
 
   void D3D9CommonTexture::CopyImportedPointerToBuffer() {
-    if (unlikely(m_importedPointer == nullptr || m_buffer == nullptr))
+    if (likely(m_importedPointer == nullptr || m_buffer == nullptr))
       return;
 
     memcpy(m_importedPointer, m_buffer->mapPtr(0u), m_totalSize);
   }
   void D3D9CommonTexture::CopyBufferToImportedPointer() {
-    if (unlikely(m_importedPointer == nullptr || m_buffer == nullptr))
+    if (likely(m_importedPointer == nullptr || m_buffer == nullptr))
       return;
 
     memcpy(m_buffer->mapPtr(0u), m_importedPointer, m_totalSize);
