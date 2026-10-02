@@ -455,6 +455,7 @@ namespace dxvk::hud {
 
   void HudFrameTimeItem::createComputePipeline(
           HudRenderer&        renderer) {
+    util::DxvkFpuStateGuard guard(true);
     static const std::array<DxvkDescriptorSetLayoutBinding, 4> bindings = {{
       { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,       1, VK_SHADER_STAGE_COMPUTE_BIT },
       { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,       1, VK_SHADER_STAGE_COMPUTE_BIT },
