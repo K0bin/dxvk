@@ -5,6 +5,8 @@
 
 namespace dxvk::util {
 
+void SanitizeMxcsr(const char* where);
+
   /**
    * \brief Debug utils label type
    */

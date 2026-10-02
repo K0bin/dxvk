@@ -110,12 +110,15 @@ namespace dxvk {
           HWND     hDestWindowOverride,
     const RGNDATA* pDirtyRegion,
           DWORD    dwFlags) {
+      SanitizeMxcsr("swapchain present before");
     D3D9DeviceLock lock = m_parent->LockDevice();
 
     m_parent->SetMostRecentlyUsedSwapchain(this);
 
     if (unlikely(m_parent->IsDeviceLost()))
       return D3DERR_DEVICELOST;
+
+    SanitizeMxcsr("swapchain present 0");
 
     // If we have no backbuffers, error out.
     // This handles the case where a ::Reset failed due to OOM
@@ -125,7 +128,9 @@ namespace dxvk {
     if (m_backBuffers.empty())
       return D3D_OK;
 
+    SanitizeMxcsr("swapchain present 1");
     uint32_t presentInterval = m_presentParams.PresentationInterval;
+    SanitizeMxcsr("swapchain present 2");
 
     // This is not true directly in d3d9 to to timing differences that don't matter for us.
     // For our purposes...
@@ -135,6 +140,7 @@ namespace dxvk {
     if (presentInterval == D3DPRESENT_INTERVAL_IMMEDIATE || (dwFlags & D3DPRESENT_FORCEIMMEDIATE))
       presentInterval = 0;
 
+    SanitizeMxcsr("swapchain present 3");
     auto options = m_parent->GetOptions();
 
     if (options->presentInterval >= 0)
@@ -142,24 +148,32 @@ namespace dxvk {
 
     HWND window = m_presentParams.hDeviceWindow;
 
+    SanitizeMxcsr("swapchain present 4");
     if (hDestWindowOverride != nullptr)
       window = hDestWindowOverride;
 
+    SanitizeMxcsr("swapchain present 5");
     if (m_window != window) {
       m_window = window;
       m_displayRefreshRateDirty = true;
     }
 
+    SanitizeMxcsr("swapchain present 6");
     if (!UpdateWindowCtx())
       return D3D_OK;
 
+    SanitizeMxcsr("swapchain present 7");
     if (options->deferSurfaceCreation && IsDeviceReset(m_wctx))
       m_wctx->presenter->invalidateSurface();
 
+    SanitizeMxcsr("swapchain present 8");
     m_wctx->presenter->setSyncInterval(presentInterval);
 
+    SanitizeMxcsr("swapchain present 9");
     UpdatePresentRegion(pSourceRect, pDestRect);
+    SanitizeMxcsr("swapchain present 10");
     UpdatePresentParameters();
+    SanitizeMxcsr("swapchain present 11");
 
     if (!SwapWithFrontBuffer() && m_parent->GetOptions()->extraFrontbuffer) {
       // We never actually rotate in the front buffer.
@@ -179,17 +193,27 @@ namespace dxvk {
         Logger::err("Failed to blit to front buffer");
       }
     }
+    SanitizeMxcsr("swapchain present 12");
 
 #ifdef _WIN32
+    SanitizeMxcsr("swapchain present before gdi");
     const bool useGDIFallback = m_partialCopy && !SwapWithFrontBuffer();
-    if (useGDIFallback)
-      return PresentImageGDI(m_window);
+    HRESULT gdiresult;
+    if (useGDIFallback) {
+      gdiresult = PresentImageGDI(m_window);
+      SanitizeMxcsr("swapchain present after gdi");
+      return gdiresult;
+    }
 #endif
 
+    SanitizeMxcsr("swapchain present after");
     try {
       UpdateWindowedRefreshRate();
+    SanitizeMxcsr("swapchain present after2");
       UpdateTargetFrameRate(presentInterval);
+    SanitizeMxcsr("swapchain present after3");
       PresentImage(presentInterval);
+    SanitizeMxcsr("swapchain present after4");
       return D3D_OK;
     } catch (const DxvkError& e) {
       Logger::err(e.message());
@@ -841,11 +865,16 @@ namespace dxvk {
 
 
   void D3D9SwapChainEx::PresentImage(UINT SyncInterval) {
+    SanitizeMxcsr("swapchain present image 0");
     m_parent->EndFrame(m_latencyTracker);
+    SanitizeMxcsr("swapchain present image 1");
     m_parent->Flush();
+    SanitizeMxcsr("swapchain present image 2");
 
     if (m_latencyTracker)
       m_latencyTracker->notifyCpuPresentBegin(m_wctx->frameId + 1u);
+
+    SanitizeMxcsr("swapchain present image 3");
 
     // Retrieve the image and image view to present
     VkResult status = VK_SUCCESS;
@@ -853,11 +882,17 @@ namespace dxvk {
     Rc<DxvkImage> swapImage = m_backBuffers[0]->GetCommonTexture()->GetImage();
     Rc<DxvkImageView> swapImageView = m_backBuffers[0]->GetCommonTexture()->GetSampleView(false);
 
+
+    SanitizeMxcsr("swapchain present image 4");
+
     // Presentation semaphores and WSI swap chain image
     PresenterSync sync = { };
     Rc<DxvkImage> backBuffer;
 
     status = m_wctx->presenter->acquireNextImage(sync, backBuffer);
+
+
+    SanitizeMxcsr("swapchain present image 5");
 
     if (status >= 0 && status != VK_NOT_READY) {
       VkRect2D srcRect = {
@@ -917,7 +952,11 @@ namespace dxvk {
         cDevice->presentImage(cPresenter, cLatency, cFrameId, 0, nullptr, nullptr);
       });
 
+
+      SanitizeMxcsr("swapchain present image 6");
+
       m_parent->FlushCsChunk();
+    SanitizeMxcsr("swapchain present image 7");
     }
 
     if (m_latencyTracker) {
@@ -927,7 +966,13 @@ namespace dxvk {
         m_latencyTracker->discardTimings();
     }
 
+
+    SanitizeMxcsr("swapchain present image 8");
+
     SyncFrameLatency();
+
+
+    SanitizeMxcsr("swapchain present image 9");
 
     DxvkLatencyStats latencyStats = { };
 
@@ -938,8 +983,14 @@ namespace dxvk {
       m_parent->BeginFrame(m_latencyTracker, m_wctx->frameId + 1u);
     }
 
+
+    SanitizeMxcsr("swapchain present image 10");
+
     if (m_latencyHud)
       m_latencyHud->accumulateStats(latencyStats);
+
+
+    SanitizeMxcsr("swapchain present image 11");
 
     // Rotate swap chain buffers so that the back
     // buffer at index 0 becomes the front buffer.
@@ -949,6 +1000,7 @@ namespace dxvk {
       // and the application cannot obserse buffer swapping in GetBackBuffer()
       rotatingBufferCount -= 1;
     }
+    SanitizeMxcsr("swapchain present image 12");
 
     // Backbuffer 0 is the one that gets copied to the Vulkan swapchain backbuffer.
     // => m_backBuffers[1] is the next one that gets presented
@@ -956,7 +1008,11 @@ namespace dxvk {
     for (uint32_t i = 1; i < rotatingBufferCount; i++)
       m_backBuffers[i]->Swap(m_backBuffers[i - 1].ptr());
 
+
+
     m_parent->m_dirty.set(D3D9DeviceDirtyFlag::Framebuffer);
+
+    SanitizeMxcsr("swapchain present image 13");
   }
 
 

@@ -4259,13 +4259,16 @@ namespace dxvk {
       UINT cursorWidth  = pSoftwareCursor->DrawCursor ? pSoftwareCursor->Width  : 0;
       UINT cursorHeight = pSoftwareCursor->DrawCursor ? pSoftwareCursor->Height : 0;
 
+      SanitizeMxcsr("PresentEx set cursor before");
       m_implicitSwapchain->SetCursorPosition(pSoftwareCursor->X - pSoftwareCursor->XHotSpot,
                                              pSoftwareCursor->Y - pSoftwareCursor->YHotSpot,
                                              cursorWidth, cursorHeight);
+      SanitizeMxcsr("PresentEx set cursor after");
 
       // Once a hardware cursor has been set or the device has been reset,
       // we need to ensure that we render a 0-sized rectangle first, and
       // only then fully clear the software cursor.
+      SanitizeMxcsr("PresentEx clear cursor before");
       if (unlikely(pSoftwareCursor->ClearCursor)) {
         pSoftwareCursor->Width       = 0;
         pSoftwareCursor->Height      = 0;
@@ -4273,6 +4276,7 @@ namespace dxvk {
         pSoftwareCursor->YHotSpot    = 0;
         pSoftwareCursor->ClearCursor = false;
       }
+      SanitizeMxcsr("PresentEx clear cursor after");
     }
 
     HRESULT res = m_implicitSwapchain->Present(
@@ -8893,6 +8897,7 @@ namespace dxvk {
 
 
   HRESULT D3D9DeviceEx::ResetSwapChain(D3DPRESENT_PARAMETERS* pPresentationParameters, D3DDISPLAYMODEEX* pFullscreenDisplayMode) {
+    SanitizeMxcsr("ResetImplicitSwapchain beginning");
     D3D9Format backBufferFmt = EnumerateFormat(pPresentationParameters->BackBufferFormat);
     bool unlockedFormats = m_parent->HasFormatsUnlocked();
 
@@ -8979,6 +8984,7 @@ namespace dxvk {
     // Force this if we end up binding the same RT to make scissor change go into effect.
     BindViewportAndScissor();
 
+    SanitizeMxcsr("ResetImplicitSwapchain end");
     return D3D_OK;
   }
 

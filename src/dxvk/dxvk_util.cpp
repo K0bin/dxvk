@@ -3,7 +3,41 @@
 #include "dxvk_format.h"
 #include "dxvk_util.h"
 
+
+#if (defined(__i386__) || (defined(__x86_64__) && !defined(__arm64ec__)) || defined(_M_IX86) || (defined(_M_X64) && !defined(_M_ARM64EC)))
+#define DXVK_D3D9_X86_FPU_STATE
+#include <xmmintrin.h>
+#endif
+
 namespace dxvk::util {
+
+
+
+  void SanitizeMxcsr(const char* where) {
+#if defined(DXVK_D3D9_X86_FPU_STATE)
+    uint32_t mxcsr = _mm_getcsr();
+
+    // MXCSR bits 13-14 = rounding control:
+    // 00 = nearest
+    // 01 = down
+    // 10 = up
+    // 11 = toward zero
+    constexpr uint32_t RoundingMask = 0x6000;
+
+    if (mxcsr & RoundingMask) {
+      uint32_t fixed = mxcsr & ~RoundingMask;
+
+      Logger::warn(str::format(
+        "D3D9: ", where,
+        " restoring MXCSR round-to-nearest: ",
+       std::hex, mxcsr, " -> ", fixed));
+
+      _mm_setcsr(fixed);
+    }
+#elif
+    Logger::warn("fp hack mess not enabled");
+#endif
+  }
   
   uint32_t computeMipLevelCount(VkExtent3D imageSize) {
     uint32_t maxDim = std::max(imageSize.width, imageSize.height);

@@ -77,6 +77,7 @@ namespace dxvk {
 
   VkResult Presenter::acquireNextImage(PresenterSync& sync, Rc<DxvkImage>& image) {
     std::unique_lock lock(m_surfaceMutex);
+    util::SanitizeMxcsr("presenter acquire next image 0");
 
     // Don't acquire more than one image at a time
     VkResult status = VK_SUCCESS;
@@ -86,13 +87,17 @@ namespace dxvk {
       return !m_presentPending || status < 0;
     });
 
+    util::SanitizeMxcsr("presenter acquire next image 1");
+
     if (status < 0)
       return status;
 
     // Ensure that the swap chain gets recreated if it is dirty
     bool hasSwapchain = m_swapchain != VK_NULL_HANDLE;
 
+    util::SanitizeMxcsr("presenter acquire next image 2");
     updateSwapChain();
+    util::SanitizeMxcsr("presenter acquire next image 3");
 
     // Don't acquire if we already did so after present
     if (m_acquireStatus == VK_NOT_READY && m_swapchain) {
@@ -104,6 +109,7 @@ namespace dxvk {
         m_swapchain, std::numeric_limits<uint64_t>::max(),
         sync.acquire, VK_NULL_HANDLE, &m_imageIndex);
     }
+    util::SanitizeMxcsr("presenter acquire next image 4");
 
     // This is a normal occurence, but may be useful for
     // debugging purposes in case WSI goes wrong somehow.
@@ -113,8 +119,11 @@ namespace dxvk {
     // If the swap chain is out of date, recreate it and retry. It
     // is possible that we do not get a new swap chain here, e.g.
     // because the window is minimized.
+    util::SanitizeMxcsr("presenter acquire next image 5");
     if (m_acquireStatus != VK_SUCCESS || !m_swapchain) {
+    util::SanitizeMxcsr("presenter acquire next image 5.0");
       VkResult vr = recreateSwapChain();
+      util::SanitizeMxcsr("presenter acquire next image 5.1");
 
       if (vr == VK_NOT_READY && hasSwapchain)
         Logger::info("Presenter: Surface does not allow swapchain creation.");
@@ -124,15 +133,18 @@ namespace dxvk {
 
       PresenterSync sync = m_semaphores.at(m_frameIndex);
 
+      util::SanitizeMxcsr("presenter acquire next image 5.2");
       m_acquireStatus = m_vkd->vkAcquireNextImageKHR(m_vkd->device(),
         m_swapchain, std::numeric_limits<uint64_t>::max(),
         sync.acquire, VK_NULL_HANDLE, &m_imageIndex);
+    util::SanitizeMxcsr("presenter acquire next image 5.3");
 
       if (m_acquireStatus < 0) {
         Logger::info(str::format("Presenter: Got ", m_acquireStatus, " from fresh swapchain"));
         return softError(m_acquireStatus);
       }
     }
+    util::SanitizeMxcsr("presenter acquire next image 6");
 
     // Update HDR metadata after a successful acquire. We know
     // that there won't be a present in flight at this point.
@@ -144,6 +156,7 @@ namespace dxvk {
           1, &m_swapchain, &(*m_hdrMetadata));
       }
     }
+    util::SanitizeMxcsr("presenter acquire next image 7");
 
     // Apply latency sleep mode if the swapchain supports it
     if (m_latencySleepModeDirty && m_latencySleepMode) {
@@ -154,16 +167,21 @@ namespace dxvk {
           m_swapchain, &(*m_latencySleepMode));
       }
     }
+    util::SanitizeMxcsr("presenter acquire next image 8");
 
     // Set dynamic present mode for the next frame if possible
     if (!m_dynamicModes.empty())
-      m_presentMode = m_dynamicModes.at(m_preferredSyncInterval ? 1u : 0u); 
+      m_presentMode = m_dynamicModes.at(m_preferredSyncInterval ? 1u : 0u);
+
+
+    util::SanitizeMxcsr("presenter acquire next image 9");
 
     // Return relevant Vulkan objects for the acquired image
     sync = m_semaphores.at(m_frameIndex);
     image = m_images.at(m_imageIndex);
 
     m_presentPending = true;
+    util::SanitizeMxcsr("presenter acquire next image 10");
     return m_acquireStatus;
   }
 
@@ -587,25 +605,41 @@ namespace dxvk {
 
 
   VkResult Presenter::recreateSwapChain() {
+    util::SanitizeMxcsr("recreate 0");
     VkResult vr;
 
     if (m_swapchain)
       destroySwapchain();
 
+    util::SanitizeMxcsr("recreate 1");
+
+    util::SanitizeMxcsr("recreate 2");
     if (m_surface) {
+    util::SanitizeMxcsr("recreate 3");
       vr = createSwapChain();
+
+      util::SanitizeMxcsr("recreate 4");
 
       if (vr == VK_ERROR_SURFACE_LOST_KHR)
         destroySurface();
+
+      util::SanitizeMxcsr("recreate 5");
     }
 
+    util::SanitizeMxcsr("recreate 6");
     if (!m_surface) {
+    util::SanitizeMxcsr("recreate 7");
       vr = createSurface();
+
+      util::SanitizeMxcsr("recreate 8");
 
       if (vr == VK_SUCCESS)
         vr = createSwapChain();
+
+      util::SanitizeMxcsr("recreate 9");
     }
 
+    util::SanitizeMxcsr("recreate 10");
     return vr;
   }
 
@@ -624,12 +658,14 @@ namespace dxvk {
 
 
   VkResult Presenter::createSwapChain() {
+      util::SanitizeMxcsr("create sc 0");
     VkSurfaceFullScreenExclusiveInfoEXT fullScreenExclusiveInfo = { VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT };
     fullScreenExclusiveInfo.fullScreenExclusive = m_fullscreenMode;
 
     VkPhysicalDeviceSurfaceInfo2KHR surfaceInfo = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR };
     surfaceInfo.surface = m_surface;
 
+    util::SanitizeMxcsr("create sc 1");
     if (m_device->features().extFullScreenExclusive)
       fullScreenExclusiveInfo.pNext = const_cast<void*>(std::exchange(surfaceInfo.pNext, &fullScreenExclusiveInfo));
 
@@ -651,12 +687,14 @@ namespace dxvk {
       if (m_device->features().extPresentTiming.presentTiming)
         presentTimingCaps.pNext = std::exchange(caps.pNext, &presentTimingCaps);
     }
+      util::SanitizeMxcsr("create sc 2");
 
     std::vector<VkSurfaceFormatKHR> formats;
     std::vector<VkPresentModeKHR> modes;
 
     VkResult status;
 
+    util::SanitizeMxcsr("create sc 3");
     if (m_device->instance()->extensions().khrGetSurfaceCapabilities2.specVersion) {
       status = m_vki->vkGetPhysicalDeviceSurfaceCapabilities2KHR(
         m_device->adapter()->handle(), &surfaceInfo, &caps);
@@ -664,6 +702,7 @@ namespace dxvk {
       status = m_vki->vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
         m_device->adapter()->handle(), m_surface, &caps.surfaceCapabilities);
     }
+      util::SanitizeMxcsr("create sc 4");
 
     if (status) {
       Logger::err(str::format("Presenter: Failed to get surface capabilities: ", status));
@@ -677,9 +716,12 @@ namespace dxvk {
     if (!imageExtent.width || !imageExtent.height)
       return VK_NOT_READY;
 
+    util::SanitizeMxcsr("create sc 6");
     // Select format based on swap chain properties
     if ((status = getSupportedFormats(formats)))
       return status;
+
+    util::SanitizeMxcsr("create sc 7");
 
     VkSurfaceFormatKHR surfaceFormat = pickSurfaceFormat(formats.size(), formats.data(), m_preferredFormat);
 
@@ -693,11 +735,16 @@ namespace dxvk {
       viewFormats.push_back(formatPair.second);
     }
 
+    util::SanitizeMxcsr("create sc 8");
     // Select a present mode for the current sync interval
     if ((status = getSupportedPresentModes(modes)))
       return status;
 
+    util::SanitizeMxcsr("create sc 9");
     m_presentMode = pickPresentMode(modes.size(), modes.data(), m_preferredSyncInterval);
+
+
+    util::SanitizeMxcsr("create sc 10");
 
     // Check whether we can change present modes dynamically. This may
     // influence the image count as well as further swap chain creation.
@@ -713,6 +760,7 @@ namespace dxvk {
     uint32_t minImageCount = caps.surfaceCapabilities.minImageCount;
     uint32_t maxImageCount = caps.surfaceCapabilities.maxImageCount;
 
+    util::SanitizeMxcsr("create sc 11");
     if (m_hasSwapchainMaintenance1) {
       VkSurfacePresentModeCompatibilityKHR compatibleModeInfo = { VK_STRUCTURE_TYPE_SURFACE_PRESENT_MODE_COMPATIBILITY_KHR };
 
@@ -728,6 +776,9 @@ namespace dxvk {
         return status;
       }
 
+
+      util::SanitizeMxcsr("create sc 12");
+
       compatibleModes.resize(compatibleModeInfo.presentModeCount);
       compatibleModeInfo.pPresentModes = compatibleModes.data();
 
@@ -736,6 +787,9 @@ namespace dxvk {
         Logger::err(str::format("Presenter: Failed to get surface capabilities: ", status));
         return status;
       }
+
+
+      util::SanitizeMxcsr("create sc 13");
 
       // Remove modes we don't need for the purpose of finding the minimum
       // image count, as well as for swap chain creation later.
@@ -764,6 +818,8 @@ namespace dxvk {
             : caps.surfaceCapabilities.maxImageCount;
         }
       }
+
+      util::SanitizeMxcsr("create sc 14");
 
       // If any required mode is not supported for dynamic present
       // mode switching, clear the dynamic mode array.
@@ -810,6 +866,8 @@ namespace dxvk {
         m_timingMode.supportsAbsolute = presentTimingCaps.presentAtAbsoluteTimeSupported;
       }
     }
+
+    util::SanitizeMxcsr("create sc 15");
 
     // Compute swap chain image count based on available info
     VkSurfaceFullScreenExclusiveInfoEXT fullScreenInfo = { VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT };
@@ -864,6 +922,9 @@ namespace dxvk {
     if (m_device->features().nvLowLatency2)
       latencyInfo.pNext = std::exchange(swapInfo.pNext, &latencyInfo);
 
+
+    util::SanitizeMxcsr("create sc 16");
+
     Logger::info(str::format(
       "Presenter: Actual swapchain properties:"
       "\n  Format:          ", swapInfo.imageFormat,
@@ -879,6 +940,9 @@ namespace dxvk {
       Logger::err(str::format("Presenter: Failed to create Vulkan swapchain: ", status));
       return status;
     }
+
+
+    util::SanitizeMxcsr("create sc 17");
     
     // Import actual swap chain images
     std::vector<VkImage> images;
@@ -930,6 +994,9 @@ namespace dxvk {
 
     m_semaphores.resize(semaphoreCount);
 
+
+    util::SanitizeMxcsr("create sc 18");
+
     for (uint32_t i = 0; i < semaphoreCount; i++) {
       VkSemaphoreCreateInfo semInfo = { VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
 
@@ -953,6 +1020,9 @@ namespace dxvk {
         return status;
       }
     }
+
+
+    util::SanitizeMxcsr("create sc 19");
     
     // Invalidate indices
     m_latencySleepSupported = m_device->features().nvLowLatency2 && latencyInfo.latencyModeEnable;
@@ -978,6 +1048,7 @@ namespace dxvk {
     m_presentRepaint = true;
 
     // Set up initial present timing state
+      util::SanitizeMxcsr("create sc 20");
     if (m_timingMode.presentStage) {
       m_vkd->vkSetSwapchainPresentTimingQueueSizeEXT(m_vkd->device(), m_swapchain, m_timingQueueSize);
 
@@ -988,6 +1059,7 @@ namespace dxvk {
 
       updateTimingMode();
     }
+      util::SanitizeMxcsr("create sc 21");
 
     return VK_SUCCESS;
   }
