@@ -447,6 +447,7 @@ namespace dxvk {
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::Reset(D3DPRESENT_PARAMETERS* pPresentationParameters) {
     D3D9DeviceLock lock = LockDevice();
+    D3D9FpuStateGuard fpuGuard(m_behaviorFlags & D3DCREATE_FPU_PRESERVE);
 
     Logger::info("Device reset");
     m_deviceLostState = D3D9DeviceLostState::Ok;
@@ -1859,6 +1860,7 @@ namespace dxvk {
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::BeginScene() {
     D3D9DeviceLock lock = LockDevice();
+    SanitizeMxcsr("PresentEx");
 
     if (unlikely(m_inScene))
       return D3DERR_INVALIDCALL;
@@ -1871,6 +1873,7 @@ namespace dxvk {
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::EndScene() {
     D3D9DeviceLock lock = LockDevice();
+    SanitizeMxcsr("PresentEx");
 
     if (unlikely(!m_inScene))
       return D3DERR_INVALIDCALL;
@@ -4248,6 +4251,7 @@ namespace dxvk {
           HWND hDestWindowOverride,
     const RGNDATA* pDirtyRegion,
           DWORD dwFlags) {
+    SanitizeMxcsr("PresentEx");
 
     if (m_cursor.IsSoftwareCursor()) {
       D3D9_SOFTWARE_CURSOR* pSoftwareCursor = m_cursor.GetSoftwareCursor();
@@ -4271,12 +4275,15 @@ namespace dxvk {
       }
     }
 
-    return m_implicitSwapchain->Present(
+    HRESULT res = m_implicitSwapchain->Present(
       pSourceRect,
       pDestRect,
       hDestWindowOverride,
       pDirtyRegion,
       dwFlags);
+
+    SanitizeMxcsr("PresentEx");
+    return res;
   }
 
 
@@ -4477,6 +4484,7 @@ namespace dxvk {
           D3DPRESENT_PARAMETERS* pPresentationParameters,
           D3DDISPLAYMODEEX*      pFullscreenDisplayMode) {
     D3D9DeviceLock lock = LockDevice();
+    D3D9FpuStateGuard fpuGuard(m_behaviorFlags & D3DCREATE_FPU_PRESERVE);
 
     HRESULT hr;
     if (likely(m_deviceType != D3DDEVTYPE_NULLREF)) {

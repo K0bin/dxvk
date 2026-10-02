@@ -16,6 +16,59 @@
 
 namespace dxvk {
 
+  static void SanitizeMxcsr(const char* where) {
+#if defined(DXVK_D3D9_X86_FPU_STATE)
+    uint32_t mxcsr = _mm_getcsr();
+
+    // MXCSR bits 13-14 = rounding control:
+    // 00 = nearest
+    // 01 = down
+    // 10 = up
+    // 11 = toward zero
+    constexpr uint32_t RoundingMask = 0x6000;
+
+    if (mxcsr & RoundingMask) {
+      uint32_t fixed = mxcsr & ~RoundingMask;
+
+      Logger::warn(str::format(
+        "D3D9: ", where,
+        " restoring MXCSR round-to-nearest: ",
+       std::hex, mxcsr, " -> ", fixed));
+
+      _mm_setcsr(fixed);
+    }
+#endif
+  }
+
+  /**
+ * \brief Preserves the calling thread's floating point state
+ *
+ * Some Vulkan drivers (seen with Nvidia on Windows) change the SSE
+ * rounding mode in MXCSR during device creation and don't restore it.
+ * Native D3D9 never touches MXCSR, and games that depend on the default
+ * rounding break, e.g. the camera shake in Assassin's Creed 2 (#2249).
+ * The x87 control word is only restored with D3DCREATE_FPU_PRESERVE,
+ * since D3D9 sets it up deliberately otherwise.
+ */
+  class D3D9FpuStateGuard {
+
+  public:
+
+    explicit D3D9FpuStateGuard(bool preserveX87);
+
+    ~D3D9FpuStateGuard();
+
+    D3D9FpuStateGuard             (const D3D9FpuStateGuard&) = delete;
+    D3D9FpuStateGuard& operator = (const D3D9FpuStateGuard&) = delete;
+
+  private:
+
+    bool      m_preserveX87 = false;
+    uint32_t  m_mxcsr       = 0;
+    uint16_t  m_x87Control  = 0;
+
+  };
+
   struct D3D9ShaderMasks {
     uint32_t samplerMask;
     uint32_t rtMask;
