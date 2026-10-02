@@ -1165,22 +1165,31 @@ namespace dxvk {
 
 
   void D3D9SwapChainEx::CreateBlitter() {
+    SanitizeMxcsr("blitter 0");
     Rc<hud::Hud> hud = hud::Hud::createHud(m_device);
+    SanitizeMxcsr("blitter 1");
 
     if (hud) {
       m_apiHud = hud->addItem<hud::HudClientApiItem>("api", 1, GetApiName());
+    SanitizeMxcsr("blitter 2");
 
       if (m_latencyTracking)
         m_latencyHud = hud->addItem<hud::HudLatencyItem>("latency", 4);
 
+      SanitizeMxcsr("blitter 3");
+
       hud->addItem<hud::HudSWVPState>("swvp", -1, m_parent);
+    SanitizeMxcsr("blitter 4");
 
 #ifdef DXVK_USE_UNMAPPABLE_MEMORY
       hud->addItem<hud::HudTextureMemory>("memory", -1, m_parent);
 #endif
     }
 
+    SanitizeMxcsr("blitter 5");
+
     m_blitter = new DxvkSwapchainBlitter(m_device, std::move(hud));
+    SanitizeMxcsr("blitter 5");
   }
 
 

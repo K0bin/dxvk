@@ -1124,6 +1124,7 @@ namespace dxvk::hud {
   HudMemoryDetailsItem::PipelinePair HudMemoryDetailsItem::createPipeline(
           HudRenderer&        renderer,
     const HudPipelineKey&     key) {
+    util::SanitizeMxcsr("hud create pipeline 0");
     auto vk = m_device->vkd();
 
     HudSpecConstants specConstants = renderer.getSpecConstants(key);
@@ -1154,12 +1155,14 @@ namespace dxvk::hud {
     state.vs = util::DxvkBuiltInShaderStage(hud_chunk_vert_background, nullptr);
     state.fs = util::DxvkBuiltInShaderStage(hud_chunk_frag_background, &specInfo);
 
+    util::SanitizeMxcsr("hud create pipeline 1");
     pipelines.background = m_device->createBuiltInGraphicsPipeline(m_pipelineLayout, state);
 
     state.vs = util::DxvkBuiltInShaderStage(hud_chunk_vert_visualize, nullptr);
     state.fs = util::DxvkBuiltInShaderStage(hud_chunk_frag_visualize, &specInfo);
 
     pipelines.visualize = m_device->createBuiltInGraphicsPipeline(m_pipelineLayout, state);
+    util::SanitizeMxcsr("hud create pipeline 2");
     return pipelines;
   }
 
