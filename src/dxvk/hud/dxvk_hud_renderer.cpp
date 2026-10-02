@@ -470,6 +470,7 @@ namespace dxvk::hud {
   VkPipeline HudRenderer::createPipeline(
     const HudPipelineKey&     key) {
     auto vk = m_device->vkd();
+    util::DxvkFpuStateGuard guard(true);
 
     HudSpecConstants specConstants = getSpecConstants(key);
     VkSpecializationInfo specInfo = getSpecInfo(&specConstants);

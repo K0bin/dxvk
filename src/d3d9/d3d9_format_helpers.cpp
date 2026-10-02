@@ -141,6 +141,7 @@ namespace dxvk {
 
 
   void D3D9FormatHelper::InitPipelines() {
+    util::DxvkFpuStateGuard guard(true);
     m_pipelines[D3D9ConversionFormat_YUY2] = CreatePipeline(sizeof(d3d9_convert_yuy2_uyvy), d3d9_convert_yuy2_uyvy, 0);
     m_pipelines[D3D9ConversionFormat_UYVY] = CreatePipeline(sizeof(d3d9_convert_yuy2_uyvy), d3d9_convert_yuy2_uyvy, 1);
     m_pipelines[D3D9ConversionFormat_L6V5U5] = CreatePipeline(sizeof(d3d9_convert_l6v5u5), d3d9_convert_l6v5u5, 0);
