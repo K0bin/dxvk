@@ -1860,7 +1860,7 @@ namespace dxvk {
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::BeginScene() {
     D3D9DeviceLock lock = LockDevice();
-    SanitizeMxcsr("PresentEx");
+    SanitizeMxcsr("BeginScene");
 
     if (unlikely(m_inScene))
       return D3DERR_INVALIDCALL;
@@ -1873,7 +1873,7 @@ namespace dxvk {
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::EndScene() {
     D3D9DeviceLock lock = LockDevice();
-    SanitizeMxcsr("PresentEx");
+    SanitizeMxcsr("EndScene");
 
     if (unlikely(!m_inScene))
       return D3DERR_INVALIDCALL;
@@ -4251,7 +4251,7 @@ namespace dxvk {
           HWND hDestWindowOverride,
     const RGNDATA* pDirtyRegion,
           DWORD dwFlags) {
-    SanitizeMxcsr("PresentEx");
+    SanitizeMxcsr("PresentEx start");
 
     if (m_cursor.IsSoftwareCursor()) {
       D3D9_SOFTWARE_CURSOR* pSoftwareCursor = m_cursor.GetSoftwareCursor();
@@ -4282,7 +4282,7 @@ namespace dxvk {
       pDirtyRegion,
       dwFlags);
 
-    SanitizeMxcsr("PresentEx");
+    SanitizeMxcsr("PresentEx end");
     return res;
   }
 
