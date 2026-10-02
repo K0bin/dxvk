@@ -16,29 +16,7 @@
 
 namespace dxvk {
 
-  static void SanitizeMxcsr(const char* where) {
-#if defined(DXVK_D3D9_X86_FPU_STATE)
-    uint32_t mxcsr = _mm_getcsr();
-
-    // MXCSR bits 13-14 = rounding control:
-    // 00 = nearest
-    // 01 = down
-    // 10 = up
-    // 11 = toward zero
-    constexpr uint32_t RoundingMask = 0x6000;
-
-    if (mxcsr & RoundingMask) {
-      uint32_t fixed = mxcsr & ~RoundingMask;
-
-      Logger::warn(str::format(
-        "D3D9: ", where,
-        " restoring MXCSR round-to-nearest: ",
-       std::hex, mxcsr, " -> ", fixed));
-
-      _mm_setcsr(fixed);
-    }
-#endif
-  }
+  void SanitizeMxcsr(const char* where);
 
   /**
  * \brief Preserves the calling thread's floating point state

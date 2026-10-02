@@ -9,6 +9,33 @@
 
 namespace dxvk {
 
+
+  void SanitizeMxcsr(const char* where) {
+#if defined(DXVK_D3D9_X86_FPU_STATE)
+    uint32_t mxcsr = _mm_getcsr();
+
+    // MXCSR bits 13-14 = rounding control:
+    // 00 = nearest
+    // 01 = down
+    // 10 = up
+    // 11 = toward zero
+    constexpr uint32_t RoundingMask = 0x6000;
+
+    if (mxcsr & RoundingMask) {
+      uint32_t fixed = mxcsr & ~RoundingMask;
+
+      Logger::warn(str::format(
+        "D3D9: ", where,
+        " restoring MXCSR round-to-nearest: ",
+       std::hex, mxcsr, " -> ", fixed));
+
+      _mm_setcsr(fixed);
+    }
+#elif
+    Logger::warn("fp hack mess not enabled");
+#endif
+  }
+
   D3D9FpuStateGuard::D3D9FpuStateGuard(bool preserveX87)
   : m_preserveX87(preserveX87) {
 #ifdef DXVK_D3D9_X86_FPU_STATE
