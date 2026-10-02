@@ -624,6 +624,7 @@ namespace dxvk {
 
 
   VkResult Presenter::createSwapChain() {
+      util::DxvkFpuStateGuard fpuGuard(true);
     VkSurfaceFullScreenExclusiveInfoEXT fullScreenExclusiveInfo = { VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT };
     fullScreenExclusiveInfo.fullScreenExclusive = m_fullscreenMode;
 
@@ -875,9 +876,12 @@ namespace dxvk {
         ? (m_timingMode.supportsRelative ? "yes (absolute, relative)" : "yes (absolute)")
         : (m_timingMode.supportsRelative ? "yes (relative)" : "no"))));
 
-    if ((status = m_vkd->vkCreateSwapchainKHR(m_vkd->device(), &swapInfo, nullptr, &m_swapchain))) {
-      Logger::err(str::format("Presenter: Failed to create Vulkan swapchain: ", status));
-      return status;
+    {
+      util::DxvkFpuStateGuard fpuGuard(true);
+      if ((status = m_vkd->vkCreateSwapchainKHR(m_vkd->device(), &swapInfo, nullptr, &m_swapchain))) {
+        Logger::err(str::format("Presenter: Failed to create Vulkan swapchain: ", status));
+        return status;
+      }
     }
     
     // Import actual swap chain images
