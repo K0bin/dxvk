@@ -370,9 +370,11 @@ namespace dxvk {
           IDirect3DDevice9Ex**   ppReturnedDeviceInterface) {
 
     Logger::warn(str::format("preserve fpu? ", BehaviorFlags & D3DCREATE_FPU_PRESERVE));
+    SanitizeMxcsr("createdeviceex 0");
     D3D9FpuStateGuard fpuGuard(BehaviorFlags & D3DCREATE_FPU_PRESERVE);
 
     InitReturnPtr(ppReturnedDeviceInterface);
+    SanitizeMxcsr("createdeviceex 1");
 
     if (unlikely(ppReturnedDeviceInterface  == nullptr
               || pPresentationParameters    == nullptr))
@@ -396,6 +398,8 @@ namespace dxvk {
       BehaviorFlags |= D3DCREATE_SOFTWARE_VERTEXPROCESSING;
     }
 
+    SanitizeMxcsr("createdeviceex 2");
+
     HRESULT hr;
     // Black Desert creates a D3DDEVTYPE_NULLREF device and
     // expects it be created despite passing invalid parameters.
@@ -406,15 +410,23 @@ namespace dxvk {
         return hr;
     }
 
+    SanitizeMxcsr("createdeviceex 3");
+
     auto* adapter = GetAdapter(Adapter);
 
     if (adapter == nullptr)
       return D3DERR_INVALIDCALL;
 
+
+    SanitizeMxcsr("createdeviceex 4");
+
     auto dxvkAdapter = adapter->GetDXVKAdapter();
 
     try {
+    SanitizeMxcsr("createdeviceex 5");
       auto dxvkDevice = dxvkAdapter->createDevice();
+
+      SanitizeMxcsr("createdeviceex 6");
 
       auto* device = new D3D9DeviceEx(
         this,
@@ -424,10 +436,16 @@ namespace dxvk {
         BehaviorFlags,
         dxvkDevice);
 
+      SanitizeMxcsr("createdeviceex 7");
+
       if (!pPresentationParameters->Windowed)
         ActivateFocusWindow(hFocusWindow ? hFocusWindow : pPresentationParameters->hDeviceWindow);
 
+      SanitizeMxcsr("createdeviceex 8");
+
       hr = device->InitialReset(pPresentationParameters, pFullscreenDisplayMode);
+
+      SanitizeMxcsr("createdeviceex 9");
 
       if (unlikely(FAILED(hr)))
         return hr;
@@ -439,6 +457,7 @@ namespace dxvk {
       return D3DERR_NOTAVAILABLE;
     }
 
+    SanitizeMxcsr("createdeviceex 10");
     return D3D_OK;
   }
 

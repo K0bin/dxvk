@@ -64,12 +64,17 @@ namespace dxvk {
     , m_legacyD3DBridge    ( this )
     , m_d3dCompatibility   ( pParent->GetD3DCompatibilityFlags() ) {
 
+
+    SanitizeMxcsr("device constructor 0");
+
     InitShaderOptions();
+    SanitizeMxcsr("device constructor 1");
 
     // If we can SWVP, then we use an extended constant set
     // as SWVP has many more slots available than HWVP.
     bool canSWVP = CanSWVP();
     DetermineConstantLayouts(canSWVP);
+    SanitizeMxcsr("device constructor 2");
 
     if (canSWVP)
       Logger::info("D3D9DeviceEx: Using extended constant set for software vertex processing.");
@@ -77,8 +82,11 @@ namespace dxvk {
     if (m_dxvkDevice->debugFlags().test(DxvkDebugFlag::Markers))
       m_annotation = new D3D9UserDefinedAnnotation(this);
 
+    SanitizeMxcsr("device constructor 3");
     m_initializer      = new D3D9Initializer(this);
+    SanitizeMxcsr("device constructor 4");
     m_converter        = new D3D9FormatHelper(m_dxvkDevice);
+    SanitizeMxcsr("device constructor 5");
 
     EmitCs([
       cDevice = m_dxvkDevice
@@ -90,10 +98,15 @@ namespace dxvk {
       ctx->setLogicOpState(loState);
     });
 
+    SanitizeMxcsr("device constructor 6");
+
     SynchronizeCsThread(DxvkCsThread::SynchronizeAll);
+    SanitizeMxcsr("device constructor 7");
 
     if (!(BehaviorFlags & D3DCREATE_FPU_PRESERVE))
       SetupFPU();
+
+    SanitizeMxcsr("device constructor 8");
 
     // Check for VK_EXT_depth_bias_control and set up initial state
     m_depthBiasRepresentation = { VK_DEPTH_BIAS_REPRESENTATION_LEAST_REPRESENTABLE_VALUE_FORMAT_EXT, false };
@@ -109,19 +122,28 @@ namespace dxvk {
         m_depthBiasRepresentation.depthBiasRepresentation = VK_DEPTH_BIAS_REPRESENTATION_LEAST_REPRESENTABLE_VALUE_FORCE_UNORM_EXT;
     }
 
+    SanitizeMxcsr("device constructor 9");
+
     EmitCs([
       cRepresentation = m_depthBiasRepresentation
     ] (DxvkContext* ctx) {
       ctx->setDepthBiasRepresentation(cRepresentation);
     });
 
+    SanitizeMxcsr("device constructor 10");
     CreateConstantBuffers();
 
+    SanitizeMxcsr("device constructor 11");
+
     m_availableMemory = DetermineInitialTextureMemory();
+    SanitizeMxcsr("device constructor 12");
 
     m_hazardLayout = dxvkDevice->features().extAttachmentFeedbackLoopLayout.attachmentFeedbackLoopLayout
       ? VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT
       : VK_IMAGE_LAYOUT_GENERAL;
+
+
+    SanitizeMxcsr("device constructor 13");
 
     // Initially set all the dirty flags so we
     // always end up giving the backend *something* to work with.
@@ -145,12 +167,20 @@ namespace dxvk {
                 D3D9DeviceDirtyFlag::PointScale,
                 D3D9DeviceDirtyFlag::SpecializationEntries);
 
+    SanitizeMxcsr("device constructor 14");
+
     m_specData.setDrefScale(m_d3d9Options.drefScaling);
+
+    SanitizeMxcsr("device constructor 15");
 
     BindFFUbershader<D3D9ShaderType::VertexShader>();
     BindFFUbershader<D3D9ShaderType::PixelShader>();
 
+    SanitizeMxcsr("device constructor 16");
+
     m_unlockAdditionalFormats = m_parent->HasFormatsUnlocked();
+
+    SanitizeMxcsr("device constructor 17");
   }
 
 
@@ -452,6 +482,8 @@ namespace dxvk {
     Logger::info("Device reset");
     m_deviceLostState = D3D9DeviceLostState::Ok;
 
+
+    SanitizeMxcsr("Reset 1");
     HRESULT hr;
     // Black Desert creates a D3DDEVTYPE_NULLREF device and
     // expects reset to work despite passing invalid parameters.
@@ -461,6 +493,7 @@ namespace dxvk {
       if (unlikely(FAILED(hr)))
         return hr;
     }
+    SanitizeMxcsr("Reset 2");
 
     if (!m_d3dCompatibility.test(D3DCompatibility::D3D9Ex)) {
       // The internal references are always cleared, regardless of whether the Reset call succeeds.
@@ -497,6 +530,7 @@ namespace dxvk {
 
       SetDepthStencilSurface(nullptr);
     }
+    SanitizeMxcsr("Reset 3");
 
     m_cursor.ResetCursor();
 
@@ -517,8 +551,11 @@ namespace dxvk {
       // D3D8 returns D3DERR_DEVICELOST here, whereas D3D9 returns D3DERR_INVALIDCALL.
       return m_d3dCompatibility.test(D3DCompatibility::D3D8) ? D3DERR_DEVICELOST : D3DERR_INVALIDCALL;
     }
+    SanitizeMxcsr("Reset 3.5");
 
+    SanitizeMxcsr("Reset 4");
     hr = ResetSwapChain(pPresentationParameters, nullptr);
+    SanitizeMxcsr("Reset 5");
     if (unlikely(FAILED(hr))) {
       if (!isExtended) {
         Logger::warn("Device reset failed: Device not reset");
@@ -532,6 +569,8 @@ namespace dxvk {
 
     if (m_d3d9Options.deferSurfaceCreation)
       m_resetCtr++;
+
+    SanitizeMxcsr("Reset 6");
 
     return D3D_OK;
   }
@@ -4487,6 +4526,7 @@ namespace dxvk {
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::ResetEx(
           D3DPRESENT_PARAMETERS* pPresentationParameters,
           D3DDISPLAYMODEEX*      pFullscreenDisplayMode) {
+    SanitizeMxcsr("ResetEx beginning");
     D3D9DeviceLock lock = LockDevice();
     D3D9FpuStateGuard fpuGuard(m_behaviorFlags & D3DCREATE_FPU_PRESERVE);
 
@@ -4498,10 +4538,12 @@ namespace dxvk {
         return hr;
     }
 
+    SanitizeMxcsr("ResetEx 1");
     hr = ResetSwapChain(pPresentationParameters, pFullscreenDisplayMode);
     if (FAILED(hr))
       return hr;
 
+    SanitizeMxcsr("ResetEx end");
     return D3D_OK;
   }
 
@@ -8920,6 +8962,7 @@ namespace dxvk {
                || pPresentationParameters->BackBufferHeight == 0))) {
       return D3DERR_INVALIDCALL;
     }
+    SanitizeMxcsr("ResetImplicitSwapchain beginning 1");
 
     if (backBufferFmt != D3D9Format::Unknown && !unlockedFormats) {
       if (!IsSupportedBackBufferFormat(backBufferFmt)) {
@@ -8929,6 +8972,7 @@ namespace dxvk {
       }
     }
 
+    SanitizeMxcsr("ResetImplicitSwapchain beginning 2");
     if (m_implicitSwapchain != nullptr) {
       HRESULT hr = m_implicitSwapchain->Reset(pPresentationParameters, pFullscreenDisplayMode);
       if (FAILED(hr))
@@ -8938,6 +8982,7 @@ namespace dxvk {
       m_implicitSwapchain = new D3D9SwapChainEx(this, pPresentationParameters, pFullscreenDisplayMode, true);
       m_mostRecentlyUsedSwapchain = m_implicitSwapchain.ptr();
     }
+    SanitizeMxcsr("ResetImplicitSwapchain beginning 3");
 
     const bool isExtended = m_d3dCompatibility.test(D3DCompatibility::D3D9Ex);
 
@@ -8961,11 +9006,14 @@ namespace dxvk {
       if (FAILED(D3D9CommonTexture::NormalizeTextureProperties(this, D3DRTYPE_SURFACE, &desc)))
         return D3DERR_NOTAVAILABLE;
 
+      SanitizeMxcsr("ResetImplicitSwapchain beginning 4");
+
       m_autoDepthStencil = new D3D9Surface(this, &desc, isExtended, nullptr, nullptr);
       m_initializer->InitTexture(m_autoDepthStencil->GetCommonTexture());
       SetDepthStencilSurface(m_autoDepthStencil.ptr());
       m_losableResourceCounter++;
     }
+    SanitizeMxcsr("ResetImplicitSwapchain beginning 5");
 
     if (!isExtended) {
       SetRenderTarget(0, m_implicitSwapchain->GetBackBuffer(0));
@@ -8980,6 +9028,7 @@ namespace dxvk {
       m_state.viewport.MinZ = MinZ;
       m_state.viewport.MaxZ = MaxZ;
     }
+    SanitizeMxcsr("ResetImplicitSwapchain beginning 6");
 
     // Force this if we end up binding the same RT to make scissor change go into effect.
     BindViewportAndScissor();
@@ -8990,14 +9039,20 @@ namespace dxvk {
 
 
   HRESULT D3D9DeviceEx::InitialReset(D3DPRESENT_PARAMETERS* pPresentationParameters, D3DDISPLAYMODEEX* pFullscreenDisplayMode) {
+    SanitizeMxcsr("InitialReset 0");
     ResetState(pPresentationParameters);
+    SanitizeMxcsr("InitialReset 1");
 
     HRESULT hr = ResetSwapChain(pPresentationParameters, pFullscreenDisplayMode);
     if (FAILED(hr))
       return hr;
 
+    SanitizeMxcsr("InitialReset 2");
+
     ExecuteFlush(false);
     SynchronizeCsThread(DxvkCsThread::SynchronizeAll);
+
+    SanitizeMxcsr("InitialReset 3");
 
     return D3D_OK;
   }

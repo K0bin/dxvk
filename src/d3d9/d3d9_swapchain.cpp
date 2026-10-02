@@ -23,24 +23,42 @@ namespace dxvk {
     , m_frameLatencyCap  (pDevice->GetOptions()->maxFrameLatency)
     , m_latencyTracking  (EnableLatencyTracking)
     , m_swapchainExt     (this) {
+
+    SanitizeMxcsr("d3d9 sc constructor 0");
     this->NormalizePresentParameters(pPresentParams);
     m_presentParams = *pPresentParams;
     m_window = m_presentParams.hDeviceWindow;
 
+    SanitizeMxcsr("d3d9 sc constructor 1");
+
     UpdateWindowCtx();
 
+    SanitizeMxcsr("d3d9 sc constructor 2");
+
     UpdatePresentRegion(nullptr, nullptr);
+
+    SanitizeMxcsr("d3d9 sc constructor 3");
 
     if (FAILED(CreateBackBuffers(m_presentParams.BackBufferCount, m_presentParams.Flags)))
       throw DxvkError("D3D9: Failed to create swapchain backbuffers");
 
+
+    SanitizeMxcsr("d3d9 sc constructor 4");
+
     CreateBlitter();
 
+    SanitizeMxcsr("d3d9 sc constructor 5");
+
     InitRamp();
+
+    SanitizeMxcsr("d3d9 sc constructor 6");
 
     // Apply initial window mode and fullscreen state
     if (!m_presentParams.Windowed && FAILED(EnterFullscreenMode(pPresentParams, pFullscreenDisplayMode)))
       throw DxvkError("D3D9: Failed to set initial fullscreen state");
+
+
+    SanitizeMxcsr("d3d9 sc constructor 7");
   }
 
 
@@ -774,6 +792,8 @@ namespace dxvk {
 
 
   void    D3D9SwapChainEx::Invalidate(HWND hWindow) {
+
+    SanitizeMxcsr("sc invalidate 1");
     if (!hWindow)
       hWindow = m_parent->GetWindow();
 
@@ -793,6 +813,8 @@ namespace dxvk {
 
       m_presenters.erase(entry);
     }
+
+    SanitizeMxcsr("sc invalidate 2");
   }
 
 
@@ -1051,6 +1073,8 @@ namespace dxvk {
 
 
   bool D3D9SwapChainEx::UpdateWindowCtx() {
+
+    SanitizeMxcsr("update window ctx 1");
     if (!m_window)
       return false;
 
@@ -1070,6 +1094,7 @@ namespace dxvk {
     }
 
     m_wctx = &entry->second;
+    SanitizeMxcsr("update window ctx 2");
     return true;
   }
 
@@ -1183,6 +1208,7 @@ namespace dxvk {
 
 
   void D3D9SwapChainEx::UpdateTargetFrameRate(uint32_t SyncInterval) {
+    SanitizeMxcsr("update target framerate 1");
     double frameRate = double(m_parent->GetOptions()->maxFrameRate);
 
     if (frameRate != -1.0) {
@@ -1197,12 +1223,15 @@ namespace dxvk {
       m_wctx->presenter->setFrameRateLimit(frameRate, GetActualFrameLatency());
       m_targetFrameRate = frameRate;
     }
+    SanitizeMxcsr("update target framerate 2");
   }
 
 
   void D3D9SwapChainEx::SyncFrameLatency() {
+    SanitizeMxcsr("sync frame latency 1");
     // Wait for the sync event so that we respect the maximum frame latency
     m_wctx->frameLatencySignal->wait(m_wctx->frameId - GetActualFrameLatency());
+    SanitizeMxcsr("sync frame latency 2");
   }
 
   uint32_t D3D9SwapChainEx::GetActualFrameLatency() {
@@ -1424,10 +1453,12 @@ namespace dxvk {
   }
 
   void D3D9SwapChainEx::UpdatePresentParameters() {
+    SanitizeMxcsr("update present params 1");
     if (m_wctx) {
       m_wctx->presenter->setSurfaceExtent(m_swapchainExtent);
       m_wctx->presenter->setSurfaceFormat(GetSurfaceFormat());
     }
+    SanitizeMxcsr("update present params 2");
   }
 
   VkExtent2D D3D9SwapChainEx::GetPresentExtent() {
@@ -1476,11 +1507,15 @@ namespace dxvk {
 
   BOOL STDMETHODCALLTYPE D3D9VkExtSwapchain::CheckColorSpaceSupport(
           VkColorSpaceKHR           ColorSpace) {
-    return m_swapchain->m_wctx->presenter->supportsColorSpace(ColorSpace);
+    SanitizeMxcsr("supports color space 1");
+    bool res = m_swapchain->m_wctx->presenter->supportsColorSpace(ColorSpace);
+    SanitizeMxcsr("supports color space 2");
+    return res;
   }
 
   HRESULT STDMETHODCALLTYPE D3D9VkExtSwapchain::SetColorSpace(
           VkColorSpaceKHR           ColorSpace) {
+    SanitizeMxcsr("set color space 1");
     if (!CheckColorSpaceSupport(ColorSpace))
       return D3DERR_INVALIDCALL;
     
@@ -1489,11 +1524,14 @@ namespace dxvk {
     if (m_swapchain->m_wctx)
       m_swapchain->m_wctx->presenter->setSurfaceFormat(m_swapchain->GetSurfaceFormat());
 
+    SanitizeMxcsr("set color space 2");
+
     return S_OK;
   }
 
   HRESULT STDMETHODCALLTYPE D3D9VkExtSwapchain::SetHDRMetaData(
     const VkHdrMetadataEXT          *pHDRMetadata) {
+    SanitizeMxcsr("set hdr 1");
     if (!pHDRMetadata)
       return D3DERR_INVALIDCALL;
 
@@ -1501,6 +1539,9 @@ namespace dxvk {
 
     if (m_swapchain->m_wctx)
       m_swapchain->m_wctx->presenter->setHdrMetadata(*pHDRMetadata);
+
+
+    SanitizeMxcsr("set hdr 2");
 
     return S_OK;
   }

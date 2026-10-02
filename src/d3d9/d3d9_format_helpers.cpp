@@ -8,6 +8,8 @@
 #include <d3d9_convert_nv12.h>
 #include <d3d9_convert_yv12.h>
 
+#include "d3d9_util.h"
+
 namespace dxvk {
 
   D3D9FormatHelper::D3D9FormatHelper(const Rc<DxvkDevice>& device)
@@ -141,6 +143,7 @@ namespace dxvk {
 
 
   void D3D9FormatHelper::InitPipelines() {
+    D3D9FpuStateGuard guard(true);
     m_pipelines[D3D9ConversionFormat_YUY2] = CreatePipeline(sizeof(d3d9_convert_yuy2_uyvy), d3d9_convert_yuy2_uyvy, 0);
     m_pipelines[D3D9ConversionFormat_UYVY] = CreatePipeline(sizeof(d3d9_convert_yuy2_uyvy), d3d9_convert_yuy2_uyvy, 1);
     m_pipelines[D3D9ConversionFormat_L6V5U5] = CreatePipeline(sizeof(d3d9_convert_l6v5u5), d3d9_convert_l6v5u5, 0);
