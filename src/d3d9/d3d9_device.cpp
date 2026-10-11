@@ -5258,6 +5258,10 @@ namespace dxvk {
       // The src texture has to be in POOL_SYSTEMEM, so it cannot use AUTOMIPGEN.
       // That means that NeedsReadback is only true if the texture has been used with GetRTData or GetFrontbufferData before.
       // Those functions create a buffer, so the buffer always exists here.
+
+      // If we run into this frequently, consider dynamically skipping the staging buffer if the src texture needs a sync.
+      Logger::warn("Stalling in UpdateTextureFromBuffer.");
+
       const Rc<DxvkBuffer>& buffer = pSrcTexture->GetBuffer();
       WaitForResource(*buffer, pSrcTexture->GetMappingBufferSequenceNumber(SrcSubresource), 0);
       pSrcTexture->SetNeedsReadback(SrcSubresource, false);
