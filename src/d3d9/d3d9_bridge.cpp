@@ -259,7 +259,7 @@ namespace dxvk {
           m_device->WaitForResource(*srcBuffer, srcTex->GetMappingBufferSequenceNumber(src->GetSubresource()), 0);
           srcTex->SetNeedsReadback(src->GetSubresource(), false);
         }
-        if (srcTex->NeedsReadback(src->GetSubresource())) {
+        if (dstTex->NeedsReadback(dst->GetSubresource())) {
           Logger::warn("Stalling in CopyRects because of dst.");
           m_device->WaitForResource(*dstBuffer, dstTex->GetMappingBufferSequenceNumber(dst->GetSubresource()), 0);
           dstTex->SetNeedsReadback(dst->GetSubresource(), false);
