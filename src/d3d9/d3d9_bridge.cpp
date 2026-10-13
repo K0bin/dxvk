@@ -224,12 +224,17 @@ namespace dxvk {
         }
       }
       else if (!srcHasImage && dstHasImage) {
-        srcTex->EnsureBufferExists(true);
+
+        if (srcTex->IsAnySubresourceLocked()) {
+          Logger::warn("SUBRESOURCE LOCKED!!!!");
+        }
+
+        srcTex->EnsureBufferExists(src->GetSubresource(), true);
         // Just use the staging buffer upload here.
         m_device->UpdateTextureFromBuffer(dstTex, srcTex, dst->GetSubresource(), src->GetSubresource(), alignedSrcOffset, alignedExtent, alignedDstOffset);
       }
       else if (srcHasImage && !dstHasImage) {
-        dstTex->EnsureBufferExists(true);
+        dstTex->EnsureBufferExists(src->GetSubresource(), true);
         m_device->EmitCs([
           cDstBuffer = dstTex->GetBuffer(),
           cSrcImage = srcTex->GetImage(),
@@ -249,8 +254,8 @@ namespace dxvk {
       else if (!srcHasImage && !dstHasImage) {
         // Make sure both have buffers.
         // This copies the data from the memory mapped file to a Vulkan buffer if necessary.
-        dstTex->EnsureBufferExists(true);
-        srcTex->EnsureBufferExists(true);
+        dstTex->EnsureBufferExists(src->GetSubresource(), true);
+        srcTex->EnsureBufferExists(src->GetSubresource(), true);
         const Rc<DxvkBuffer>& srcBuffer = srcTex->GetBuffer();
         const Rc<DxvkBuffer>& dstBuffer = dstTex->GetBuffer();
 

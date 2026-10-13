@@ -313,7 +313,7 @@ namespace dxvk {
 
 
   void* D3D9CommonTexture::GetData(UINT Subresource) {
-    if (unlikely(m_buffer))
+    if (unlikely(m_buffer && m_usesBuffer.get(Subresource)))
       return m_buffer->mapPtr(m_memoryOffset[Subresource]);
 
     uint8_t* ptr = reinterpret_cast<uint8_t*>(m_data.map());
@@ -326,40 +326,53 @@ namespace dxvk {
   }
 
 
-  const Rc<DxvkBuffer>& D3D9CommonTexture::EnsureBufferExists(bool Initialize) {
-    if (likely(m_buffer != nullptr))
+  const Rc<DxvkBuffer>& D3D9CommonTexture::EnsureBufferExists(uint32_t Subresource, bool Initialize) {
+    if (likely(m_buffer != nullptr && m_usesBuffer.get(Subresource)))
       return m_buffer;
 
-    DxvkBufferCreateInfo info;
-    info.size   = GetTotalSize();
-    info.usage  = VK_BUFFER_USAGE_TRANSFER_SRC_BIT
-                | VK_BUFFER_USAGE_TRANSFER_DST_BIT
-                | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-    info.stages = VK_PIPELINE_STAGE_TRANSFER_BIT
-                | VK_PIPELINE_STAGE_HOST_BIT;
-    info.access = VK_ACCESS_TRANSFER_READ_BIT
-                | VK_ACCESS_TRANSFER_WRITE_BIT
-                | VK_ACCESS_HOST_WRITE_BIT
-                | VK_ACCESS_HOST_READ_BIT;
+    if (m_buffer == nullptr) {
+      DxvkBufferCreateInfo info;
+      info.size   = GetTotalSize();
+      info.usage  = VK_BUFFER_USAGE_TRANSFER_SRC_BIT
+                  | VK_BUFFER_USAGE_TRANSFER_DST_BIT
+                  | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+      info.stages = VK_PIPELINE_STAGE_TRANSFER_BIT
+                  | VK_PIPELINE_STAGE_HOST_BIT;
+      info.access = VK_ACCESS_TRANSFER_READ_BIT
+                  | VK_ACCESS_TRANSFER_WRITE_BIT
+                  | VK_ACCESS_HOST_WRITE_BIT
+                  | VK_ACCESS_HOST_READ_BIT;
 
-    if (m_mapping.ConversionFormatInfo.FormatType != D3D9ConversionFormat_None) {
-      info.usage  |= VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
-      info.stages |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+      if (m_mapping.ConversionFormatInfo.FormatType != D3D9ConversionFormat_None) {
+        info.usage  |= VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
+        info.stages |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+      }
+
+      VkMemoryPropertyFlags memType = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+                                    | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+                                    | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+
+      m_buffer = m_device->GetDXVKDevice()->createBuffer(info, memType);
     }
-
-    VkMemoryPropertyFlags memType = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
-                                  | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-                                  | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
-
-    m_buffer = m_device->GetDXVKDevice()->createBuffer(info, memType);
 
     if (Initialize) {
+      uint32_t offset = m_memoryOffset[Subresource];
+      uint32_t length;
+      if (Subresource + 1 == CountSubresources()) {
+        length = m_totalSize - offset;
+      } else {
+        length = m_memoryOffset[Subresource + 1] - offset;
+      }
       if (m_data)
-        std::memcpy(m_buffer->mapPtr(0), m_data.map(), m_totalSize);
+        std::memcpy(m_buffer->mapPtr(offset), static_cast<const uint8_t*>(m_data.map()) + offset, length);
       else
-        std::memset(m_buffer->mapPtr(0), 0, m_totalSize);
+        std::memset(m_buffer->mapPtr(offset), 0, length);
     }
-    m_data = {};
+
+    m_usesBuffer.set(Subresource, true);
+
+    /*if (m_usesBuffer.popcount() == CountSubresources())
+      m_data = {};*/
 
     return m_buffer;
   }

@@ -380,9 +380,13 @@ namespace dxvk {
 
     bool IsAnySubresourceLocked() const { return m_locked.any(); }
 
+    uint32_t LockedMask() { return m_locked.dword(0); }
+
     void SetNeedsReadback(UINT Subresource, bool value) { m_needsReadback.set(Subresource, value); }
 
     bool NeedsReadback(UINT Subresource) const { return m_needsReadback.get(Subresource); }
+
+    bool NeedsAnyReadback() const { return m_needsReadback.any(); }
 
     void MarkAllNeedReadback() { m_needsReadback.setAll(); }
 
@@ -512,7 +516,7 @@ namespace dxvk {
      * \param [in] Initialize Whether to copy over existing data (or clear if there is no data)
      * \returns Whether an allocation happened
      */
-    const Rc<DxvkBuffer>& EnsureBufferExists(bool Initialize = true);
+    const Rc<DxvkBuffer>& EnsureBufferExists(uint32_t Subresource, bool Initialize = true);
 
     ID3D9VkInteropTexture* GetVkInterop() { return &m_d3d9Interop; }
 
@@ -549,6 +553,8 @@ namespace dxvk {
     D3D9ColorView                 m_sampleView;
 
     D3D9SubresourceBitset         m_locked = { };
+
+    D3D9SubresourceBitset         m_usesBuffer = { };
 
     D3D9SubresourceBitset         m_needsReadback = { };
 

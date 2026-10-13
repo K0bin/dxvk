@@ -465,6 +465,14 @@ namespace dxvk::bit {
         m_dwords[fullDwords] = (1u << offset) - 1;
     }
 
+    constexpr uint32_t popcount() const {
+      uint32_t count = 0u;
+      for (size_t i = 0; i < Dwords; i++)
+        count += popcnt(m_dwords[i]);
+
+      return count;
+    }
+
   private:
 
     uint32_t m_dwords[Dwords];

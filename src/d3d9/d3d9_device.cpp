@@ -1174,7 +1174,7 @@ namespace dxvk {
                        || dstTexExtent.width > srcTexExtent.width
                        || dstTexExtent.height > srcTexExtent.height;
 
-    dstTexInfo->EnsureBufferExists(clearDst);
+    dstTexInfo->EnsureBufferExists(src->GetSubresource(), clearDst);
     DxvkBufferSlice dstBufferSlice      = dstTexInfo->GetBufferSlice(dst->GetSubresource());
     Rc<DxvkImage> srcImage              = srcTexInfo->GetImage();
     const DxvkFormatInfo* srcFormatInfo = lookupFormatInfo(srcImage->info().format);
@@ -5029,8 +5029,18 @@ namespace dxvk {
     pResource->SetNeedsReadback(Subresource, false);
 
     if (unlikely(pResource->GetImage() != nullptr || needsReadback)) {
-      // Create mapping buffer if it doesn't exist yet. (POOL_DEFAULT)
-      pResource->EnsureBufferExists(!needsReadback);
+      if ((pResource->LockedMask() & ~(1 << Subresource)) && pResource->GetBuffer() == nullptr) {
+        Logger::err("BAD BAD BAD");
+      }
+      pResource->EnsureBufferExists(Subresource, true);
+    }
+
+    if (unlikely(pResource->GetImage() != nullptr
+      && pResource->GetBuffer() == nullptr
+      && pResource->NeedsAnyReadback())) {
+      // Creating a buffer (or switching from a MemoryFile to a buffer) is done for the entire resource and invalidates
+      // the pointers. So do it once for the entire resource if any subresource gives us a reason.
+     // pResource->EnsureBufferExists(true);
     }
 
     // Don't use MapTexture here to keep the mapped list small while the resource is still locked.
