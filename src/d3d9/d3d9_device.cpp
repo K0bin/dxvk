@@ -1024,6 +1024,7 @@ namespace dxvk {
                     0u };
     }
 
+    Logger::warn("UpdateSurface");
     // The source surface must be in D3DPOOL_SYSTEMMEM so we just treat it as just another texture upload except with a different source.
     UpdateTextureFromBuffer(dstTextureInfo, srcTextureInfo, dst->GetSubresource(), src->GetSubresource(), srcOffset, extent, dstOffset);
 
@@ -5230,6 +5231,11 @@ namespace dxvk {
     VkOffset3D SrcOffset,
     VkExtent3D SrcExtent,
     VkOffset3D DestOffset) {
+
+    Logger::warn(str::format("UpdateTextureFromBuffer ", SrcSubresource, "->", DestSubresource, " srcoffset: ", SrcOffset.x, ",", SrcOffset.y, ",", SrcOffset.z, " srcextent: ", SrcExtent.width, "x", SrcExtent.height, "x", SrcExtent.depth, " destoffset: ", DestOffset.x, ",", DestOffset.y, ",", DestOffset.z));
+    Logger::warn(str::format("From: ", reinterpret_cast<size_t>(pSrcTexture), " to ", reinterpret_cast<size_t>(pDestTexture)));
+
+
     // Wait until the amount of used staging memory is under a certain threshold to avoid using
     // too much memory and even more so to avoid using too much address space.
     ThrottleAllocation();

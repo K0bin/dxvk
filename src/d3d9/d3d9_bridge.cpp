@@ -29,6 +29,66 @@ namespace dxvk {
     return m_device->QueryInterface(riid, ppvObject);
   }
 
+  HRESULT DxvkLegacyD3DDeviceBridge::UpdateTextureFromBuffer(
+        IDirect3DSurface9*  pDestSurface,
+        IDirect3DSurface9*  pSrcSurface,
+        const RECT*         pSrcRect,
+        const POINT*        pDestPoint) {
+    auto lock = m_device->LockDevice();
+
+    D3D9Surface* dst = static_cast<D3D9Surface*>(pDestSurface);
+    D3D9Surface* src = static_cast<D3D9Surface*>(pSrcSurface);
+
+    if (unlikely(dst == nullptr || src == nullptr))
+      return D3DERR_INVALIDCALL;
+
+    // CopyRects will not pass a null pSrcRect, but check anyway
+    if (unlikely(pSrcRect == nullptr))
+      return D3DERR_INVALIDCALL;
+
+    // validate dimensions to ensure we calculate a meaningful srcOffset & extent
+    if (unlikely(pSrcRect->left < 0
+              || pSrcRect->top  < 0
+              || pSrcRect->right  <= pSrcRect->left
+              || pSrcRect->bottom <= pSrcRect->top))
+      return D3DERR_INVALIDCALL;
+
+    // CopyRects will not pass a null pDestPoint, but check anyway
+    if (unlikely(pDestPoint == nullptr))
+      return D3DERR_INVALIDCALL;
+
+    // validate dimensions to ensure we caculate a meaningful dstOffset
+    if (unlikely(pDestPoint->x < 0
+              || pDestPoint->y < 0))
+      return D3DERR_INVALIDCALL;
+
+    D3D9CommonTexture* srcTextureInfo = src->GetCommonTexture();
+    D3D9CommonTexture* dstTextureInfo = dst->GetCommonTexture();
+
+    VkOffset3D srcOffset = { pSrcRect->left,
+                             pSrcRect->top,
+                             0u };
+
+    VkExtent3D extent = { uint32_t(pSrcRect->right - pSrcRect->left), uint32_t(pSrcRect->bottom - pSrcRect->top), 1 };
+
+    VkOffset3D dstOffset = { pDestPoint->x,
+                             pDestPoint->y,
+                             0u };
+
+    m_device->UpdateTextureFromBuffer(
+      dstTextureInfo, srcTextureInfo,
+      src->GetSubresource(), dst->GetSubresource(),
+      srcOffset, extent, dstOffset
+    );
+
+    dstTextureInfo->SetNeedsReadback(dst->GetSubresource(), true);
+
+    if (dstTextureInfo->IsAutomaticMip())
+      m_device->MarkTextureMipsDirty(dstTextureInfo);
+
+    return D3D_OK;
+  }
+
 
   /**
    * \brief D3D8 CopyRects implementation
@@ -54,6 +114,8 @@ namespace dxvk {
     D3D9CommonTexture* srcTex = src->GetCommonTexture();
     D3D9CommonTexture* dstTex = dst->GetCommonTexture();
 
+    Logger::warn(str::format("CopyRects ", srcTex->Desc()->Pool, "->", dstTex->Desc()->Pool, ", ", dstTex->Desc()->Format));
+
     // This function does not support format conversion.
     if (unlikely(srcTex->Desc()->Format != dstTex->Desc()->Format))
       return D3DERR_INVALIDCALL;
@@ -66,6 +128,29 @@ namespace dxvk {
       Logger::err("CopyRects with formats, that need conversion, is only supported if it's an image to image copy.");
       return D3DERR_NOTAVAILABLE;
     }
+    
+    
+    {
+      
+      
+      
+      
+      
+
+      
+      
+      
+      
+      
+
+    }
+    
+    
+    
+    
+    
+    
+    
 
     // If pSourceRectsArray is NULL, then the entire surface is copied
     RECT rect;
@@ -98,6 +183,8 @@ namespace dxvk {
       } else {
         dstPoint = { srcRect.left, srcRect.top };
       }
+
+      Logger::warn(str::format("Original rects: src: ", srcRect.left, "-", srcRect.right, ",", srcRect.top, "-", srcRect.bottom, " dst: ", dstPoint.x, ",", dstPoint.y));
 
       VkOffset2D dstOffset = { dstPoint.x, dstPoint.y };
       VkOffset2D srcOffset = { srcRect.left, srcRect.top };
@@ -145,6 +232,10 @@ namespace dxvk {
       VkDeviceSize copyDstOffset = dstOffsetBlockCount.z * dstTexLevelExtentBlockCount.height * dstPitch
           + dstOffsetBlockCount.y * dstPitch
           + dstOffsetBlockCount.x * formatInfo->elementSize;
+
+
+      Logger::warn(str::format("Texture sizes: ", srcTex->Desc()->Width >> src->GetMipLevel(), ",", srcTex->Desc()->Height >> src->GetMipLevel(), " dst: ", dstTex->Desc()->Width >> dst->GetMipLevel(), ",", dstTex->Desc()->Height >> dst->GetMipLevel()));
+      Logger::warn(str::format("Aligned rects: src: ", alignedSrcOffset.x, ",", alignedSrcOffset.y, " - ", alignedExtent.width, ",", alignedExtent.height, " - ", alignedDstOffset.x, ",", alignedDstOffset.y));
 
       if (srcHasImage && dstHasImage) {
         // The backend will thankfully handle all VkUsage issues.
@@ -224,9 +315,78 @@ namespace dxvk {
         }
       }
       else if (!srcHasImage && dstHasImage) {
+        HRESULT res = D3D_OK;
+         res = m_device->UpdateSurface(src.ptr(), &srcRect, dst.ptr(), &dstPoint);
+
+        // Why does calling UpdateSurface here work but calling UpdateTextureFromBuffer here crashes.
+        // The logging inside UpdateTextureFromBuffer shows that it receives the exact same parameters.
+
+        if (res != D3D_OK) {
+          Logger::err("PANIK PANIK PANIK PANIK PANIK PANIK PANIK PANIK PANIK PANIK PANIK PANIK");
+        }
+
+        {
+
+
+
+          if (unlikely(srcTex->Desc()->Pool != D3DPOOL_SYSTEMMEM || dstTex->Desc()->Pool != D3DPOOL_DEFAULT))
+            return D3DERR_INVALIDCALL;
+
+          if (unlikely(srcTex->Desc()->Format != dstTex->Desc()->Format))
+            return D3DERR_INVALIDCALL;
+
+          if (unlikely(srcTex->Desc()->MultiSample != D3DMULTISAMPLE_NONE))
+            return D3DERR_INVALIDCALL;
+
+          if (unlikely(dstTex->Desc()->MultiSample != D3DMULTISAMPLE_NONE))
+            return D3DERR_INVALIDCALL;
+
+          const DxvkFormatInfo* formatInfo = lookupFormatInfo(dstTex->GetFormatMapping().Format);
+
+          VkOffset3D srcOffset = { 0u, 0u, 0u };
+          VkOffset3D dstOffset = { 0u, 0u, 0u };
+          VkExtent3D texLevelExtent = dstTex->GetExtentMip(src->GetSubresource());
+          VkExtent3D extent = texLevelExtent;
+
+            srcOffset = { srcRect.left,
+                          srcRect.top,
+                          0u };
+
+            extent = { uint32_t(srcRect.right - srcRect.left), uint32_t(srcRect.bottom - srcRect.top), 1 };
+
+            const bool extentAligned = extent.width % formatInfo->blockSize.width == 0
+              && extent.height % formatInfo->blockSize.height == 0;
+
+            if (srcRect.left < 0
+              || srcRect.top < 0
+              || srcRect.right <= srcRect.left
+              || srcRect.bottom <= srcRect.top
+              || srcRect.left % formatInfo->blockSize.width != 0
+              || srcRect.top % formatInfo->blockSize.height != 0
+              || (extent != texLevelExtent && !extentAligned))
+              return D3DERR_INVALIDCALL;
+
+
+            if (dstPoint.x % formatInfo->blockSize.width != 0
+              || dstPoint.y % formatInfo->blockSize.height != 0
+              || dstPoint.x < 0
+              || dstPoint.y < 0)
+              return D3DERR_INVALIDCALL;
+
+            dstOffset = { dstPoint.x,
+                          dstPoint.y,
+                          0u };
+          }
+
         srcTex->EnsureBufferExists(true);
         // Just use the staging buffer upload here.
         m_device->UpdateTextureFromBuffer(dstTex, srcTex, dst->GetSubresource(), src->GetSubresource(), alignedSrcOffset, alignedExtent, alignedDstOffset);
+
+        // The contents of the mapping no longer match the image.
+        dstTex->SetNeedsReadback(dst->GetSubresource(), true);
+
+        if (dstTex->IsAutomaticMip())
+          m_device->MarkTextureMipsDirty(dstTex);
       }
       else if (srcHasImage && !dstHasImage) {
         dstTex->EnsureBufferExists(true);
@@ -242,8 +402,10 @@ namespace dxvk {
           cDstPitch = dstPitch,
           cExtent = alignedExtent
         ] (DxvkContext* ctx) {
+          Logger::warn("CopyToBuffer");
           ctx->copyImageToBuffer(cDstBuffer, cBufferOffset, cDstPitch, 0,
             VK_FORMAT_UNDEFINED, cSrcImage, cSrcLayers, cSrcOffset, cExtent);
+          Logger::warn("CopyToBuffer Done");
         });
       }
       else if (!srcHasImage && !dstHasImage) {
@@ -284,6 +446,9 @@ namespace dxvk {
 
     if (dstTex->IsAutomaticMip())
       m_device->MarkTextureMipsDirty(dstTex);
+
+    m_device->ExecuteFlush(true);
+    m_device->SynchronizeCsThread(DxvkCsThread::SynchronizeAll);
 
     return D3D_OK;
   }

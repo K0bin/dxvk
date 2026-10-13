@@ -63,7 +63,7 @@ namespace dxvk::sync {
   public:
 
     ScopedDeviceLock(bool enableProtection)
-    : m_enable(enableProtection) { }
+    : m_enable(enableProtection || true) { }
 
     ScopedDeviceGuard acquire() {
       if (likely(!m_enable))

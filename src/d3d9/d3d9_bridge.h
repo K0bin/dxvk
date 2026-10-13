@@ -36,6 +36,21 @@ IDxvkLegacyD3DDeviceBridge : public IUnknown {
         IDirect3DSurface9*  pDestinationSurface,
   const POINT*              pDestPointsArray) = 0;
 
+
+  /**
+   * \brief Updates a D3D9 surface from a D3D9 buffer
+   *
+   * \param [in] pDestSurface Destination surface (typically in VRAM)
+   * \param [in] pSrcSurface  Source surface (typically in system memory)
+   * \param [in] pSrcRect     Source rectangle
+   * \param [in] pDestPoint   Destination (top-left) point
+   */
+  virtual HRESULT UpdateTextureFromBuffer(
+      IDirect3DSurface9*        pDestSurface,
+      IDirect3DSurface9*        pSrcSurface,
+      const RECT*               pSrcRect,
+      const POINT*              pDestPoint) = 0;
+
   /**
    * \brief Checks if a particular surface format is supported by D3D9
    *
@@ -99,6 +114,12 @@ namespace dxvk {
           UINT                cRects,
           IDirect3DSurface9*  pDestinationSurface,
     const POINT*              pDestPointsArray);
+
+    HRESULT UpdateTextureFromBuffer(
+     IDirect3DSurface9*        pDestSurface,
+     IDirect3DSurface9*        pSrcSurface,
+     const RECT*               pSrcRect,
+     const POINT*              pDestPoint);
 
   private:
 
