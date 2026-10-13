@@ -48,8 +48,8 @@ namespace dxvk {
       return D3DERR_INVALIDCALL;
     }
 
-    Com<D3D9Surface> src = static_cast<D3D9Surface*>(pSourceSurface);
-    Com<D3D9Surface> dst = static_cast<D3D9Surface*>(pDestinationSurface);
+    D3D9Surface* src = static_cast<D3D9Surface*>(pSourceSurface);
+    D3D9Surface* dst = static_cast<D3D9Surface*>(pDestinationSurface);
 
     D3D9CommonTexture* srcTex = src->GetCommonTexture();
     D3D9CommonTexture* dstTex = dst->GetCommonTexture();
