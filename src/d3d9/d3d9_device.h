@@ -960,7 +960,7 @@ namespace dxvk {
 
     std::pair<float, float> ComputeWNearFar() const;
 
-    void BindFramebuffer();
+    void BindFramebuffer(bool FullscreenPassDraw);
 
     void BindViewportAndScissor();
 
@@ -1027,7 +1027,7 @@ namespace dxvk {
 
     uint32_t GetInstanceCount() const;
 
-    void PrepareDraw(D3DPRIMITIVETYPE PrimitiveType, bool UploadVBOs, bool UploadIBOs);
+    void PrepareDraw(D3DPRIMITIVETYPE PrimitiveType, bool UploadVBOs, bool UploadIBOs, bool IsFullscreenPassDraw);
 
     void EnsureSamplerLimit();
 
@@ -1549,6 +1549,10 @@ namespace dxvk {
 
     static uint32_t GetTextureStageArgMask(
             D3DTEXTUREOP          Op);
+
+    bool IsFullscreenPass(uint32_t PrimitiveCount) {
+      return PrimitiveCount <= 2;
+    }
 
     static D3D9TextureStageStateFlags GetTextureStageStateFlags(
             D3DTEXTUREOP          Op,

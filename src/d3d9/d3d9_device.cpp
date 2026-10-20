@@ -1897,7 +1897,7 @@ namespace dxvk {
       return D3D_OK;
 
     D3D9DeviceLock lock = LockDevice();
-    BindFramebuffer();
+    BindFramebuffer(false);
 
     // D3DCLEAR_ZBUFFER and D3DCLEAR_STENCIL are invalid flags
     // if there is no currently bound DS (which can be the autoDS)
@@ -3035,7 +3035,7 @@ namespace dxvk {
     UploadPerDrawData(StartVertex, vertexCount, firstIndex, 0,
       baseVertexIndex, &dynamicSysmemVBOs, nullptr);
 
-    PrepareDraw(PrimitiveType, !dynamicSysmemVBOs, false);
+    PrepareDraw(PrimitiveType, !dynamicSysmemVBOs, false, IsFullscreenPass(PrimitiveCount));
 
     // Tests on Windows show that D3D9 does not do non-indexed instanced draws.
     VkDrawIndirectCommand draw = {};
@@ -3086,7 +3086,7 @@ namespace dxvk {
     UploadPerDrawData(MinVertexIndex, NumVertices, StartIndex, indexCount,
       BaseVertexIndex, &dynamicSysmemVBOs, &dynamicSysmemIBO);
 
-    PrepareDraw(PrimitiveType, !dynamicSysmemVBOs, !dynamicSysmemIBO);
+    PrepareDraw(PrimitiveType, !dynamicSysmemVBOs, !dynamicSysmemIBO, IsFullscreenPass(PrimitiveCount));
 
     VkDrawIndexedIndirectCommand draw = {};
     draw.indexCount = indexCount;
@@ -3142,7 +3142,7 @@ namespace dxvk {
     if (unlikely(!PrimitiveCount))
       return D3D_OK;
 
-    PrepareDraw(PrimitiveType, false, false);
+    PrepareDraw(PrimitiveType, false, false, IsFullscreenPass(PrimitiveCount));
 
     uint32_t vertexCount = GetVertexCount(PrimitiveType, PrimitiveCount);
 
@@ -3196,7 +3196,7 @@ namespace dxvk {
     if (unlikely(!PrimitiveCount || !NumVertices))
       return D3D_OK;
 
-    PrepareDraw(PrimitiveType, false, false);
+    PrepareDraw(PrimitiveType, false, false, IsFullscreenPass(PrimitiveCount));
 
     uint32_t vertexCount = GetVertexCount(PrimitiveType, PrimitiveCount);
 
@@ -3295,7 +3295,7 @@ namespace dxvk {
       nullptr
     );
 
-    PrepareDraw(D3DPT_FORCE_DWORD, !dynamicSysmemVBOs, false);
+    PrepareDraw(D3DPT_FORCE_DWORD, !dynamicSysmemVBOs, false, false);
 
     if (decl == nullptr) {
       DWORD FVF = dst->Desc()->FVF;
@@ -6638,8 +6638,9 @@ namespace dxvk {
   }
 
 
-  void D3D9DeviceEx::BindFramebuffer() {
-    m_dirty.clr(D3D9DeviceDirtyFlag::Framebuffer);
+  void D3D9DeviceEx::BindFramebuffer(bool FullscreenPassDraw) {
+    if (!FullscreenPassDraw)
+      m_dirty.clr(D3D9DeviceDirtyFlag::Framebuffer);
 
     DxvkRenderTargets attachments;
 
@@ -6698,7 +6699,10 @@ namespace dxvk {
       const bool mismatch = dsInfo.extent.width < renderArea.width
         || dsInfo.extent.height < renderArea.height
         || dsInfo.sampleCount != sampleCount;
-      const bool bindDS = !mismatch || noRT0Bound || ignoreRT0;
+      bool bindDS = !mismatch || noRT0Bound || ignoreRT0;
+      const bool depthUsed = m_state.renderStates[D3DRS_ZENABLE] && IsDepthFormat(ds->Desc()->Format);
+      const bool stencilUsed = m_state.renderStates[D3DRS_STENCILENABLE] && IsStencilFormat(ds->Desc()->Format);
+      bindDS &= !FullscreenPassDraw || depthUsed || stencilUsed;
 
       if (likely(bindDS)) {
         if (unlikely(noRT0Bound || ignoreRT0)) {
@@ -7309,7 +7313,7 @@ namespace dxvk {
   }
 
 
-  void D3D9DeviceEx::PrepareDraw(D3DPRIMITIVETYPE PrimitiveType, bool UploadVBOs, bool UploadIBO) {
+  void D3D9DeviceEx::PrepareDraw(D3DPRIMITIVETYPE PrimitiveType, bool UploadVBOs, bool UploadIBO, bool IsFullscreenPassDraw) {
     // Need to update texture masks for FFPS early so that we properly track hazards
     if (unlikely(!UseProgrammablePS()) && m_dirty.test(D3D9DeviceDirtyFlag::FFPixelShader))
       UpdateFixedFunctionPS();
@@ -7347,7 +7351,7 @@ namespace dxvk {
       UpdateFog();
 
     if (unlikely(m_dirty.test(D3D9DeviceDirtyFlag::Framebuffer)))
-      BindFramebuffer();
+      BindFramebuffer(IsFullscreenPassDraw);
 
     if (unlikely(m_dirty.test(D3D9DeviceDirtyFlag::ViewportScissor)))
       BindViewportAndScissor();
